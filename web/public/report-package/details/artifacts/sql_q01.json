@@ -1,0 +1,8 @@
+{
+  "id": "sql_q01",
+  "title": "TPC-H Q1 SQL",
+  "type": "sql",
+  "description": "作为 Q1 语义基准的原始 SQL。",
+  "path": "artifacts/sql/q01.sql",
+  "contentType": "text/plain"
+}

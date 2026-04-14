@@ -1,0 +1,30 @@
+{
+  "id": "calls_dispatch",
+  "name": "调用与分派",
+  "level": "L1",
+  "componentIds": ["bridge_runtime", "cpython"],
+  "armTime": "18.0 ms",
+  "x86Time": "15.0 ms",
+  "armShare": "9.9%",
+  "x86Share": "11.6%",
+  "delta": "+3.0 ms",
+  "deltaContribution": "5.7%",
+  "caseIds": ["q06", "q12"],
+  "hotspots": [
+    {
+      "id": "func_004",
+      "symbol": "python_udf_wrapper",
+      "component": "bridge_runtime",
+      "selfArm": "5.1 ms",
+      "selfX86": "4.0 ms",
+      "totalArm": "9.6 ms",
+      "totalX86": "8.2 ms",
+      "armShare": "2.8%",
+      "x86Share": "3.2%",
+      "delta": "+1.4 ms",
+      "deltaContribution": "2.6%"
+    }
+  ],
+  "patternIds": ["pattern_002"],
+  "artifactIds": ["source_wrapper_dispatch_excerpt", "asm_arm_func_004", "asm_x86_func_004"]
+}

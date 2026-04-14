@@ -1,0 +1,8 @@
+{
+  "id": "asm_arm_func_006",
+  "title": "PyDict_GetItem 的 Arm 汇编",
+  "type": "assembly",
+  "description": "用于展示对象模型查找路径的 Arm 侧汇编片段。",
+  "path": "artifacts/asm/arm/func_006.s",
+  "contentType": "text/plain"
+}

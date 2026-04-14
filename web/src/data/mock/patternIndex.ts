@@ -1,0 +1,14 @@
+import type { PatternIndexEntry } from "../../types/report";
+
+export const mockPatternIndex: PatternIndexEntry[] = [
+  {
+    id: "pattern_001",
+    title: "热点路径上存在高频临时对象抖动",
+    confidence: "高",
+  },
+  {
+    id: "pattern_002",
+    title: "行适配层级放大了解释器分派开销",
+    confidence: "高置信",
+  },
+];

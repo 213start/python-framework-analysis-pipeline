@@ -1,0 +1,31 @@
+{
+  "id": "kernel",
+  "name": "内核",
+  "armTime": "19.0 ms",
+  "x86Time": "16.0 ms",
+  "armShare": "10.4%",
+  "x86Share": "12.4%",
+  "delta": "+3.0 ms",
+  "deltaContribution": "5.7%",
+  "categories": [
+    { "id": "kernel_wait", "name": "内核等待", "delta": "+3.0 ms" }
+  ],
+  "hotspots": [
+    {
+      "id": "func_005",
+      "symbol": "futex_wait",
+      "category": "内核等待",
+      "selfArm": "4.1 ms",
+      "selfX86": "3.4 ms",
+      "totalArm": "8.2 ms",
+      "totalX86": "6.7 ms",
+      "armShare": "2.3%",
+      "x86Share": "2.6%",
+      "delta": "+1.5 ms",
+      "deltaContribution": "2.8%"
+    }
+  ],
+  "patternIds": ["pattern_002"],
+  "rootCauseIds": ["rc_002"],
+  "artifactIds": ["asm_arm_func_005", "asm_x86_func_005", "source_kernel_wait_excerpt"]
+}

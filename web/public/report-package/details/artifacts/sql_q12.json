@@ -1,0 +1,8 @@
+{
+  "id": "sql_q12",
+  "title": "TPC-H Q12 SQL",
+  "type": "sql",
+  "description": "作为 Q12 语义基准的原始 SQL。",
+  "path": "artifacts/sql/q12.sql",
+  "contentType": "text/plain"
+}

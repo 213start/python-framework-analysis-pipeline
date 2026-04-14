@@ -1,0 +1,31 @@
+{
+  "id": "third_party",
+  "name": "三方库",
+  "armTime": "14.0 ms",
+  "x86Time": "12.0 ms",
+  "armShare": "7.7%",
+  "x86Share": "9.3%",
+  "delta": "+2.0 ms",
+  "deltaContribution": "3.8%",
+  "categories": [
+    { "id": "native_boundary", "name": "原生边界", "delta": "+2.0 ms" }
+  ],
+  "hotspots": [
+    {
+      "id": "func_003",
+      "symbol": "row_adapter_convert",
+      "category": "原生边界",
+      "selfArm": "3.7 ms",
+      "selfX86": "3.1 ms",
+      "totalArm": "6.5 ms",
+      "totalX86": "5.4 ms",
+      "armShare": "2.0%",
+      "x86Share": "2.4%",
+      "delta": "+1.1 ms",
+      "deltaContribution": "2.1%"
+    }
+  ],
+  "patternIds": ["pattern_001"],
+  "rootCauseIds": ["rc_001"],
+  "artifactIds": ["asm_arm_func_003", "asm_x86_func_003", "source_row_adapter_excerpt"]
+}

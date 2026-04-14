@@ -1,0 +1,8 @@
+{
+  "id": "asm_x86_func_001",
+  "title": "_PyObject_Malloc 的 x86 汇编",
+  "type": "assembly",
+  "description": "用于展示热点分配路径的 x86 侧代表性汇编片段。",
+  "path": "artifacts/asm/x86/func_001.s",
+  "contentType": "text/plain"
+}

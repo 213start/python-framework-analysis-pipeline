@@ -1,0 +1,36 @@
+{
+  "title": "执行摘要",
+  "subtitle": "用于前端初始骨架渲染的示例数据包",
+  "metrics": [
+    {
+      "label": "框架调用耗时",
+      "armValue": "0.91 ms",
+      "x86Value": "0.81 ms",
+      "delta": "+12.3%",
+      "target": "/analysis/by-case"
+    },
+    {
+      "label": "业务算子耗时",
+      "armValue": "1.77 ms",
+      "x86Value": "1.69 ms",
+      "delta": "+4.7%",
+      "target": "/case/q01"
+    },
+    {
+      "label": "主导组件差异",
+      "armValue": "CPython +70.0 ms",
+      "x86Value": "glibc +12.0 ms",
+      "delta": "CPython 占主导",
+      "target": "/analysis/by-stack"
+    },
+    {
+      "label": "主导根因",
+      "armValue": "对象抖动",
+      "x86Value": "解释器层级",
+      "delta": "2 个活跃主题",
+      "target": "/insights"
+    }
+  ],
+  "topPattern": "热点路径上存在高频临时对象抖动",
+  "topRootCause": "当前行表示设计导致临时对象过多"
+}

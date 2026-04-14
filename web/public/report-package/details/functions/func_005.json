@@ -1,0 +1,108 @@
+{
+  "id": "func_005",
+  "symbol": "futex_wait",
+  "component": "kernel",
+  "categoryL1": "内核等待",
+  "categoryL2": "scheduler_wait",
+  "caseIds": ["q06"],
+  "artifactIds": ["asm_arm_func_005", "asm_x86_func_005", "source_kernel_wait_excerpt"],
+  "metrics": {
+    "selfArm": "4.1 ms",
+    "selfX86": "3.4 ms",
+    "totalArm": "8.2 ms",
+    "totalX86": "6.7 ms",
+    "delta": "+1.5 ms"
+  },
+  "callPath": [
+    "python_udf_wrapper",
+    "ipc_flush",
+    "futex_wait"
+  ],
+  "patternIds": ["pattern_002"],
+  "diffView": {
+    "functionId": "func_005",
+    "sourceFile": "kernel/futex.c",
+    "sourceLocation": "futex.c:219-226",
+    "diffGuide": "本视图按逻辑分析块对齐。等待队列入队、原子重试与挂起恢复在两个平台上不会严格线性排列。",
+    "analysisBlocks": [
+      {
+        "id": "blk_005",
+        "label": "Wait Enqueue",
+        "summary": "对齐 futex 入队前的原子探测与重试。Arm 上显式的独占装载/存储序列让重试路径更可见。",
+        "patternTag": "BranchFSM",
+        "mappingType": "一对多",
+        "sourceAnchors": [
+          {
+            "id": "src_001",
+            "label": "队列入队",
+            "role": "Atomic Probe",
+            "location": "futex.c:219",
+            "snippet": "queue_me(&q, hb);",
+            "defaultExpanded": true
+          },
+          {
+            "id": "src_002",
+            "label": "等待重试",
+            "role": "Retry Branch",
+            "location": "futex.c:226",
+            "snippet": "if (unlikely(retry)) goto wait_retry;",
+            "defaultExpanded": false
+          }
+        ],
+        "armRegions": [
+          {
+            "id": "arm_001",
+            "label": "Exclusive Load",
+            "location": "0x00c0-0x00d0",
+            "role": "Atomic Probe",
+            "snippet": "ldxr w8, [x19]\ncbnz w8, wait_retry",
+            "highlights": ["ldxr w8", "cbnz w8"],
+            "defaultExpanded": true
+          },
+          {
+            "id": "arm_002",
+            "label": "Exclusive Store",
+            "location": "0x00e4-0x00f4",
+            "role": "Atomic Commit",
+            "snippet": "stxr w9, w20, [x19]\ncbnz w9, wait_retry",
+            "highlights": ["stxr w9", "cbnz w9"],
+            "defaultExpanded": false
+          }
+        ],
+        "x86Regions": [
+          {
+            "id": "x86_001",
+            "label": "Probe + Branch",
+            "location": "0x0044-0x0054",
+            "role": "Atomic Probe",
+            "snippet": "mov eax, dword ptr [rbx]\ntest eax, eax\njne wait_retry",
+            "highlights": ["mov eax", "test eax", "jne wait_retry"],
+            "defaultExpanded": true
+          }
+        ],
+        "mappings": [
+          {
+            "id": "map_001",
+            "label": "队列入队 -> atomic probe",
+            "sourceAnchorIds": ["src_001"],
+            "armRegionIds": ["arm_001"],
+            "x86RegionIds": ["x86_001"],
+            "note": "两个平台都保留原子探测入口，但 Arm 侧显式使用独占装载。"
+          },
+          {
+            "id": "map_002",
+            "label": "等待重试 -> Arm exclusive store",
+            "sourceAnchorIds": ["src_002"],
+            "armRegionIds": ["arm_002"],
+            "x86RegionIds": [],
+            "note": "x86 侧重试检查被合并到 probe 路径，Arm 侧独占提交失败单独成块。"
+          }
+        ],
+        "diffSignals": ["显式独占序列", "重试路径更长"],
+        "alignmentNote": "按 wait enqueue 块对齐",
+        "performanceNote": "Arm 侧原子等待前的独占序列更长，重试路径更重。",
+        "defaultExpanded": true
+      }
+    ]
+  }
+}

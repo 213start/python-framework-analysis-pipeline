@@ -1,0 +1,76 @@
+import type { ScopeSummary } from "../../types/report";
+
+export const mockScopeSummary: ScopeSummary = {
+  pageHighlights: [
+    {
+      label: "纳入项",
+      value: "3",
+      detail: "当前 demo 已明确限定到 PyFlink 框架链路、桥接计时和模式叙事。",
+    },
+    {
+      label: "排除项",
+      value: "2",
+      detail: "不把真实生产证据和完整端到端覆盖混入当前示例报告。",
+    },
+    {
+      label: "一级分类",
+      value: "9",
+      detail: "默认按一级分类展示全景，再下钻到组件、分类和函数。",
+    },
+    {
+      label: "组件轴",
+      value: "5",
+      detail: "CPython、三方库、glibc、内核和未知项共同组成组件轴。",
+    },
+  ],
+  includedScope: [
+    "PyFlink 框架开销",
+    "Java-Python-Java 桥接计时",
+    "示例模式与根因叙事",
+  ],
+  excludedScope: [
+    "真实生产证据",
+    "每条路由的完整端到端覆盖",
+  ],
+  metrics: [
+    {
+      name: "Demo 总耗时",
+      definition: "从客户端提交作业到作业完成的时间。",
+      boundary: "Client -> Job 完成",
+      normalization: "批量总量",
+    },
+    {
+      name: "TM 端到端耗时",
+      definition: "从 TaskManager 侧 SubTask 开始执行到执行结束的时间。",
+      boundary: "TaskManager SubTask 开始 -> 结束",
+      normalization: "批量总量",
+    },
+    {
+      name: "业务算子耗时",
+      definition: "Python UDF 内部执行时间。",
+      boundary: "Python UDF start -> Python UDF end",
+      normalization: "按调用、按记录",
+    },
+    {
+      name: "框架调用耗时",
+      definition: "围绕 Python UDF 边界的桥接与包装开销。",
+      boundary: "Java PreUDF -> Java PostUDF 减去 Python UDF 时间",
+      normalization: "按调用、按记录",
+    },
+  ],
+  taxonomy: {
+    level1Categories: [
+      "解释器",
+      "内存",
+      "GC",
+      "对象模型",
+      "类型操作",
+      "调用 / 分派",
+      "原生边界",
+      "内核",
+      "未知",
+    ],
+    componentAxis: ["cpython", "third_party", "glibc", "kernel", "unknown"],
+    unknownWarningThreshold: "5%",
+  },
+};

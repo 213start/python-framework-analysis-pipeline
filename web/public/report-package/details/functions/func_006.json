@@ -1,0 +1,108 @@
+{
+  "id": "func_006",
+  "symbol": "PyDict_GetItem",
+  "component": "cpython",
+  "categoryL1": "对象模型",
+  "categoryL2": "dict_lookup",
+  "caseIds": ["q01", "q12"],
+  "artifactIds": ["asm_arm_func_006", "asm_x86_func_006", "source_object_lookup_excerpt"],
+  "metrics": {
+    "selfArm": "6.4 ms",
+    "selfX86": "4.1 ms",
+    "totalArm": "10.8 ms",
+    "totalX86": "8.0 ms",
+    "delta": "+2.8 ms"
+  },
+  "callPath": [
+    "row_adapter_convert",
+    "PyDict_GetItem",
+    "hash_lookup"
+  ],
+  "patternIds": ["pattern_001"],
+  "diffView": {
+    "functionId": "func_006",
+    "sourceFile": "Objects/dictobject.c",
+    "sourceLocation": "dictobject.c:1298-1303",
+    "diffGuide": "本视图按逻辑分析块对齐。dict probe 的地址计算、slot 读取和 miss 处理可能在不同平台上交错分布。",
+    "analysisBlocks": [
+      {
+        "id": "blk_006",
+        "label": "Dict Probe",
+        "summary": "对齐 hash 读取、probe 地址计算与 slot 装载。Arm 上 probe 地址恢复与后续 slot 装载被拆成多个区块。",
+        "patternTag": "ObjectManipulator",
+        "mappingType": "多对多",
+        "sourceAnchors": [
+          {
+            "id": "src_001",
+            "label": "probe 入口",
+            "role": "Probe Setup",
+            "location": "dictobject.c:1298",
+            "snippet": "entry = find_key(hash, key, ep0);",
+            "defaultExpanded": true
+          },
+          {
+            "id": "src_002",
+            "label": "miss 继续探测",
+            "role": "Probe Miss",
+            "location": "dictobject.c:1303",
+            "snippet": "if (entry == NULL) goto next_probe;",
+            "defaultExpanded": false
+          }
+        ],
+        "armRegions": [
+          {
+            "id": "arm_001",
+            "label": "Hash Load",
+            "location": "0x0150-0x015c",
+            "role": "Probe Setup",
+            "snippet": "ldr x12, [x1, #24]\nadd x13, x0, x12, lsl #4",
+            "highlights": ["ldr x12", "add x13"],
+            "defaultExpanded": true
+          },
+          {
+            "id": "arm_002",
+            "label": "Slot Load",
+            "location": "0x0174-0x0180",
+            "role": "Probe Read",
+            "snippet": "ldr x14, [x13]\ncbz x14, next_probe",
+            "highlights": ["ldr x14", "cbz x14"],
+            "defaultExpanded": false
+          }
+        ],
+        "x86Regions": [
+          {
+            "id": "x86_001",
+            "label": "Hash + Slot Load",
+            "location": "0x0068-0x0078",
+            "role": "Probe Read",
+            "snippet": "mov rcx, qword ptr [rsi+24]\nlea rdx, [rdi+rcx*16]\nmov r8, qword ptr [rdx]",
+            "highlights": ["mov rcx", "lea rdx", "mov r8"],
+            "defaultExpanded": true
+          }
+        ],
+        "mappings": [
+          {
+            "id": "map_001",
+            "label": "probe 入口 -> hash/probe read",
+            "sourceAnchorIds": ["src_001"],
+            "armRegionIds": ["arm_001"],
+            "x86RegionIds": ["x86_001"],
+            "note": "两个平台都围绕 probe 入口建立地址恢复与 slot 读取。"
+          },
+          {
+            "id": "map_002",
+            "label": "miss 继续探测 -> Arm slot load",
+            "sourceAnchorIds": ["src_002"],
+            "armRegionIds": ["arm_002"],
+            "x86RegionIds": [],
+            "note": "x86 侧 miss 检查与 probe 读取合并，Arm 侧拆成单独 slot load + branch。"
+          }
+        ],
+        "diffSignals": ["地址恢复更长", "slot 读取拆分"],
+        "alignmentNote": "按 dict probe 块对齐",
+        "performanceNote": "Arm 侧 probe 地址恢复与 slot 读取被拆分，加载链更长。",
+        "defaultExpanded": true
+      }
+    ]
+  }
+}

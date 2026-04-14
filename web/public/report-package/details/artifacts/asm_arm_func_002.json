@@ -1,0 +1,8 @@
+{
+  "id": "asm_arm_func_002",
+  "title": "_PyEval_EvalFrameDefault 的 Arm 汇编",
+  "type": "assembly",
+  "description": "用于展示解释器分派路径的 Arm 侧代表性汇编片段。",
+  "path": "artifacts/asm/arm/func_002.s",
+  "contentType": "text/plain"
+}

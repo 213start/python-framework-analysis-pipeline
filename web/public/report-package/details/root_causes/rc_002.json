@@ -1,0 +1,16 @@
+{
+  "id": "rc_002",
+  "title": "行适配层级增加了解释器分派成本",
+  "summary": "嵌套的适配器与包装层切换会在热点解释器路径上带来额外的 frame 求值与分派开销。",
+  "confidence": "高置信",
+  "patternIds": ["pattern_002"],
+  "artifactIds": ["source_interpreter_loop_excerpt", "source_wrapper_dispatch_excerpt", "source_kernel_wait_excerpt", "asm_arm_func_002", "asm_x86_func_002", "asm_arm_func_004", "asm_x86_func_004", "asm_arm_func_005", "asm_x86_func_005"],
+  "optimizationIdeas": [
+    "收敛冗余的适配器 frame",
+    "针对常见行形态特化热点包装路径"
+  ],
+  "validationPlan": [
+    "对比简化前后每条记录的 frame 切换次数",
+    "对比收敛适配层后 Arm 与 x86 的解释器 self time"
+  ]
+}

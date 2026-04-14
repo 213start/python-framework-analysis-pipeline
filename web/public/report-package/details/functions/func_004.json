@@ -1,0 +1,108 @@
+{
+  "id": "func_004",
+  "symbol": "python_udf_wrapper",
+  "component": "bridge_runtime",
+  "categoryL1": "调用与分派",
+  "categoryL2": "wrapper_dispatch",
+  "caseIds": ["q06", "q12"],
+  "artifactIds": ["asm_arm_func_004", "asm_x86_func_004", "source_wrapper_dispatch_excerpt"],
+  "metrics": {
+    "selfArm": "5.1 ms",
+    "selfX86": "4.0 ms",
+    "totalArm": "9.6 ms",
+    "totalX86": "8.2 ms",
+    "delta": "+1.4 ms"
+  },
+  "callPath": [
+    "java_post_udf",
+    "python_udf_wrapper",
+    "_PyEval_EvalFrameDefault"
+  ],
+  "patternIds": ["pattern_002"],
+  "diffView": {
+    "functionId": "func_004",
+    "sourceFile": "pyflink/fn_execution/beam/operation.py",
+    "sourceLocation": "operation.py:144-148",
+    "diffGuide": "本视图按逻辑分析块对齐。调用出口、空值检查和异常回跳可能被编译器拆到不同位置。",
+    "analysisBlocks": [
+      {
+        "id": "blk_004",
+        "label": "Wrapper Dispatch",
+        "summary": "对齐 wrapper 调用、返回值检查和错误出口。Arm 上调用返回后的检查与异常分支被拆为多个区块。",
+        "patternTag": "CallDispatcher",
+        "mappingType": "拆分",
+        "sourceAnchors": [
+          {
+            "id": "src_001",
+            "label": "wrapper 调用",
+            "role": "Dispatch",
+            "location": "operation.py:144",
+            "snippet": "return udf_callable(*converted_args)",
+            "defaultExpanded": true
+          },
+          {
+            "id": "src_002",
+            "label": "错误出口",
+            "role": "Error Guard",
+            "location": "operation.py:148",
+            "snippet": "raise RuntimeError(\"wrapper dispatch failed\")",
+            "defaultExpanded": false
+          }
+        ],
+        "armRegions": [
+          {
+            "id": "arm_001",
+            "label": "Call Site",
+            "location": "0x0200-0x020c",
+            "role": "Dispatch",
+            "snippet": "ldr x11, [x20, #8]\nblr x11",
+            "highlights": ["ldr x11", "blr x11"],
+            "defaultExpanded": true
+          },
+          {
+            "id": "arm_002",
+            "label": "Null-Check Branch",
+            "location": "0x0220-0x0228",
+            "role": "Error Guard",
+            "snippet": "cbz x0, wrapper_error\nb done_dispatch",
+            "highlights": ["cbz x0", "b done_dispatch"],
+            "defaultExpanded": false
+          }
+        ],
+        "x86Regions": [
+          {
+            "id": "x86_001",
+            "label": "Call Site",
+            "location": "0x0088-0x0094",
+            "role": "Dispatch",
+            "snippet": "mov rax, qword ptr [r12+8]\ncall rax\ntest rax, rax",
+            "highlights": ["mov rax", "call rax", "test rax"],
+            "defaultExpanded": true
+          }
+        ],
+        "mappings": [
+          {
+            "id": "map_001",
+            "label": "wrapper 调用 -> dispatch",
+            "sourceAnchorIds": ["src_001"],
+            "armRegionIds": ["arm_001"],
+            "x86RegionIds": ["x86_001"],
+            "note": "两个平台都对应调用出口，但 Arm 侧后续检查被拆出独立区块。"
+          },
+          {
+            "id": "map_002",
+            "label": "错误出口 -> Arm null-check",
+            "sourceAnchorIds": ["src_002"],
+            "armRegionIds": ["arm_002"],
+            "x86RegionIds": [],
+            "note": "x86 侧错误检查并入主调用区块，Arm 侧保留独立 guard 区块。"
+          }
+        ],
+        "diffSignals": ["检查与回跳拆分", "调用后控制流更重"],
+        "alignmentNote": "按 wrapper 调用出口对齐",
+        "performanceNote": "Arm 侧调用后检查与回跳被拆分，控制流恢复成本更高。",
+        "defaultExpanded": true
+      }
+    ]
+  }
+}

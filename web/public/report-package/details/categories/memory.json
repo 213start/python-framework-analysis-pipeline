@@ -1,0 +1,30 @@
+{
+  "id": "memory",
+  "name": "内存",
+  "level": "L1",
+  "componentIds": ["cpython"],
+  "armTime": "70.0 ms",
+  "x86Time": "38.0 ms",
+  "armShare": "29.7%",
+  "x86Share": "24.0%",
+  "delta": "+32.0 ms",
+  "deltaContribution": "43.4%",
+  "caseIds": ["q01", "q12"],
+  "hotspots": [
+    {
+      "id": "func_001",
+      "symbol": "_PyObject_Malloc",
+      "component": "cpython",
+      "selfArm": "21.2 ms",
+      "selfX86": "10.4 ms",
+      "totalArm": "33.5 ms",
+      "totalX86": "18.9 ms",
+      "armShare": "11.6%",
+      "x86Share": "8.1%",
+      "delta": "+14.6 ms",
+      "deltaContribution": "27.5%"
+    }
+  ],
+  "patternIds": ["pattern_001"],
+  "artifactIds": ["asm_arm_func_001", "asm_x86_func_001"]
+}

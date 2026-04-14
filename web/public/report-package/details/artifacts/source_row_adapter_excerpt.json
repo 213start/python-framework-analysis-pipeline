@@ -1,0 +1,8 @@
+{
+  "id": "source_row_adapter_excerpt",
+  "title": "行适配器源码摘录",
+  "type": "source",
+  "description": "展示包装对象分配与行转换层级的源码摘录。",
+  "path": "artifacts/source/row_adapter_excerpt.txt",
+  "contentType": "text/plain"
+}

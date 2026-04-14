@@ -1,0 +1,5 @@
+export const mockReportManifest = {
+  reportId: "sample-report",
+  title: "PyFlink 跨平台性能差异分析",
+  schemaVersion: "0.1.0",
+};

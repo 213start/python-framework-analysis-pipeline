@@ -1,0 +1,8 @@
+{
+  "id": "pyflink_q06",
+  "title": "Q6 的 Python UDF 实现",
+  "type": "pyflink",
+  "description": "示例数据包中用于 Q6 的示意性 Python UDF 实现。",
+  "path": "artifacts/pyflink/q06.py",
+  "contentType": "text/plain"
+}

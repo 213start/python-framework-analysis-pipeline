@@ -1,0 +1,30 @@
+{
+  "id": "object_model",
+  "name": "对象模型",
+  "level": "L1",
+  "componentIds": ["cpython"],
+  "armTime": "24.0 ms",
+  "x86Time": "18.0 ms",
+  "armShare": "13.2%",
+  "x86Share": "14.0%",
+  "delta": "+6.0 ms",
+  "deltaContribution": "11.3%",
+  "caseIds": ["q01", "q12"],
+  "hotspots": [
+    {
+      "id": "func_006",
+      "symbol": "PyDict_GetItem",
+      "component": "cpython",
+      "selfArm": "6.4 ms",
+      "selfX86": "4.1 ms",
+      "totalArm": "10.8 ms",
+      "totalX86": "8.0 ms",
+      "armShare": "3.5%",
+      "x86Share": "3.1%",
+      "delta": "+2.8 ms",
+      "deltaContribution": "5.3%"
+    }
+  ],
+  "patternIds": ["pattern_001"],
+  "artifactIds": ["asm_arm_func_006", "asm_x86_func_006", "source_object_lookup_excerpt"]
+}

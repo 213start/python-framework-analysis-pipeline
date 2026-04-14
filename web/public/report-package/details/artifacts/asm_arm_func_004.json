@@ -1,0 +1,8 @@
+{
+  "id": "asm_arm_func_004",
+  "title": "python_udf_wrapper 的 Arm 汇编",
+  "type": "assembly",
+  "description": "用于展示调用与分派路径的 Arm 侧汇编片段。",
+  "path": "artifacts/asm/arm/func_004.s",
+  "contentType": "text/plain"
+}
