@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.local/python-framework-analysis-pipeline/environment-plan.schema.json",
+  "title": "EnvironmentPlan",
+  "description": "Machine-readable execution plan for environment setup.",
+  "type": "object",
+  "required": ["schemaVersion", "projectId", "framework", "platform", "mode", "planHash", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "framework": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Platform ID from environment.yaml, e.g. arm, x86."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["plan-only", "full-auto", "manual-record"]
+    },
+    "planHash": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SHA-256 hash of the plan content for integrity verification."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "hostRef", "command", "required", "mutatesHost", "requiresPrivilege", "requiresApproval", "rollbackHint"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["probe", "check", "prepare", "install", "configure", "start", "stop", "cleanup", "system-install", "docker-install", "python-install", "framework-install", "framework-start", "framework-readiness", "framework-smoke-test"]
+          },
+          "hostRef": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Reference to a host in environment.yaml hostRefs."
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Shell command to execute."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of this step."
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "mutatesHost": {
+            "type": "boolean",
+            "description": "Whether this step modifies machine state."
+          },
+          "requiresPrivilege": {
+            "type": "boolean",
+            "description": "Whether this step needs sudo or equivalent."
+          },
+          "requiresApproval": {
+            "type": "boolean",
+            "description": "Whether human approval is needed before execution."
+          },
+          "rollbackHint": {
+            "type": "string",
+            "description": "How to undo this step if it fails."
+          }
+        }
+      }
+    }
+  }
+}

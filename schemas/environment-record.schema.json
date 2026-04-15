@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.local/python-framework-analysis-pipeline/environment-record.schema.json",
+  "title": "EnvironmentRecord",
+  "description": "Records what actually happened during environment setup, not what should have happened.",
+  "type": "object",
+  "required": ["schemaVersion", "projectId", "platform", "planHash", "startedAt", "finishedAt", "mode", "provenance", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planHash": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match the planHash of the referenced environment-plan.json."
+    },
+    "startedAt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO 8601 timestamp."
+    },
+    "finishedAt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO 8601 timestamp."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["plan-only", "full-auto", "manual-record"]
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["recordedBy"],
+      "additionalProperties": false,
+      "properties": {
+        "recordedBy": {
+          "type": "string",
+          "enum": ["manual", "auto"],
+          "description": "Whether the record was filled manually or by automated execution."
+        },
+        "operatorRef": {
+          "type": "string",
+          "description": "Identifier for the person or agent who created the record."
+        },
+        "source": {
+          "type": "string",
+          "description": "Description of the execution environment, e.g. isolated-lab."
+        }
+      }
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Key-value pairs of environment facts: arch, kernel, python, docker, etc."
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Must match a step id from the environment plan."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "skipped"]
+          },
+          "exitCode": {
+            "type": "integer"
+          },
+          "logPath": {
+            "type": "string",
+            "description": "Relative path to a log file under the run directory."
+          },
+          "note": {
+            "type": "string",
+            "description": "Manual note explaining the result, especially for manual-record mode."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,115 @@
+schemaVersion: 1
+framework: pyflink
+mode: plan-only
+
+platforms:
+  - id: arm
+    arch: aarch64
+    hosts:
+      - role: client
+        hostRef: arm-client
+      - role: jobmanager
+        hostRef: arm-jm
+      - role: taskmanager
+        hostRef: arm-tm-01
+
+  - id: x86
+    arch: x86_64
+    hosts:
+      - role: client
+        hostRef: x86-client
+      - role: jobmanager
+        hostRef: x86-jm
+      - role: taskmanager
+        hostRef: x86-tm-01
+
+software:
+  pythonVersion: "3.11"
+  frameworkVersion: "pyflink-source-revision"
+  dockerRequired: true
+  dependencyLock: requirements.lock
+
+hostRefs:
+  arm-client:
+    connect: ssh
+    user: benchmark
+    addressRef: arm-client-address
+    secretRef: arm-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false
+
+  arm-jm:
+    connect: ssh
+    user: benchmark
+    addressRef: arm-jm-address
+    secretRef: arm-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false
+
+  arm-tm-01:
+    connect: ssh
+    user: benchmark
+    addressRef: arm-tm-01-address
+    secretRef: arm-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false
+
+  x86-client:
+    connect: ssh
+    user: benchmark
+    addressRef: x86-client-address
+    secretRef: x86-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false
+
+  x86-jm:
+    connect: ssh
+    user: benchmark
+    addressRef: x86-jm-address
+    secretRef: x86-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false
+
+  x86-tm-01:
+    connect: ssh
+    user: benchmark
+    addressRef: x86-tm-01-address
+    secretRef: x86-lab-ssh-key
+    capabilities:
+      ssh: true
+      sudo: false
+      docker: true
+      internet: false
+      internalMirror: true
+      upload: true
+      download: false

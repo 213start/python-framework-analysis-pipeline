@@ -44,14 +44,21 @@
   - PyFlink 专用规范
   - 四层抽象方案
   - 报告 schema 与页面规范
+  - 环境搭建架构规范
 - `docs/plans/`
   - 前端实现计划、自动化流程路线图与阶段性设计记录
+- `docs/runbooks/`
+  - 环境搭建执行手册
 - `schemas/`
-  - 四层输入和校验报告的 JSON Schema 草案
+  - 四层输入和校验报告的 JSON Schema
 - `pipelines/`
   - 自动化分析流程 CLI、校验器、步骤接口和框架适配器
 - `projects/`
   - 真实分析项目的配置、采集产物和运行记录
+- `workload/`
+  - Benchmark 用例定义和框架专属 UDF 实现
+  - `workload/tpch/sql/` — 22 条原始 TPC-H SQL
+  - `workload/tpch/pyflink/` — 13 条 PyFlink 纯 Python UDF + 公共 runner
 - `web/`
   - 前端 demo
 - `web/public/examples/four-layer/`

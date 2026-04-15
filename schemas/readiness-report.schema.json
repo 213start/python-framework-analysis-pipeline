@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.local/python-framework-analysis-pipeline/readiness-report.schema.json",
+  "title": "ReadinessReport",
+  "description": "Answers one question: is this environment ready to proceed to test case execution and performance collection?",
+  "type": "object",
+  "required": ["schemaVersion", "projectId", "platform", "status", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "not-ready", "unknown"],
+      "description": "Overall readiness verdict."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "unknown"]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable explanation of the check result."
+          }
+        }
+      }
+    }
+  }
+}

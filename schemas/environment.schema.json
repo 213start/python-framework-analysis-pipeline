@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.local/python-framework-analysis-pipeline/environment.schema.json",
+  "title": "Environment",
+  "description": "Project-level environment configuration defining platforms, software versions, host references, and capabilities.",
+  "type": "object",
+  "required": ["schemaVersion", "framework", "mode", "platforms", "software"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "framework": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Framework adapter ID, e.g. pyflink, pyspark."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["plan-only", "full-auto", "manual-record"],
+      "description": "Execution mode. First version only supports plan-only and manual-record."
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "arch", "hosts"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Platform identifier, e.g. arm, x86."
+          },
+          "arch": {
+            "type": "string",
+            "enum": ["aarch64", "x86_64"],
+            "description": "CPU architecture."
+          },
+          "hosts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["role", "hostRef"],
+              "additionalProperties": false,
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Framework-specific host role, e.g. client, jobmanager, taskmanager."
+                },
+                "hostRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Reference to a key in hostRefs."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "software": {
+      "type": "object",
+      "required": ["pythonVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "pythonVersion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required Python version, e.g. 3.11."
+        },
+        "frameworkVersion": {
+          "type": "string",
+          "description": "Framework version or source revision."
+        },
+        "dockerRequired": {
+          "type": "boolean",
+          "default": false
+        },
+        "dependencyLock": {
+          "type": "string",
+          "description": "Path to a dependency lock file."
+        }
+      }
+    },
+    "hostRefs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["connect", "user"],
+        "additionalProperties": false,
+        "properties": {
+          "connect": {
+            "type": "string",
+            "enum": ["ssh", "local"],
+            "description": "Connection method."
+          },
+          "user": {
+            "type": "string",
+            "minLength": 1
+          },
+          "addressRef": {
+            "type": "string",
+            "description": "Secret reference for host address."
+          },
+          "secretRef": {
+            "type": "string",
+            "description": "Secret reference for authentication credentials."
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ssh": { "type": "boolean", "default": false },
+              "sudo": { "type": "boolean", "default": false },
+              "docker": { "type": "boolean", "default": false },
+              "internet": { "type": "boolean", "default": false },
+              "internalMirror": { "type": "boolean", "default": false },
+              "upload": { "type": "boolean", "default": false },
+              "download": { "type": "boolean", "default": false }
+            }
+          }
+        }
+      }
+    }
+  }
+}
