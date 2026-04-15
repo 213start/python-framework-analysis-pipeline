@@ -6,7 +6,9 @@ type AsyncState<T> = {
   error: string | null;
 };
 
-export function useAsyncData<T>(loader: () => Promise<T>, deps: DependencyList = []) {
+const EMPTY_DEPS: DependencyList = [];
+
+export function useAsyncData<T>(loader: () => Promise<T>, deps: DependencyList = EMPTY_DEPS) {
   const [state, setState] = useState<AsyncState<T>>({
     data: null,
     loading: true,

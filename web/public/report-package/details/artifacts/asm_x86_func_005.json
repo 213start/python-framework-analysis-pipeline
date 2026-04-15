@@ -1,8 +1,0 @@
-{
-  "id": "asm_x86_func_005",
-  "title": "futex_wait 的 x86 汇编",
-  "type": "assembly",
-  "description": "用于展示内核等待路径的 x86 侧汇编片段。",
-  "path": "artifacts/asm/x86/func_005.s",
-  "contentType": "text/plain"
-}

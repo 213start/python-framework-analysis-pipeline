@@ -1,8 +1,0 @@
-{
-  "id": "source_wrapper_dispatch_excerpt",
-  "title": "调用包装层源码摘录",
-  "type": "source",
-  "description": "用于展示 Python UDF 包装层分派逻辑的源码摘录。",
-  "path": "artifacts/source/wrapper_dispatch_excerpt.txt",
-  "contentType": "text/plain"
-}

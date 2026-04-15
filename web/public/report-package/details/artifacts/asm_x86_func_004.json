@@ -1,8 +1,0 @@
-{
-  "id": "asm_x86_func_004",
-  "title": "python_udf_wrapper 的 x86 汇编",
-  "type": "assembly",
-  "description": "用于展示调用与分派路径的 x86 侧汇编片段。",
-  "path": "artifacts/asm/x86/func_004.s",
-  "contentType": "text/plain"
-}

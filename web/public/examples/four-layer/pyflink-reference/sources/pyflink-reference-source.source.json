@@ -1,0 +1,349 @@
+{
+  "id": "pyflink-reference-source",
+  "frameworkId": "pyflink",
+  "repo": {
+    "kind": "reference-demo",
+    "note": "当前示例只保留最小源码资产索引，不强行伪造真实代码仓 revision。"
+  },
+  "sourceRoots": [
+    "Objects",
+    "Python",
+    "pyflink/fn_execution",
+    "kernel",
+    "artifacts/source"
+  ],
+  "sourceFiles": [
+    {
+      "id": "srcfile_obmalloc",
+      "path": "Objects/obmalloc.c"
+    },
+    {
+      "id": "srcfile_ceval",
+      "path": "Python/ceval.c"
+    },
+    {
+      "id": "srcfile_row_adapter",
+      "path": "pyflink/fn_execution/row_adapter.py"
+    },
+    {
+      "id": "srcfile_wrapper_dispatch",
+      "path": "pyflink/fn_execution/beam/operation.py"
+    },
+    {
+      "id": "srcfile_kernel_wait",
+      "path": "kernel/futex.c"
+    },
+    {
+      "id": "srcfile_dictobject",
+      "path": "Objects/dictobject.c"
+    },
+    {
+      "id": "srcfile_row_adapter_excerpt",
+      "path": "artifacts/source/row_adapter_excerpt.txt"
+    },
+    {
+      "id": "srcfile_object_lookup_excerpt",
+      "path": "artifacts/source/object_lookup_excerpt.txt"
+    },
+    {
+      "id": "srcfile_interpreter_loop_excerpt",
+      "path": "artifacts/source/interpreter_loop_excerpt.txt"
+    },
+    {
+      "id": "srcfile_wrapper_dispatch_excerpt",
+      "path": "artifacts/source/wrapper_dispatch_excerpt.txt"
+    },
+    {
+      "id": "srcfile_kernel_wait_excerpt",
+      "path": "artifacts/source/kernel_wait_excerpt.txt"
+    }
+  ],
+  "sourceAnchors": [
+    {
+      "id": "anchor_alloc_fastpath",
+      "fileId": "srcfile_obmalloc",
+      "label": "Freeblock 判空",
+      "location": "Objects/obmalloc.c:1421",
+      "role": "Fast Path",
+      "snippet": "if (pool->freeblock != NULL) {"
+    },
+    {
+      "id": "anchor_alloc_slowpath",
+      "fileId": "srcfile_obmalloc",
+      "label": "Slow Path 回退",
+      "location": "Objects/obmalloc.c:1432",
+      "role": "Slow Path",
+      "snippet": "goto allocate_from_new_pool(pool);"
+    },
+    {
+      "id": "anchor_opcode_dispatch",
+      "fileId": "srcfile_ceval",
+      "label": "Opcode 读取",
+      "location": "Python/ceval.c:2114",
+      "role": "Dispatch Setup",
+      "snippet": "switch (opcode) {"
+    },
+    {
+      "id": "anchor_row_adapter_wrap",
+      "fileId": "srcfile_row_adapter",
+      "label": "包装调用",
+      "location": "pyflink/fn_execution/row_adapter.py:88",
+      "role": "Call Setup",
+      "snippet": "converted = adapter.wrap_row(raw_row)"
+    },
+    {
+      "id": "anchor_row_adapter_writeback",
+      "fileId": "srcfile_row_adapter",
+      "label": "结果缓存",
+      "location": "pyflink/fn_execution/row_adapter.py:89",
+      "role": "Result Writeback",
+      "snippet": "buffered_rows.append(converted)"
+    },
+    {
+      "id": "anchor_wrapper_dispatch",
+      "fileId": "srcfile_wrapper_dispatch",
+      "label": "Wrapper 调用",
+      "location": "pyflink/fn_execution/beam/operation.py:144",
+      "role": "Dispatch",
+      "snippet": "return udf_callable(*converted_args)"
+    },
+    {
+      "id": "anchor_wrapper_error_guard",
+      "fileId": "srcfile_wrapper_dispatch",
+      "label": "错误出口",
+      "location": "pyflink/fn_execution/beam/operation.py:148",
+      "role": "Error Guard",
+      "snippet": "raise RuntimeError(\"wrapper dispatch failed\")"
+    },
+    {
+      "id": "anchor_wait_enqueue",
+      "fileId": "srcfile_kernel_wait",
+      "label": "队列入队",
+      "location": "kernel/futex.c:219",
+      "role": "Atomic Probe",
+      "snippet": "queue_me(&q, hb);"
+    },
+    {
+      "id": "anchor_wait_retry",
+      "fileId": "srcfile_kernel_wait",
+      "label": "等待重试",
+      "location": "kernel/futex.c:226",
+      "role": "Retry Branch",
+      "snippet": "if (unlikely(retry)) goto wait_retry;"
+    },
+    {
+      "id": "anchor_dict_lookup_probe",
+      "fileId": "srcfile_dictobject",
+      "label": "Probe 入口",
+      "location": "Objects/dictobject.c:1298",
+      "role": "Probe Setup",
+      "snippet": "entry = find_key(hash, key, ep0);"
+    },
+    {
+      "id": "anchor_dict_lookup_miss",
+      "fileId": "srcfile_dictobject",
+      "label": "Miss 继续探测",
+      "location": "Objects/dictobject.c:1303",
+      "role": "Probe Miss",
+      "snippet": "if (entry == NULL) goto next_probe;"
+    }
+  ],
+  "artifactIndex": [
+    {
+      "id": "sql_q01",
+      "title": "TPC-H Q1 SQL",
+      "type": "sql",
+      "description": "作为 Q1 语义基准的原始 SQL。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/sql/q01.sql",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "sql_q06",
+      "title": "TPC-H Q6 SQL",
+      "type": "sql",
+      "description": "作为 Q6 语义基准的原始 SQL。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/sql/q06.sql",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "sql_q12",
+      "title": "TPC-H Q12 SQL",
+      "type": "sql",
+      "description": "作为 Q12 语义基准的原始 SQL。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/sql/q12.sql",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "pyflink_q01",
+      "title": "Q1 的 Python UDF 实现",
+      "type": "pyflink",
+      "description": "示例数据包中用于 Q1 的示意性 Python UDF 实现。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/pyflink/q01.py",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "pyflink_q06",
+      "title": "Q6 的 Python UDF 实现",
+      "type": "pyflink",
+      "description": "示例数据包中用于 Q6 的示意性 Python UDF 实现。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/pyflink/q06.py",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "pyflink_q12",
+      "title": "Q12 的 Python UDF 实现",
+      "type": "pyflink",
+      "description": "示例数据包中用于 Q12 的示意性 Python UDF 实现。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/pyflink/q12.py",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "source_row_adapter_excerpt",
+      "title": "行适配器源码摘录",
+      "type": "source",
+      "description": "展示包装对象分配与行转换层级的源码摘录。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/source/row_adapter_excerpt.txt",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "source_object_lookup_excerpt",
+      "title": "对象查找路径源码摘录",
+      "type": "source",
+      "description": "用于展示对象模型查找路径的源码摘录。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/source/object_lookup_excerpt.txt",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "source_interpreter_loop_excerpt",
+      "title": "解释器循环源码摘录",
+      "type": "source",
+      "description": "展示适配层重复进入 frame 求值路径的源码摘录。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/source/interpreter_loop_excerpt.txt",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "source_wrapper_dispatch_excerpt",
+      "title": "调用包装层源码摘录",
+      "type": "source",
+      "description": "用于展示 Python UDF 包装层分派逻辑的源码摘录。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/source/wrapper_dispatch_excerpt.txt",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "source_kernel_wait_excerpt",
+      "title": "内核等待路径源码摘录",
+      "type": "source",
+      "description": "用于展示等待与唤醒路径的源码摘录。",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/source/kernel_wait_excerpt.txt",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_001",
+      "title": "_PyObject_Malloc 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示热点分配路径的 Arm 侧代表性汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_001.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_001",
+      "title": "_PyObject_Malloc 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示热点分配路径的 x86 侧代表性汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_001.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_002",
+      "title": "_PyEval_EvalFrameDefault 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示解释器分派路径的 Arm 侧代表性汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_002.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_002",
+      "title": "_PyEval_EvalFrameDefault 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示解释器分派路径的 x86 侧代表性汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_002.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_003",
+      "title": "row_adapter_convert 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示原生边界适配路径的 Arm 侧汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_003.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_003",
+      "title": "row_adapter_convert 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示原生边界适配路径的 x86 侧汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_003.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_004",
+      "title": "python_udf_wrapper 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示调用与分派路径的 Arm 侧汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_004.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_004",
+      "title": "python_udf_wrapper 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示调用与分派路径的 x86 侧汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_004.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_005",
+      "title": "futex_wait 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示内核等待路径的 Arm 侧汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_005.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_005",
+      "title": "futex_wait 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示内核等待路径的 x86 侧汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_005.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_arm_func_006",
+      "title": "PyDict_GetItem 的 Arm 汇编",
+      "type": "assembly",
+      "description": "用于展示对象模型查找路径的 Arm 侧汇编片段。",
+      "platform": "arm64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/arm/func_006.s",
+      "contentType": "text/plain"
+    },
+    {
+      "id": "asm_x86_func_006",
+      "title": "PyDict_GetItem 的 x86 汇编",
+      "type": "assembly",
+      "description": "用于展示对象模型查找路径的 x86 侧汇编片段。",
+      "platform": "x86_64",
+      "path": "/examples/four-layer/pyflink-reference/artifacts/asm/x86/func_006.s",
+      "contentType": "text/plain"
+    }
+  ]
+}

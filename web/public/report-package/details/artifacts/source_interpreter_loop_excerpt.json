@@ -1,8 +1,0 @@
-{
-  "id": "source_interpreter_loop_excerpt",
-  "title": "解释器循环源码摘录",
-  "type": "source",
-  "description": "展示适配层重复进入 frame 求值路径的源码摘录。",
-  "path": "artifacts/source/interpreter_loop_excerpt.txt",
-  "contentType": "text/plain"
-}

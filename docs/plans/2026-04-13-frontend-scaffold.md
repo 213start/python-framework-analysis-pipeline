@@ -6,14 +6,14 @@
 
 ## 当前实现方向
 
-应用采用客户端 SPA 形态，运行在 `web/` 目录下。页面通过 React Router 组织，数据优先从 `public/report-package/` 读取；当示例文件不存在时，回退到内置 mock 数据。
+应用采用客户端 SPA 形态，运行在 `web/` 目录下。页面通过 React Router 组织，数据从四层示例输入读取，再由组装层输出页面 view model。
 
 首版前端聚焦以下能力：
 
 - 路由与应用壳
 - 基础设计系统
-- JSON-first 数据加载层
-- 示例数据包
+- 四层模型数据加载层
+- 示例四层输入
 - 首页、总览页、详情页的最小闭环
 
 ## 技术栈
@@ -77,22 +77,22 @@
 
 输出：
 
-- summary loader
-- detail loader
+- Project / Framework / Dataset / Source loader
+- view model assembler
 - artifact loader
-- mock fallback
 
 目标：
 
-- 保证前端能优先消费示例 JSON 数据
+- 保证前端只通过四层模型消费示例 JSON 数据
 
 ### 任务 5：准备示例数据包
 
 输出：
 
-- `report_manifest.json`
-- summary 数据
-- details 数据
+- `frameworks/*.framework.json`
+- `datasets/*.dataset.json`
+- `sources/*.source.json`
+- `projects/*.project.json`
 - artifacts 示例
 
 目标：

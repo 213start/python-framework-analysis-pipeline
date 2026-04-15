@@ -1,8 +1,0 @@
-{
-  "id": "asm_x86_func_006",
-  "title": "PyDict_GetItem 的 x86 汇编",
-  "type": "assembly",
-  "description": "用于展示对象模型查找路径的 x86 侧汇编片段。",
-  "path": "artifacts/asm/x86/func_006.s",
-  "contentType": "text/plain"
-}

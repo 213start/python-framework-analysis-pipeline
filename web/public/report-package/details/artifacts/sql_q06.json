@@ -1,8 +1,0 @@
-{
-  "id": "sql_q06",
-  "title": "TPC-H Q6 SQL",
-  "type": "sql",
-  "description": "作为 Q6 语义基准的原始 SQL。",
-  "path": "artifacts/sql/q06.sql",
-  "contentType": "text/plain"
-}

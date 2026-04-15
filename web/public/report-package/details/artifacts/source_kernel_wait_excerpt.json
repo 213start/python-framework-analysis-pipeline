@@ -1,8 +1,0 @@
-{
-  "id": "source_kernel_wait_excerpt",
-  "title": "内核等待路径源码摘录",
-  "type": "source",
-  "description": "用于展示等待与唤醒路径的源码摘录。",
-  "path": "artifacts/source/kernel_wait_excerpt.txt",
-  "contentType": "text/plain"
-}

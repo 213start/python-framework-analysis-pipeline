@@ -1,8 +1,0 @@
-{
-  "id": "asm_x86_func_002",
-  "title": "_PyEval_EvalFrameDefault 的 x86 汇编",
-  "type": "assembly",
-  "description": "用于展示解释器分派路径的 x86 侧代表性汇编片段。",
-  "path": "artifacts/asm/x86/func_002.s",
-  "contentType": "text/plain"
-}

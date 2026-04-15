@@ -1,0 +1,249 @@
+{
+  "id": "tpch-pyflink-reference",
+  "name": "PyFlink Reference Demo Project",
+  "frameworkRef": "pyflink",
+  "datasetRef": "tpch-on-pyflink-2026q2",
+  "sourceRef": "pyflink-reference-source",
+  "caseBindings": [
+    {
+      "caseId": "tpch-q01-pyflink",
+      "legacyCaseId": "q01",
+      "sourceFileIds": [
+        "srcfile_obmalloc",
+        "srcfile_row_adapter",
+        "srcfile_dictobject"
+      ],
+      "sourceAnchorIds": [
+        "anchor_alloc_fastpath",
+        "anchor_alloc_slowpath",
+        "anchor_row_adapter_wrap",
+        "anchor_row_adapter_writeback",
+        "anchor_dict_lookup_probe",
+        "anchor_dict_lookup_miss"
+      ],
+      "primaryArtifactIds": [
+        "sql_q01",
+        "pyflink_q01"
+      ],
+      "notes": "Q1 主要绑定对象分配、行包装与字典探测路径。"
+    },
+    {
+      "caseId": "tpch-q06-pyflink",
+      "legacyCaseId": "q06",
+      "sourceFileIds": [
+        "srcfile_ceval",
+        "srcfile_row_adapter",
+        "srcfile_wrapper_dispatch",
+        "srcfile_kernel_wait"
+      ],
+      "sourceAnchorIds": [
+        "anchor_opcode_dispatch",
+        "anchor_row_adapter_wrap",
+        "anchor_wrapper_dispatch",
+        "anchor_wrapper_error_guard",
+        "anchor_wait_enqueue",
+        "anchor_wait_retry"
+      ],
+      "primaryArtifactIds": [
+        "sql_q06",
+        "pyflink_q06"
+      ],
+      "notes": "Q6 主要绑定解释器分派、包装层调用与等待重试路径。"
+    },
+    {
+      "caseId": "tpch-q12-pyflink",
+      "legacyCaseId": "q12",
+      "sourceFileIds": [
+        "srcfile_obmalloc",
+        "srcfile_ceval",
+        "srcfile_wrapper_dispatch",
+        "srcfile_dictobject"
+      ],
+      "sourceAnchorIds": [
+        "anchor_alloc_fastpath",
+        "anchor_opcode_dispatch",
+        "anchor_wrapper_dispatch",
+        "anchor_dict_lookup_probe",
+        "anchor_dict_lookup_miss"
+      ],
+      "primaryArtifactIds": [
+        "sql_q12",
+        "pyflink_q12"
+      ],
+      "notes": "Q12 绑定内存、解释器分派与对象模型三条热点路径。"
+    }
+  ],
+  "functionBindings": [
+    {
+      "functionId": "func_001",
+      "sourceAnchorIds": [
+        "anchor_alloc_fastpath",
+        "anchor_alloc_slowpath"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_001"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_001"
+      ],
+      "notes": "对象分配快路径与慢路径回退。"
+    },
+    {
+      "functionId": "func_002",
+      "sourceAnchorIds": [
+        "anchor_opcode_dispatch"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_002"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_002"
+      ],
+      "notes": "解释器 dispatch 准备与 opcode 读取。"
+    },
+    {
+      "functionId": "func_003",
+      "sourceAnchorIds": [
+        "anchor_row_adapter_wrap",
+        "anchor_row_adapter_writeback"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_003"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_003"
+      ],
+      "notes": "行包装适配路径。"
+    },
+    {
+      "functionId": "func_004",
+      "sourceAnchorIds": [
+        "anchor_wrapper_dispatch",
+        "anchor_wrapper_error_guard"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_004"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_004"
+      ],
+      "notes": "包装层调用与错误出口。"
+    },
+    {
+      "functionId": "func_005",
+      "sourceAnchorIds": [
+        "anchor_wait_enqueue",
+        "anchor_wait_retry"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_005"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_005"
+      ],
+      "notes": "等待入队与原子重试路径。"
+    },
+    {
+      "functionId": "func_006",
+      "sourceAnchorIds": [
+        "anchor_dict_lookup_probe",
+        "anchor_dict_lookup_miss"
+      ],
+      "armArtifactIds": [
+        "asm_arm_func_006"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_func_006"
+      ],
+      "notes": "对象模型中的字典探测路径。"
+    }
+  ],
+  "patternBindings": [
+    {
+      "patternId": "pattern_001",
+      "functionIds": [
+        "func_001",
+        "func_003",
+        "func_006"
+      ],
+      "sourceAnchorIds": [
+        "anchor_alloc_fastpath",
+        "anchor_row_adapter_wrap",
+        "anchor_row_adapter_writeback",
+        "anchor_dict_lookup_probe",
+        "anchor_dict_lookup_miss"
+      ],
+      "artifactIds": [
+        "source_row_adapter_excerpt",
+        "source_object_lookup_excerpt",
+        "asm_arm_func_001",
+        "asm_x86_func_001",
+        "asm_arm_func_003",
+        "asm_x86_func_003",
+        "asm_arm_func_006",
+        "asm_x86_func_006"
+      ]
+    },
+    {
+      "patternId": "pattern_002",
+      "functionIds": [
+        "func_002",
+        "func_004",
+        "func_005"
+      ],
+      "sourceAnchorIds": [
+        "anchor_opcode_dispatch",
+        "anchor_wrapper_dispatch",
+        "anchor_wrapper_error_guard",
+        "anchor_wait_enqueue",
+        "anchor_wait_retry"
+      ],
+      "artifactIds": [
+        "source_interpreter_loop_excerpt",
+        "source_wrapper_dispatch_excerpt",
+        "source_kernel_wait_excerpt",
+        "asm_arm_func_002",
+        "asm_x86_func_002",
+        "asm_arm_func_004",
+        "asm_x86_func_004",
+        "asm_arm_func_005",
+        "asm_x86_func_005"
+      ]
+    }
+  ],
+  "rootCauseBindings": [
+    {
+      "rootCauseId": "rc_001",
+      "patternIds": [
+        "pattern_001"
+      ],
+      "artifactIds": [
+        "source_row_adapter_excerpt",
+        "source_object_lookup_excerpt",
+        "asm_arm_func_001",
+        "asm_x86_func_001",
+        "asm_arm_func_003",
+        "asm_x86_func_003",
+        "asm_arm_func_006",
+        "asm_x86_func_006"
+      ]
+    },
+    {
+      "rootCauseId": "rc_002",
+      "patternIds": [
+        "pattern_002"
+      ],
+      "artifactIds": [
+        "source_interpreter_loop_excerpt",
+        "source_wrapper_dispatch_excerpt",
+        "source_kernel_wait_excerpt",
+        "asm_arm_func_002",
+        "asm_x86_func_002",
+        "asm_arm_func_004",
+        "asm_x86_func_004",
+        "asm_arm_func_005",
+        "asm_x86_func_005"
+      ]
+    }
+  ]
+}

@@ -1,8 +1,17 @@
-# 报告数据 Schema 规范 v0.1
+# 报告数据 Schema 规范 v0.2
 
 ## 1. 目标
 
-本规范用于定义交互式报告的数据包结构、核心实体、实体关系与加载约束。
+本规范用于定义交互式报告的数据模型、核心实体、实体关系与加载约束。
+
+本规范在 v0.2 中切换到新的逻辑模型：
+
+- `Framework`
+- `Dataset`
+- `Source`
+- `Project`
+
+当前仓库中的前端 demo 已经切到四层模型。PyFlink 参考输入位于 `web/public/examples/four-layer/pyflink-reference/`。
 
 设计目标：
 
@@ -12,39 +21,88 @@
 - 支持在总览页展示两个平台性能差异的全景分布，而不是只展示摘要结论
 - 支持围绕“组件/分类分布 -> 全量热点函数 -> 单函数机器码 diff”这条主链组织数据
 
-## 2. 数据包总结构
+## 2. 逻辑模型总结构
 
-建议的数据包目录如下：
+建议的逻辑对象结构如下：
 
 ```text
-report-package/
-  report_manifest.json
-  summary/
-  details/
+analysis-workspace/
+  frameworks/
+  datasets/
+  sources/
+  projects/
   artifacts/
 ```
 
 各目录职责：
 
-- `report_manifest.json`
-  - 报告元信息
-  - schema 版本
-  - 平台定义
-  - 数据集信息
-- `summary/`
-  - 首页与总览页直接消费的数据
-- `details/`
-  - 详情页直接消费的数据
+- `frameworks/`
+  - 框架边界、分类体系、指标口径
+- `datasets/`
+  - 用例、性能结果、热点、模式、根因
+- `sources/`
+  - 源码仓、revision、源码索引、附件索引
+- `projects/`
+  - 框架 / 数据 / 源码的显式绑定表
 - `artifacts/`
   - 机器码、源码、SQL、Python UDF、日志等附件
 
-## 3. 加载模型
+## 3. 当前实现形态
 
-前端采用三层加载模型：
+当前 PyFlink demo 使用如下四层目录：
 
-### 3.1 summary
+```text
+web/public/examples/four-layer/pyflink-reference/
+  frameworks/
+  datasets/
+  sources/
+  projects/
+  artifacts/
+```
 
-用于以下页面：
+各目录职责：
+
+- `frameworks/`
+  - PyFlink 的分析边界、指标口径、分类体系
+- `datasets/`
+  - TPC-H on PyFlink 的用例、全景数据、热点、模式、根因、优化机会
+- `sources/`
+  - 源码文件、源码锚点、附件索引
+- `projects/`
+  - Framework / Dataset / Source 的显式绑定表
+- `artifacts/`
+  - `Source.artifactIndex` 引用的机器码、源码、SQL、Python UDF 等附件
+
+## 4. 加载模型
+
+逻辑上，前端应采用四层装配 + 三层展示的加载模型。
+
+### 4.1 四层装配
+
+建议顺序：
+
+1. 读取 `Project`
+2. 读取 `Framework`
+3. 读取 `Dataset`
+4. 读取 `Source`
+5. 再由组装层输出页面 view model
+
+### 4.2 当前前端接入点
+
+当前仓库中的前端 demo 已经通过以下文件接入四层模型：
+
+- `web/src/data/assembly.ts`
+  - 读取 `Project / Framework / Dataset / Source`
+  - 按 `Project` 显式绑定表组装页面 view model
+
+- `web/src/data/loaders.ts`
+  - 只调用组装层
+  - 不再读取旧 `summary/details` 数据包
+  - 不再使用 mock fallback
+
+### 4.3 summary
+
+当前实现中，`summary` 用于以下页面：
 
 - 首页
 - 范围页
@@ -58,9 +116,9 @@ report-package/
 - 体积小
 - 适合首次加载
 
-### 3.2 details
+### 4.4 details
 
-用于以下页面：
+当前实现中，`details` 用于以下页面：
 
 - case 详情
 - component 详情
@@ -76,7 +134,7 @@ report-package/
 - 结构化程度高
 - 可直接渲染详情页
 
-### 3.3 artifacts
+### 4.5 artifacts
 
 用于以下内容：
 
@@ -93,9 +151,27 @@ report-package/
 - 文本或二进制附件
 - 通过 `artifactId` 间接引用
 
-## 4. 核心实体
+## 5. 核心实体
 
-建议的核心实体如下：
+建议的逻辑核心实体如下：
+
+- `Framework`
+- `Dataset`
+- `Source`
+- `Project`
+- `DatasetCase`
+- `ExecutiveSummary`
+- `StackOverview`
+- `ComponentDetail`
+- `CategoryDetail`
+- `FunctionDetail`
+- `FunctionDiffView`
+- `PatternDetail`
+- `RootCauseDetail`
+- `Opportunity`
+- `ArtifactDetail`
+
+当前 PyFlink 参考实现中，前端仍主要直接消费以下实体：
 
 - `Case`
 - `ExecutiveSummary`
@@ -109,11 +185,99 @@ report-package/
 - `Opportunity`
 - `ArtifactDetail`
 
-## 5. 实体说明
+## 6. 顶层逻辑实体说明
 
-### 5.1 `Case`
+### 6.1 `Framework`
 
-表示一个 workload。
+表示一个框架分析对象的稳定定义。
+
+字段建议：
+
+- `id`
+- `name`
+- `kind`
+- `version`
+- `languageScope`
+- `analysisScope`
+- `excludedScope`
+- `metricDefinitions`
+- `taxonomy`
+- `pageConfig`
+
+### 6.2 `Dataset`
+
+表示一次分析项目中的数据结果。
+
+字段建议：
+
+- `id`
+- `frameworkId`
+- `benchmarkFamily`
+- `platforms`
+- `cases`
+- `stackOverview`
+- `patterns`
+- `rootCauses`
+- `opportunities`
+
+### 6.3 `Source`
+
+表示源码与源码附件资产。
+
+字段建议：
+
+- `id`
+- `frameworkId`
+- `repo`
+- `revision`
+- `sourceRoots`
+- `sourceFiles`
+- `symbolIndex`
+- `artifactIndex`
+
+### 6.4 `Project`
+
+表示一个可展示的具体分析项目。
+
+字段建议：
+
+- `id`
+- `name`
+- `frameworkRef`
+- `datasetRef`
+- `sourceRef`
+- `caseBindings`
+- `functionBindings`
+- `patternBindings`
+- `rootCauseBindings`
+
+## 7. 当前前端适配器的目标形态
+
+四层模型真正接入前端后，当前 `paths.ts + loaders.ts` 应演进成两层：
+
+- `source adapters`
+  - 负责读取 `Framework / Dataset / Source / Project`
+- `view model assemblers`
+  - 负责把四层对象组装成页面需要的 summary/detail 视图模型
+
+建议演进后的接口形态：
+
+- `loadProject(projectId)`
+- `loadFramework(frameworkRef)`
+- `loadDataset(datasetRef)`
+- `loadSource(sourceRef)`
+- `assembleExecutiveSummary(project, framework, dataset, source)`
+- `assembleStackOverview(project, framework, dataset, source)`
+- `assembleFunctionDetail(project, framework, dataset, source, functionId)`
+
+这样页面层只依赖组装后的 view model，不直接耦合底层目录结构。
+
+## 8. 当前实现实体说明
+
+### 8.1 `Case`
+
+表示当前 PyFlink 参考实现中的 workload。  
+在逻辑模型中，它对应 `DatasetCase`。
 
 字段建议：
 
@@ -127,7 +291,7 @@ report-package/
 - `patterns`
 - `rootCauses`
 
-### 5.2 `ExecutiveSummary`
+### 8.2 `ExecutiveSummary`
 
 用于首页摘要。
 
@@ -139,7 +303,7 @@ report-package/
 - `topPattern`
 - `topRootCause`
 
-### 5.3 `StackOverview`
+### 8.3 `StackOverview`
 
 用于 stack 总览。
 
@@ -188,7 +352,7 @@ report-package/
 - `topFunctionId`
 - `artifactIds` 或 drill-down 标识
 
-### 5.4 `ComponentDetail`
+### 8.4 `ComponentDetail`
 
 用于组件级详情。
 
@@ -221,7 +385,7 @@ report-package/
 - `delta`
 - `deltaContribution`
 
-### 5.5 `CategoryDetail`
+### 8.5 `CategoryDetail`
 
 用于分类级详情。
 
@@ -256,7 +420,7 @@ report-package/
 - `delta`
 - `deltaContribution`
 
-### 5.4 `FunctionDetail`
+### 8.6 `FunctionDetail`
 
 用于函数级热点详情。
 
@@ -276,7 +440,7 @@ report-package/
 
 其中 `diffView` 必须能直接支撑源码视角的机器码差异界面。
 
-### 5.5 `FunctionDiffView`
+### 8.7 `FunctionDiffView`
 
 用于函数级机器码差异展示。
 
@@ -341,7 +505,7 @@ report-package/
   - `ImportInit`
 - `mappingType` 继续保留，用于表达源码锚点与机器码区块的结构关系，例如一对多、多对多、重排、拆分；但它不应替代 `patternTag` 成为页面主标签
 
-### 5.6 `PatternDetail`
+### 8.8 `PatternDetail`
 
 用于模式详情。
 
@@ -356,7 +520,7 @@ report-package/
 - `rootCauseIds`
 - `artifactIds`
 
-### 5.7 `RootCauseDetail`
+### 8.9 `RootCauseDetail`
 
 用于根因详情。
 
@@ -371,7 +535,7 @@ report-package/
 - `optimizationIdeas`
 - `validationPlan`
 
-### 5.8 `Opportunity`
+### 8.10 `Opportunity`
 
 用于优化机会排序。
 
@@ -384,7 +548,7 @@ report-package/
 - `estimatedGainPct`
 - `rootCauseId`
 
-### 5.9 `ArtifactDetail`
+### 8.11 `ArtifactDetail`
 
 用于附件元数据。
 
@@ -397,7 +561,7 @@ report-package/
 - `path`
 - `contentType`
 
-## 6. 关系约束
+## 9. 关系约束
 
 必须满足以下约束：
 
@@ -411,7 +575,7 @@ report-package/
 - 每个热点函数都必须能 drill-down 到一个 `FunctionDetail`
 - 每个 `FunctionDetail` 都必须能渲染源码视角的机器码 diff
 
-## 7. summary 文件建议
+## 10. summary 文件建议
 
 建议至少包含：
 
@@ -423,7 +587,7 @@ report-package/
 - `opportunity_ranking.json`
 - `scope.json`
 
-## 8. details 文件建议
+## 11. details 文件建议
 
 建议至少包含：
 
@@ -435,7 +599,7 @@ report-package/
 - `details/root_causes/:id.json`
 - `details/artifacts/:id.json`
 
-## 9. manifest 建议
+## 12. manifest 建议
 
 ```json
 {
@@ -445,32 +609,39 @@ report-package/
 }
 ```
 
-## 10. 命名规则
+## 13. 命名规则
 
 - `id` 应保持稳定，便于页面路由与交叉引用
 - 面向读者的文本使用可本地化字段承载
 - 文件路径使用 ASCII 命名即可，但展示文本可以为中文
 
-## 11. 页面与数据关系
+## 14. 页面与数据关系
 
-建议如下：
+逻辑模型建议如下：
 
-- 首页 -> `summary/executive_summary.json`
-- Scope -> `summary/scope.json`
-- Cases -> `summary/case_index.json`
-- By Case -> `summary/case_index.json`
-- By Stack -> `summary/stack_overview.json`
-- Insights -> `summary/opportunity_ranking.json` + `summary/pattern_index.json` + `summary/root_cause_index.json`
-- 详情页 -> 对应 `details/*`
-- Artifact 页 -> `details/artifacts/:id.json` + `artifacts/*`
+- 页面初始化 -> `Project` + `Framework` + `Dataset` + `Source`
+- 首页 -> `Framework` + `Dataset` 聚合结果
+- Scope -> `Framework`
+- Cases -> `Dataset` + `Project.caseBindings`
+- By Case -> `Dataset`
+- By Stack -> `Dataset.stackOverview`
+- 详情页 -> `Dataset` + `Project` 绑定结果
+- Artifact 页 -> `Source` / `Dataset` 引用的 artifact
 
-## 12. 兼容性要求
+当前 PyFlink 参考实现由以下四层输入驱动：
+
+- `web/public/examples/four-layer/pyflink-reference/projects/tpch-pyflink-reference.project.json`
+- `web/public/examples/four-layer/pyflink-reference/frameworks/pyflink.framework.json`
+- `web/public/examples/four-layer/pyflink-reference/datasets/tpch-on-pyflink-2026q2.dataset.json`
+- `web/public/examples/four-layer/pyflink-reference/sources/pyflink-reference-source.source.json`
+
+## 15. 兼容性要求
 
 - 页面不得依赖一次性脚本生成的临时字段名
 - schema 升级时应优先通过新增字段兼容，而非重命名核心字段
-- 前端应允许 summary 命中真实 JSON、details 命中 mock fallback 的混合模式
+- 前端不得在四层输入缺失时静默回退到旧 summary/details 或 mock 数据
 
-## 13. 公开示例包与内网包
+## 16. 公开示例包与内网包
 
 公开示例包：
 
@@ -480,11 +651,11 @@ report-package/
 
 内网真实包：
 
-- 使用同一 schema
-- 仅替换 `summary/`、`details/`、`artifacts/`
+- 逻辑上使用同一四层 schema
+- 若仍采用当前实现形态，则仅替换 `summary/`、`details/`、`artifacts/`
 - 不改页面代码
 
-## 14. 最低可用校验
+## 17. 最低可用校验
 
 一份数据包至少应通过以下校验：
 

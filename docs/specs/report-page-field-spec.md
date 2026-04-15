@@ -1,8 +1,14 @@
-# 报告页面字段规范 v0.1
+# 报告页面字段规范 v0.2
 
 ## 1. 目标
 
 本规范定义交互式报告各页面的字段、区块与 drill-down 目标，保证页面表达与数据 schema 对齐。
+
+本规范在 v0.2 中补充一个新的前提：
+
+- 页面层不应直接绑定 `PyFlink`、`PySpark`、`PyTorch` 这类具体软件名称
+- 页面层应默认消费 `Framework / Dataset / Source / Project` 四层对象
+- 当前仓库中的页面仍以 PyFlink 参考实现作为默认内容来源
 
 本规范增加一个全局要求：
 
@@ -17,6 +23,8 @@
 - 其他页面、摘要卡、装饰性可视化、非关键导航均降为次优先级
 
 ## 2. 页面树
+
+逻辑上，页面树可继续沿用当前结构；页面数据来源统一为“四层装配 + view model”。
 
 建议页面树如下：
 
@@ -34,12 +42,33 @@
 - `/artifact/:artifactId` 附件详情
 - `/insights` 优化机会与验证路线图
 
-## 3. 首页
+## 3. 页面数据装配原则
 
-主要数据源：
+所有页面在逻辑上都应先经过以下装配：
 
-- `summary/executive_summary.json`
-- `summary/opportunity_ranking.json`
+1. 读取 `Project`
+2. 读取 `Framework`
+3. 读取 `Dataset`
+4. 读取 `Source`
+5. 根据绑定表装配当前页面所需字段
+
+当前 demo 通过四层模型组装页面 view model，不再直接从 `summary/details` 读取页面数据。
+
+补充说明：
+
+- 当前页面不直接消费四层原始对象
+- 当前页面消费 `assembly.ts` 组装后的 view model
+- `web/src/data/loaders.ts` 是四层组装层的页面入口
+- `web/public/examples/four-layer/pyflink-reference/artifacts` 只作为 `Source.artifactIndex` 引用的附件目录
+
+## 4. 首页
+
+逻辑数据源：
+
+- `Framework`
+- `Dataset`
+- `Project`
+- `Source`
 
 必备区块：
 
@@ -59,11 +88,12 @@
 - Top Pattern
 - Top Root Cause
 
-## 4. Scope 页面
+## 5. Scope 页面
 
 主要数据源：
 
-- `summary/scope.json`
+- 逻辑来源：`Framework`
+- 当前实现来源：`summary/scope.json`
 
 必备区块：
 
@@ -100,11 +130,12 @@
 - normalization
 - taxonomy
 
-## 5. Cases 页面
+## 6. Cases 页面
 
 主要数据源：
 
-- `summary/case_index.json`
+- 逻辑来源：`Dataset` + `Project.caseBindings`
+- 当前实现来源：`summary/case_index.json`
 
 必备区块：
 
@@ -118,7 +149,7 @@
 
 - `Cases` 页面应同时承担两个目标：
   - 作为用例差异总览页，展示各用例在 Demo / TM / 业务算子 / 框架调用四类指标上的差异
-  - 作为资产编目页，展示每个用例对应的 SQL、Python UDF 和语义状态
+  - 作为资产编目页，展示每个用例与实现资产、源码资产的绑定结果
 - “四类指标差异全景”应允许快速比较每个 case 的四类差异，不应只保留 Demo 或框架单一指标
 - 资产编目区应至少展示：
   - 规模
@@ -127,17 +158,19 @@
   - Python UDF 形态
   - SQL 资产入口
   - Python UDF 实现入口
+  - 当前项目中的源码绑定信息或绑定入口
   - 简短说明
 
 点击目标：
 
 - `/case/:caseId`
 
-## 6. By Case 页面
+## 7. By Case 页面
 
 主要数据源：
 
-- `summary/case_index.json`
+- 逻辑来源：`Dataset`
+- 当前实现来源：`summary/case_index.json`
 
 必备区块：
 
@@ -154,11 +187,12 @@
 - operator delta
 - framework delta
 
-## 7. By Stack 页面
+## 8. By Stack 页面
 
 主要数据源：
 
-- `summary/stack_overview.json`
+- 逻辑来源：`Dataset.stackOverview`
+- 当前实现来源：`summary/stack_overview.json`
 
 必备区块：
 
@@ -240,11 +274,12 @@
 - `/category/:categoryId`
 - `/function/:functionId`
 
-## 8. Case Detail 页面
+## 9. Case Detail 页面
 
 主要数据源：
 
-- `details/cases/:caseId.json`
+- 逻辑来源：`DatasetCase` + `Project.caseBindings`
+- 当前实现来源：`details/cases/:caseId.json`
 
 必备区块：
 
@@ -266,11 +301,12 @@
 - root cause ids
 - artifact ids
 
-## 9. Component Detail 页面
+## 10. Component Detail 页面
 
 主要数据源：
 
-- `details/components/:componentId.json`
+- 逻辑来源：`Dataset` + `Project.functionBindings` / `Project.patternBindings`
+- 当前实现来源：`details/components/:componentId.json`
 
 必备区块：
 
@@ -301,11 +337,12 @@
 - category
 - drill-down target
 
-## 10. Category Detail 页面
+## 11. Category Detail 页面
 
 主要数据源：
 
-- `details/categories/:categoryId.json`
+- 逻辑来源：`Dataset` + `Project.functionBindings` / `Project.patternBindings`
+- 当前实现来源：`details/categories/:categoryId.json`
 
 必备区块：
 
@@ -336,11 +373,12 @@
 - component
 - drill-down target
 
-## 11. Function Detail 页面
+## 12. Function Detail 页面
 
 主要数据源：
 
-- `details/functions/:functionId.json`
+- 逻辑来源：`Dataset` + `Source` + `Project.functionBindings`
+- 当前实现来源：`details/functions/:functionId.json`
 
 必备区块：
 
@@ -404,11 +442,12 @@
 - performance note
 - collapse state metadata
 
-## 12. Pattern Detail 页面
+## 13. Pattern Detail 页面
 
 主要数据源：
 
-- `details/patterns/:patternId.json`
+- 逻辑来源：`Dataset` + `Project.patternBindings`
+- 当前实现来源：`details/patterns/:patternId.json`
 
 必备区块：
 
@@ -419,11 +458,12 @@
 - 关联根因
 - 代表性附件
 
-## 13. Root Cause Detail 页面
+## 14. Root Cause Detail 页面
 
 主要数据源：
 
-- `details/root_causes/:rootCauseId.json`
+- 逻辑来源：`Dataset` + `Project.rootCauseBindings`
+- 当前实现来源：`details/root_causes/:rootCauseId.json`
 
 必备区块：
 
@@ -434,12 +474,12 @@
 - 优化建议
 - 验证计划
 
-## 14. Artifact 页面
+## 15. Artifact 页面
 
 主要数据源：
 
-- `details/artifacts/:artifactId.json`
-- `artifacts/*`
+- 逻辑来源：`Source.artifactIndex` 或 `Dataset` 引用的 artifact
+- 当前实现来源：`details/artifacts/:artifactId.json` + `artifacts/*`
 
 必备区块：
 
@@ -461,13 +501,12 @@
 - content type
 - content
 
-## 15. Insights 页面
+## 16. Insights 页面
 
 主要数据源：
 
-- `summary/opportunity_ranking.json`
-- `summary/pattern_index.json`
-- `summary/root_cause_index.json`
+- 逻辑来源：`Dataset`
+- 当前实现来源：`summary/opportunity_ranking.json` + `summary/pattern_index.json` + `summary/root_cause_index.json`
 
 必备区块：
 
@@ -485,7 +524,7 @@
 - estimated gain
 - root cause binding
 
-## 16. Drill-down 规则
+## 17. Drill-down 规则
 
 必须保证以下路径存在：
 
@@ -500,14 +539,15 @@
 
 任何管理层可见数字都不应停留在“不可下钻”的终点。
 
-## 17. 展示规则
+## 18. 展示规则
 
-- 总览页优先展示一级摘要，再展示明细表格
+- 总览页优先展示全景分布，再展示明细表格
 - pattern 与 root cause 必须显式可见
 - artifact 原始内容不得直接堆在首页
-- 长列表默认 Top N，必要时再展开
+- 主链相关列表不得默认裁剪为 Top N
+- 仅非主链的辅助列表可在默认视图中折叠，并提供展开入口
 
-## 18. 空状态规则
+## 19. 空状态规则
 
 若页面数据不足，必须明确说明：
 
@@ -517,7 +557,7 @@
 
 缺少 pattern 或 root cause 时，不得伪造“分析已完成”的占位内容。
 
-## 19. 最低校验清单
+## 20. 最低校验清单
 
 在认为前端与本规范对齐前，应确认：
 

@@ -1,18 +1,20 @@
-import { mockCaseIndex } from "./mock/caseIndex";
-import { mockCaseDetail } from "./mock/caseDetail";
-import { mockCategoryDetail } from "./mock/categoryDetail";
-import { mockComponentDetail } from "./mock/componentDetail";
-import { mockArtifactDetail } from "./mock/artifactDetail";
-import { mockExecutiveSummary } from "./mock/executiveSummary";
-import { mockFunctionDetail } from "./mock/functionDetail";
-import { mockOpportunityRanking } from "./mock/opportunityRanking";
-import { mockPatternDetail } from "./mock/patternDetail";
-import { mockPatternIndex } from "./mock/patternIndex";
-import { mockRootCauseDetail } from "./mock/rootCauseDetail";
-import { mockRootCauseIndex } from "./mock/rootCauseIndex";
-import { mockScopeSummary } from "./mock/scopeSummary";
-import { mockStackOverview } from "./mock/stackOverview";
-import { getArtifactFilePath, getDetailFilePath, getSummaryFilePath } from "./paths";
+import {
+  assembleArtifactDetail as assembleArtifactDetailFromAssembly,
+  assembleCaseDetail as assembleCaseDetailFromAssembly,
+  assembleCaseIndex as assembleCaseIndexFromAssembly,
+  assembleCategoryDetail as assembleCategoryDetailFromAssembly,
+  assembleComponentDetail as assembleComponentDetailFromAssembly,
+  assembleExecutiveSummary as assembleExecutiveSummaryFromAssembly,
+  assembleFunctionDetail as assembleFunctionDetailFromAssembly,
+  assembleOpportunityRanking as assembleOpportunityRankingFromAssembly,
+  assemblePatternDetail as assemblePatternDetailFromAssembly,
+  assemblePatternIndex as assemblePatternIndexFromAssembly,
+  assembleRootCauseDetail as assembleRootCauseDetailFromAssembly,
+  assembleRootCauseIndex as assembleRootCauseIndexFromAssembly,
+  assembleScopeSummary as assembleScopeSummaryFromAssembly,
+  assembleStackOverview as assembleStackOverviewFromAssembly,
+  loadAssemblyContext,
+} from "./assembly";
 import type {
   ArtifactDetail,
   CaseIndexEntry,
@@ -30,136 +32,64 @@ import type {
   StackOverview,
 } from "../types/report";
 
-async function loadJson<T>(path: string): Promise<T | null> {
-  try {
-    const response = await fetch(path);
-    if (!response.ok) {
-      return null;
-    }
+const DEFAULT_PROJECT_ID = "tpch-pyflink-reference";
 
-    try {
-      return (await response.json()) as T;
-    } catch {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-async function loadText(path: string): Promise<string | null> {
-  try {
-    const response = await fetch(path);
-    if (!response.ok) {
-      return null;
-    }
-
-    return await response.text();
-  } catch {
-    return null;
-  }
+async function loadDefaultAssemblyContext() {
+  return loadAssemblyContext(DEFAULT_PROJECT_ID);
 }
 
 export async function loadExecutiveSummary(): Promise<ExecutiveSummary> {
-  return (
-    (await loadJson<ExecutiveSummary>(getSummaryFilePath("executive_summary.json"))) ??
-    mockExecutiveSummary
-  );
+  return assembleExecutiveSummaryFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadCaseIndex(): Promise<CaseIndexEntry[]> {
-  return (await loadJson<CaseIndexEntry[]>(getSummaryFilePath("case_index.json"))) ?? mockCaseIndex;
+  return assembleCaseIndexFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadOpportunityRanking(): Promise<OpportunityRankingEntry[]> {
-  return (
-    (await loadJson<OpportunityRankingEntry[]>(
-      getSummaryFilePath("opportunity_ranking.json"),
-    )) ?? mockOpportunityRanking
-  );
+  return assembleOpportunityRankingFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadScopeSummary(): Promise<ScopeSummary> {
-  return (
-    (await loadJson<ScopeSummary>(getSummaryFilePath("scope.json"))) ??
-    mockScopeSummary
-  );
+  return assembleScopeSummaryFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadStackOverview(): Promise<StackOverview> {
-  return (
-    (await loadJson<StackOverview>(getSummaryFilePath("stack_overview.json"))) ??
-    mockStackOverview
-  );
+  return assembleStackOverviewFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadRootCauseIndex(): Promise<RootCauseIndexEntry[]> {
-  return (
-    (await loadJson<RootCauseIndexEntry[]>(
-      getSummaryFilePath("root_cause_index.json"),
-    )) ?? mockRootCauseIndex
-  );
+  return assembleRootCauseIndexFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadPatternIndex(): Promise<PatternIndexEntry[]> {
-  return (
-    (await loadJson<PatternIndexEntry[]>(
-      getSummaryFilePath("pattern_index.json"),
-    )) ?? mockPatternIndex
-  );
+  return assemblePatternIndexFromAssembly(await loadDefaultAssemblyContext());
 }
 
 export async function loadCaseDetail(id: string): Promise<CaseDetail> {
-  return (
-    (await loadJson<CaseDetail>(getDetailFilePath("cases", id))) ?? mockCaseDetail
-  );
+  return assembleCaseDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadFunctionDetail(id: string): Promise<FunctionDetail> {
-  return (
-    (await loadJson<FunctionDetail>(getDetailFilePath("functions", id))) ??
-    mockFunctionDetail
-  );
+  return assembleFunctionDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadPatternDetail(id: string): Promise<PatternDetail> {
-  return (
-    (await loadJson<PatternDetail>(getDetailFilePath("patterns", id))) ??
-    mockPatternDetail
-  );
+  return assemblePatternDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadRootCauseDetail(id: string): Promise<RootCauseDetail> {
-  return (
-    (await loadJson<RootCauseDetail>(getDetailFilePath("root_causes", id))) ??
-    mockRootCauseDetail
-  );
+  return assembleRootCauseDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadComponentDetail(id: string): Promise<ComponentDetail> {
-  return (
-    (await loadJson<ComponentDetail>(getDetailFilePath("components", id))) ??
-    mockComponentDetail
-  );
+  return assembleComponentDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadCategoryDetail(id: string): Promise<CategoryDetail> {
-  return (
-    (await loadJson<CategoryDetail>(getDetailFilePath("categories", id))) ??
-    mockCategoryDetail
-  );
+  return assembleCategoryDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }
 
 export async function loadArtifactDetail(id: string): Promise<ArtifactDetail> {
-  const metadata =
-    (await loadJson<Omit<ArtifactDetail, "content">>(getDetailFilePath("artifacts", id))) ??
-    (({ content, ...fallback }) => fallback)(mockArtifactDetail);
-  const content =
-    (await loadText(getArtifactFilePath(metadata.path))) ??
-    (id === mockArtifactDetail.id ? mockArtifactDetail.content : "");
-
-  return {
-    ...metadata,
-    content,
-  };
+  return assembleArtifactDetailFromAssembly(await loadDefaultAssemblyContext(), id);
 }

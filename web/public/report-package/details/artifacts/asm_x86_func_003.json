@@ -1,8 +1,0 @@
-{
-  "id": "asm_x86_func_003",
-  "title": "row_adapter_convert 的 x86 汇编",
-  "type": "assembly",
-  "description": "用于展示原生边界适配路径的 x86 侧汇编片段。",
-  "path": "artifacts/asm/x86/func_003.s",
-  "contentType": "text/plain"
-}
