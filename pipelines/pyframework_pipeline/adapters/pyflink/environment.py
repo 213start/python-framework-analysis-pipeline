@@ -11,7 +11,7 @@ from typing import Any
 
 from pyframework_pipeline.environment.planning import PlanStep
 
-DEFAULT_IMAGE = "flink:1.20.1-java17"
+DEFAULT_IMAGE = "flink:2.2.0-java17"
 DEFAULT_NETWORK = "flink-network"
 DEFAULT_TM_COUNT = 2
 
