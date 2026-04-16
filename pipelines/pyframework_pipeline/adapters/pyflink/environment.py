@@ -38,6 +38,7 @@ class PyFlinkEnvironmentAdapter:
         image = software.get("flinkImage", DEFAULT_IMAGE)
         network = software.get("containerNetwork", DEFAULT_NETWORK)
         tm_count = DEFAULT_TM_COUNT
+        use_tmpfs = software.get("taskmanagerTmpfs", False)
         topology = software.get("clusterTopology", "")
         if topology:
             parts = topology.split("-")
@@ -95,14 +96,15 @@ class PyFlinkEnvironmentAdapter:
 
         # Step 4: Start TaskManagers
         for i in range(1, tm_count + 1):
+            tmpfs_flag = " --tmpfs /tmp:rw,exec" if use_tmpfs else ""
             steps.append(PlanStep(
                 id=f"start-taskmanager-{i}",
                 kind="framework-start",
                 hostRef=host,
                 command=(
                     f"docker run -d --name flink-tm{i} --network {network} "
-                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
-                    f"{image} taskmanager"
+                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm'"
+                    f"{tmpfs_flag} {image} taskmanager"
                 ),
                 description=f"Start TaskManager {i} container on {host_alias}",
                 mutatesHost=True,

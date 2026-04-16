@@ -29,9 +29,15 @@ platforms:
 
 software:
   flinkImage: flink:2.2.0-java17
+  flinkPyflinkImages:
+    arm: flink-pyflink:2.2.0-py314-arm-final
+    x86: flink-pyflink:2.2.0-py314-x86-final
   dockerRequired: true
   clusterTopology: 1jm-2tm
   containerNetwork: flink-network
+  pythonVersion: "3.14.3"
+  pyflinkVersion: "2.2.0"
+  taskmanagerTmpfs: true  # TMs need --tmpfs /tmp:rw,exec to avoid /tmp permission issues
 
 hostRefs:
   kunpeng:
