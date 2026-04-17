@@ -1,5 +1,6 @@
-"""Step 8: analyze optimization opportunities and validation routes.
+"""Legacy: Step 8 merged into Step 7.
 
-This module is intentionally an interface placeholder until pattern and root
-cause evidence are backed by real measurements.
+Optimization opportunities and validation routes are now included in the
+same Issue-based LLM analysis as the assembly diff. See analyze_asm_diff.py
+and the bridge/ sub-package.
 """
