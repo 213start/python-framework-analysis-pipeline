@@ -4,3 +4,7 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Java UDF build output
+workload/tpch/pyflink/java-udf/*.jar
+workload/tpch/pyflink/java-udf/build/

@@ -634,70 +634,44 @@ zen5 原本没有 Docker，需要 `dnf install docker-ce`。
 - 不要把用例执行和环境搭建揉在一起。
 - 不要让 web 读取环境搭建中间态。
 
-## 17. Python 3.14 实战部署记录（2026-04-16）
+## 17. PyFlink 实战部署对架构规范的修正（2026-04-16）
 
-在 kunpeng (aarch64/4C/7.2G) 和 zen5 (x86_64/4C/15G) 上完成了 PyFlink 2.2.0 + Python 3.14.3 的完整部署，记录如下。
-
-### 17.1 部署架构
-
-两台机器各自运行独立的 Docker 容器集群：
-
-```
-物理机 (kunpeng 或 zen5)
-├── Docker network: flink-network
-├── flink-jm    (JobManager)   端口 8081
-├── flink-tm1   (TaskManager)
-└── flink-tm2   (TaskManager)
-```
-
-容器内环境：
-- Flink 2.2.0 (Java 17)
-- Python 3.14.3 (pyenv 编译，LTO+PGO)
-- PyFlink 2.2.0
-- Apache Beam 2.61.0
-
-宿主机只需要 Docker，不需要 Java、Python、pip。
-
-### 17.2 部署过程关键发现
-
-| # | 发现 | 影响 | 解决方案 |
-|---|------|------|----------|
-| 1 | Python 3.14 C API 有 4 处破坏性变更 | apache-beam、apache-flink 的 Cython C 扩展无法编译 | 使用 Cython 3.2+ 重新编译 |
-| 2 | pip truststore 模块在 Python 3.14 上不工作 | pip 无法安装任何包 | patch `_create_truststore_ssl_context` 返回 None + 补全 certifi cacert.pem |
-| 3 | setuptools 82 移除了 pkg_resources | beam 构建失败 | 降级到 setuptools 78.1.0 |
-| 4 | apache-flink 无 ARM 预编译 wheel | ARM 机器必须从源码编译 | `pip install --no-build-isolation --no-deps` |
-| 5 | LTO 编译每线程 3-4GB 内存 | `-j4` 在 16GB 机器上 OOM | 使用 `-j2` |
-| 6 | docker commit 后 TM 的 /tmp 有权限问题 | TM 启动失败 | TM 使用 `--tmpfs /tmp:rw,exec` |
-| 7 | kunpeng 38GB 磁盘不够用 | commit 前必须清理临时文件 | 清理旧镜像、pip cache、/tmp |
-| 8 | beam/flink 依赖版本上限锁死旧版 | Python 3.14 需要新版 numpy/pyarrow/protobuf 等 | 用 `--no-deps` 安装，接受版本偏离（见下方 17.3） |
-| 9 | pyarrow C 扩展使用旧版 Python C API | pyarrow 在 3.14 上编译失败 | 魔改 pyarrow C 源码适配 3.14（仅此一个包需要） |
-
-### 17.3 依赖版本偏离与源码修改
-
-beam 2.61.0 和 flink 2.2.0 发布时 Python 3.14 尚不存在，部分依赖必须安装超出上游声明范围的版本。详细偏离清单和源码修改记录见：
-
-- `docs/runbooks/pyflink-python314-deployment.md` 第 5.1 节（版本偏离清单）和第 5.2 节（源码修改清单）
-- `docs/runbooks/python314-faq.md` 依赖版本冲突章节
-
-核心结论：
-- **7 个依赖**安装了超出上游版本上限的新版本（numpy、pyarrow、protobuf、dill、httplib2、objsize、jsonpickle）
-- **1 个依赖**降级安装（setuptools 78.1.0）
-- **只有 pyarrow** 进行了源码级修改，其余包通过 Cython 3.2.4 重编译解决
-
-### 17.3 实际镜像清单
-
-| 平台 | 镜像 | 大小 | 状态 |
-|------|------|------|------|
-| ARM | `flink-pyflink:2.2.0-py314-arm-final` | ~3.15GB | 已验证 |
-| x86 | `flink-pyflink:2.2.0-py314-x86-final` | ~3.05GB | 已验证 |
-
-### 17.4 adapter 更新
-
-`environment.py` 已更新：
-- TM 启动命令加入 `--tmpfs /tmp:rw,exec`（当 `software.taskmanagerTmpfs` 为 true 时）
-- `environment.yaml` 加入 `flinkPyflinkImages` 字段记录已构建的镜像
-
-### 17.5 相关文档
+在 kunpeng (aarch64) 和 zen5 (x86_64) 上完成 PyFlink 2.2.0 + Python 3.14.3 的真实部署后，以下发现影响了本规范中 adapter 和 plan 的设计。具体部署步骤、依赖版本偏离、Python 3.14 兼容性问题见：
 
 - 部署手册：`docs/runbooks/pyflink-python314-deployment.md`
 - FAQ：`docs/runbooks/python314-faq.md`
+
+### 17.1 对 adapter 设计的修正
+
+| # | 发现 | 对 adapter / plan 的影响 |
+|---|------|--------------------------|
+| 1 | TM 镜像的 commit 时机至关重要 | adapter 的部署步骤必须明确标注"在所有容器内安装完成后再 commit"，否则 TM 会缺少依赖或 C 扩展用错误工具链编译 |
+| 2 | 框架 Python 运行时 JAR 可能不在 `lib/` | adapter 的 readiness check 应验证远程集群能加载 Python UDF 运算符，而不仅验证 Python import |
+| 3 | 框架 Python API 可能在不同版本间移除方法 | adapter 不应假设 Python API 稳定；应提供 fallback 机制或记录 API 版本约束 |
+| 4 | SQL 方言可能有保留字冲突 | 生成 SQL 的工具应自动引用标识符，不应依赖用户手动规避 |
+
+### 17.2 对 environment.yaml schema 的补充
+
+基于实战反馈，补充以下字段需求：
+
+- `software` 应支持 `flinkPyflinkImages` 字段（记录已构建的镜像 tag）
+- `software` 应支持 `taskmanagerTmpfs` 布尔字段（TM 是否需要 `--tmpfs /tmp:rw,exec`）
+- `software` 应支持 `pythonVersion` 和 `pyflinkVersion` 字段（影响可比性的版本信息）
+
+### 17.3 adapter 更新
+
+`environment.py` 已更新：
+- TM 启动命令加入 `--tmpfs /tmp:rw,exec`（当 `software.taskmanagerTmpfs` 为 true 时）
+- `environment.yaml` 加入上述新字段
+
+### 17.4 Benchmark Runner
+
+`workload/tpch/pyflink/benchmark_runner.py` 是第 4 步"测试用例编写"的产出，用于测量 PyFlink 框架的序列化/反序列化/IPC 开销。
+
+设计要点（通用，可被其他框架 benchmark 参考）：
+- UDF 零改动：运行时通过 wrapper 动态包装，UDF 文件不需要修改
+- 三段式算子链：Java PreUDF → Python UDTF wrapper → Java PostUDF，测量 `framework_overhead = java_end - java_start - py_duration`
+- datagen source + blackhole sink：消除文件 I/O 干扰
+- `--dry-run` 模式：不依赖任何框架库，只生成和审查 SQL
+
+详细设计、验证过程和结果见 `docs/runbooks/pyflink-python314-deployment.md` 第 7 节。

@@ -262,7 +262,7 @@ class YamlParserTest(unittest.TestCase):
         self.assertEqual(env["platforms"][0]["id"], "arm")
         self.assertEqual(env["platforms"][0]["arch"], "aarch64")
         self.assertEqual(len(env["platforms"][0]["hosts"]), 3)
-        self.assertEqual(env["software"]["flinkImage"], "flink:1.20.1-java17")
+        self.assertEqual(env["software"]["flinkImage"], "flink:2.2.0-java17")
         self.assertTrue(env["software"]["dockerRequired"])
         self.assertIn("kunpeng", env["hostRefs"])
 

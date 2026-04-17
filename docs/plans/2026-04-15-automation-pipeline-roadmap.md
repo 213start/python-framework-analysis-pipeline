@@ -11,9 +11,9 @@
 - 第 1 步”制定报告框架”暂时完成。
 - 第 2 步”制定数据格式”暂时完成。
 - 数据格式后续应在拿到真实实机数据后重新审视。
-- 第 3 步”环境搭建”PyFlink 真实部署已完成（2026-04-16，kunpeng ARM + zen5 x86 双集群验证通过）。
-- 第 4 步”测试用例编写”PyFlink 第一批已完成（13 条 UDF + 公共 runner）。
-- 环境搭建文档已落地：部署手册 + Python 3.14 FAQ。
+- 第 3 步”环境搭建”PyFlink 真实部署已完成（2026-04-16，kunpeng ARM + zen5 x86 双集群验证通过）。E1-E9 全部实现，16 条 UT 全部通过。
+- 第 4 步”测试用例编写”PyFlink 第一批已完成（13 条 UDF + 公共 runner + benchmark runner）。Benchmark 三段式计时已在 zen5 集群端到端验证。
+- 环境搭建文档已落地：部署手册 + Python 3.14 FAQ + benchmark 验证记录。
 
 ## 2. 总体流程
 
@@ -375,10 +375,13 @@ workload/
 - `workload/tpch/sql/q01.sql ~ q22.sql` — 22 条原始 TPC-H SQL
 - `workload/tpch/pyflink/udf/` — 13 条纯 Python UDF（Q1/Q3-Q6/Q9/Q10/Q12-q14/Q18/Q19/Q22）
 - `workload/tpch/pyflink/runner.py` — 公共 runner，支持 attach 到远程 Flink 集群或本地 mini-cluster
+- `workload/tpch/pyflink/benchmark_runner.py` — 框架开销 benchmark runner（三段式计时算子链 + datagen/blackhole + UDF 零改动 wrapper）
 
 UDF 接口：每个文件导出 `udf_q{NN}` 纯 Python 函数 + `UDF_INPUTS` + `UDF_RESULT_TYPE` + `SQL` 元数据。
 
 覆盖率：核心 8 条 + 可行扩展 5 条，不实施 9 条（Q2/Q7/Q8/Q11/Q15/Q16/Q17/Q20/Q21，需多阶段或关联子查询）。
+
+Benchmark 验证：13 条全部通过 `--dry-run`；q06/q01 在 zen5 远程集群端到端通过（详见 `docs/runbooks/pyflink-python314-deployment.md` 第 7 节）。
 
 ### 任务 5：定义采集输出中间格式 — 待实施
 
@@ -427,17 +430,17 @@ UDF 接口：每个文件导出 `udf_q{NN}` 纯 Python 函数 + `UDF_INPUTS` + `
 
 ### 9.1 任务列表
 
-| # | 任务 | 输出 | 依赖 |
-|---|------|------|------|
-| E1 | 新增 `schemas/environment.schema.json` | environment 配置的 JSON Schema | 无 |
-| E2 | 新增 `schemas/environment-plan.schema.json` | 环境计划的 JSON Schema | 无 |
-| E3 | 新增 `schemas/environment-record.schema.json` | 环境记录的 JSON Schema | 无 |
-| E4 | 新增 `schemas/readiness-report.schema.json` | readiness 报告的 JSON Schema | 无 |
-| E5 | 新增 `projects/pyflink-tpch-reference/environment.yaml` | PyFlink 项目的环境配置 | E1 |
-| E6 | CLI 增加 `environment plan` 子命令 | 生成 `environment-plan.json`，不执行远程命令 | E1, E2 |
-| E7 | CLI 增加 `environment validate` 子命令 | 校验人工回填记录 | E3, E4 |
-| E8 | 增加 PyFlink environment adapter | 输出最小 plan steps | E6 |
-| E9 | 测试覆盖 | plan-only 模式 + manual-record 模式 | E6, E7, E8 |
+| # | 任务 | 输出 | 依赖 | 状态 |
+|---|------|------|------|------|
+| E1 | 新增 `schemas/environment.schema.json` | environment 配置的 JSON Schema | 无 | ✅ |
+| E2 | 新增 `schemas/environment-plan.schema.json` | 环境计划的 JSON Schema | 无 | ✅ |
+| E3 | 新增 `schemas/environment-record.schema.json` | 环境记录的 JSON Schema | 无 | ✅ |
+| E4 | 新增 `schemas/readiness-report.schema.json` | readiness 报告的 JSON Schema | 无 | ✅ |
+| E5 | 新增 `projects/pyflink-tpch-reference/environment.yaml` | PyFlink 项目的环境配置 | E1 | ✅ |
+| E6 | CLI 增加 `environment plan` 子命令 | 生成 `environment-plan.json`，不执行远程命令 | E1, E2 | ✅ |
+| E7 | CLI 增加 `environment validate` 子命令 | 校验人工回填记录 | E3, E4 | ✅ |
+| E8 | 增加 PyFlink environment adapter | 输出最小 plan steps | E6 | ✅ |
+| E9 | 测试覆盖 | plan-only 模式 + manual-record 模式，16 条 UT 全部通过 | E6, E7, E8 | ✅ |
 
 ### 9.2 第一版边界
 

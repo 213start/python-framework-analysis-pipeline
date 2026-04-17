@@ -12,6 +12,8 @@
 4. [Docker 容器相关](#docker-容器相关)
 5. [依赖版本冲突](#依赖版本冲突)
 6. [磁盘空间](#磁盘空间)
+7. [远程集群提交](#远程集群提交)
+8. [Benchmark Runner](#benchmark-runner)
 
 ---
 
@@ -374,3 +376,123 @@ du -sh /opt/flink/.pyenv/
 5. 容器内临时文件：`rm -f /tmp/*.whl`
 
 **最低空间要求**：保持至少 2GB 可用空间，否则 pip 和 Flink 运行时可能失败。
+
+---
+
+## 远程集群提交
+
+### Q: PyFlink 2.2.0 报 `StreamExecutionEnvironment has no attribute 'create_remote_environment'`？
+
+**原因**：PyFlink 2.x 移除了 `create_remote_environment()` Python API。Java 端的 `RemoteStreamEnvironment` 类仍然存在，但 Python 封装层不再暴露它。
+
+**解决**：通过 Py4J 直接调用 Java 构造函数：
+
+```python
+from pyflink.java_gateway import get_gateway
+from pyflink.datastream import StreamExecutionEnvironment
+
+gateway = get_gateway()
+jvm = gateway.jvm
+jars = gateway.new_array(jvm.java.lang.String, 1)
+jars[0] = "/opt/flink/FlinkDemo-1.0-SNAPSHOT.jar"
+j_env = jvm.org.apache.flink.streaming.api.environment\
+    .RemoteStreamEnvironment(host, port, jars)
+env = StreamExecutionEnvironment(j_env)
+```
+
+**注意**：
+- JAR 路径用绝对路径，不要加 `file://` 前缀
+- `gateway.new_array` 创建 `String[]`，不能用 Python list
+
+### Q: 远程提交报 `ClassNotFoundException: PythonTableFunctionOperator`？
+
+**现象**：Job 提交到远程 Flink 集群后，JM 反序列化失败。
+
+```
+java.lang.ClassNotFoundException:
+  org.apache.flink.table.runtime.operators.python.table.PythonTableFunctionOperator
+```
+
+**原因**：`flink-python-2.2.0.jar` 在 Flink 基础镜像中位于 `opt/` 目录而非 `lib/`。Flink 只自动加载 `lib/` 下的 JAR。
+
+**解决**：在所有容器（JM + TM）中复制 JAR 到 `lib/`，然后重启集群：
+
+```bash
+docker exec <container> cp /opt/flink/opt/flink-python-2.2.0.jar /opt/flink/lib/
+docker restart flink-jm flink-tm1 flink-tm2
+```
+
+### Q: 远程提交报 TM 上 `undefined symbol: _PyUnicode_FastCopyCharacters`？
+
+**现象**：TM 日志显示 Python worker 进程启动后立即退出，beam C 扩展加载失败。
+
+```
+ImportError: .../apache_beam/coders/coder_impl.cpython-314-x86_64-linux-gnu.so:
+  undefined symbol: _PyUnicode_FastCopyCharacters
+```
+
+**原因**：TM 容器的 beam `.so` 文件是用旧版 Cython (0.29.x) 编译的。这说明 TM 镜像是在 Cython 升级和重编译之前从 JM commit 的。
+
+**解决**：从当前正确的 JM 重新 commit 镜像，重新创建 TM：
+
+```bash
+# 清理 JM 临时文件
+docker exec -u root flink-jm rm -rf /tmp/pip-* /tmp/python-build.* /tmp/*.whl
+# commit 新镜像
+docker commit flink-jm flink-pyflink:2.2.0-py314-<arch>-v2
+# 重建 TM
+docker stop flink-tm1 flink-tm2 && docker rm flink-tm1 flink-tm2
+docker run -d --name flink-tm1 --network flink-network \
+  -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
+  --tmpfs /tmp:rw,exec \
+  flink-pyflink:2.2.0-py314-<arch>-v2 taskmanager
+```
+
+### Q: 远程提交报 TM 上 `ModuleNotFoundError: No module named 'dill'`？
+
+**原因**：同上，TM 镜像 commit 时缺失部分 beam 运行时依赖。
+
+**临时修复**：在 TM 中安装缺失依赖：
+
+```bash
+docker exec -u root flink-tm1 bash -c '... pip install dill sortedcontainers ...'
+```
+
+**根本修复**：从完整的 JM 重新 commit 镜像（见上一条）。
+
+### Q: SQL 解析报 `Encountered "result" ... Was expecting identifier`？
+
+**现象**：
+
+```
+SQL parse failed. Encountered "result" at line 16, column 16.
+```
+
+**原因**：`result` 是 Flink SQL 保留字。在 `LATERAL TABLE(...) AS TPY(...)` 的别名列表中不能直接使用。
+
+**解决**：用反引号引用所有别名：
+
+```sql
+AS TPY(`result`, `java_start_time`, `py_duration`)
+```
+
+`benchmark_runner.py` 已自动处理。
+
+---
+
+## Benchmark Runner
+
+### Q: benchmark_runner.py 的 `--dry-run` 模式需要 PyFlink 吗？
+
+**回答**：不需要。`--dry-run` 只生成和打印 SQL，不执行任何 Flink 操作。PyFlink 的 import 只在实际执行路径中触发。
+
+### Q: 本地 mini-cluster 和远程集群的性能差异？
+
+**实测数据**（zen5 x86_64, q06, 10K rows, parallelism=1）：
+
+| 模式 | Throughput |
+|------|-----------|
+| 本地 mini-cluster | 404 rows/s |
+| 远程集群 (1JM+2TM) | 2431 rows/s |
+
+远程集群约 6 倍吞吐，原因是 TM 在独立容器中运行，Python UDF 进程不受 JM JVM 资源争用影响。
