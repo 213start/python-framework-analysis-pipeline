@@ -157,6 +157,15 @@ def _parse_sequence(lines: list[str], start: int, end: int, min_indent: int, tar
 
 
 def _parse_scalar(value: str) -> str | int | float | bool:
+    # Strip inline comments (e.g. "perf  # description" -> "perf")
+    # Only strip if '#' is preceded by whitespace (not inside a quoted string)
+    if "#" in value and not (value.startswith('"') or value.startswith("'")):
+        # Find first '#' preceded by whitespace
+        for idx in range(1, len(value)):
+            if value[idx] == "#" and value[idx - 1] in (" ", "\t"):
+                value = value[:idx].rstrip()
+                break
+
     # Strip quotes
     if len(value) >= 2:
         if (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'"):

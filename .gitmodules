@@ -1,0 +1,3 @@
+[submodule "vendor/python-performance-kits"]
+	path = vendor/python-performance-kits
+	url = https://github.com/sisibeloved/python-performance-kits.git

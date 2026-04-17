@@ -139,4 +139,65 @@ class PyFlinkEnvironmentAdapter:
             description=f"Verify {tm_count} TaskManagers registered on {host_alias}",
         ))
 
+        # Step 7: Install profiling tools inside containers
+        profiling_tools = software.get("profilingTools", [])
+        if profiling_tools:
+            # Map tool names to package names
+            tool_packages = {
+                "perf": "linux-perf",
+                "strace": "strace",
+                "objdump": "binutils",
+                "gdb": "gdb",
+                "readelf": "binutils",
+            }
+            packages = sorted({tool_packages.get(t, t) for t in profiling_tools})
+            pkg_str = " ".join(packages)
+
+            for name in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]:
+                steps.append(PlanStep(
+                    id=f"install-profiling-tools-{name}",
+                    kind="prepare",
+                    hostRef=host,
+                    command=(
+                        f"docker exec {name} bash -c "
+                        f"'apt-get update -qq && apt-get install -y -qq {pkg_str}'"
+                    ),
+                    description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
+                    mutatesHost=True,
+                    requiresApproval=True,
+                    rollbackHint=f"docker exec {name} apt-get remove -y {pkg_str}",
+                ))
+
+            # Step 8: Verify profiling tools
+            verify_cmds = {
+                "perf": "perf --version",
+                "strace": "strace --version",
+                "objdump": "objdump --version",
+                "gdb": "gdb --version",
+                "readelf": "readelf --version",
+            }
+            verifications = " && ".join(
+                verify_cmds[t] for t in profiling_tools if t in verify_cmds
+            )
+            steps.append(PlanStep(
+                id="verify-profiling-tools",
+                kind="framework-readiness",
+                hostRef=host,
+                command=f"docker exec flink-jm bash -c '{verifications}'",
+                description=f"Verify profiling tools available on {host_alias}",
+            ))
+
+            # Step 9: Enable perf_event_paranoid on host
+            if "perf" in profiling_tools:
+                steps.append(PlanStep(
+                    id="enable-perf-paranoid",
+                    kind="prepare",
+                    hostRef=host,
+                    command="sudo sysctl -w kernel.perf_event_paranoid=1",
+                    description=f"Set kernel.perf_event_paranoid=1 on {host_alias}",
+                    requiresPrivilege=True,
+                    requiresApproval=True,
+                    rollbackHint="sudo sysctl -w kernel.perf_event_paranoid=2",
+                ))
+
         return steps

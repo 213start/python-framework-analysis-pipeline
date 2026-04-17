@@ -88,6 +88,31 @@ class EnvironmentPlanTest(unittest.TestCase):
         self.assertIn("readiness-cluster-health", step_ids)
         self.assertIn("readiness-taskmanager-count", step_ids)
 
+    def test_plan_contains_profiling_tool_steps(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
+        )
+        plan = json.loads(result.stdout)
+        step_ids = [s["id"] for s in plan["steps"]]
+
+        # Profiling tool installation steps
+        self.assertIn("install-profiling-tools-flink-jm", step_ids)
+        self.assertIn("install-profiling-tools-flink-tm1", step_ids)
+        self.assertIn("install-profiling-tools-flink-tm2", step_ids)
+        self.assertIn("verify-profiling-tools", step_ids)
+        self.assertIn("enable-perf-paranoid", step_ids)
+
+        # Verify the install step mentions profiling packages
+        install_step = next(
+            s for s in plan["steps"]
+            if s["id"] == "install-profiling-tools-flink-jm"
+        )
+        self.assertIn("linux-perf", install_step["command"])
+        self.assertIn("strace", install_step["command"])
+        self.assertIn("binutils", install_step["command"])
+        self.assertTrue(install_step["mutatesHost"])
+        self.assertTrue(install_step["requiresApproval"])
+
     def test_plan_deduplicates_host_probes(self) -> None:
         result = CliInvoker.run(
             "environment", "plan", str(PROJECT_YAML), "--platform", "arm"

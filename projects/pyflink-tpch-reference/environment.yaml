@@ -38,6 +38,12 @@ software:
   pythonVersion: "3.14.3"
   pyflinkVersion: "2.2.0"
   taskmanagerTmpfs: true  # TMs need --tmpfs /tmp:rw,exec to avoid /tmp permission issues
+  profilingTools:
+    - perf      # perf record / perf annotate / perf report
+    - strace    # 系统调用追踪
+    - objdump   # 二进制反汇编 (binutils)
+    - gdb       # 调试符号查看
+    - readelf   # ELF 信息查看
 
 hostRefs:
   kunpeng:

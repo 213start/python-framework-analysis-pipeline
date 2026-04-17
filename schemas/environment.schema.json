@@ -94,6 +94,15 @@
         "dependencyLock": {
           "type": "string",
           "description": "Path to a dependency lock file."
+        },
+        "profilingTools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["perf", "strace", "objdump", "gdb", "readelf"]
+          },
+          "description": "Performance profiling tools to install in the environment.",
+          "default": []
         }
       }
     },

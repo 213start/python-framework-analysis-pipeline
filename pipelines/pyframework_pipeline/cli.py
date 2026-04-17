@@ -69,6 +69,73 @@ def build_parser() -> argparse.ArgumentParser:
         help="包含 environment-plan.json / environment-record.json / readiness-report.json 的运行目录",
     )
 
+    # acquire
+    acquire_parser = subparsers.add_parser(
+        "acquire",
+        help="数据采集相关命令。",
+    )
+    acquire_sub = acquire_parser.add_subparsers(dest="acquire_command", required=True)
+
+    # acquire timing
+    acq_timing = acquire_sub.add_parser(
+        "timing",
+        help="采集用例数据（框架开销计时）。",
+    )
+    acq_timing.add_argument("project", help="project.yaml 路径")
+    acq_timing.add_argument("--platform", required=True, help="目标平台 ID")
+    acq_timing.add_argument("--run-dir", required=True, help="运行输出目录")
+    acq_timing.add_argument("--stdout-file", action="append", dest="stdout_files",
+                            help="TM stdout 日志文件路径（可多次指定）")
+
+    # acquire perf
+    acq_perf = acquire_sub.add_parser(
+        "perf",
+        help="采集性能分析数据（perf profile）。",
+    )
+    acq_perf.add_argument("project", help="project.yaml 路径")
+    acq_perf.add_argument("--platform", required=True, help="目标平台 ID")
+    acq_perf.add_argument("--run-dir", required=True, help="运行输出目录")
+    acq_perf.add_argument("--perf-data", help="perf.data 文件路径")
+    acq_perf.add_argument("--kits-dir", help="python-performance-kits 目录路径")
+    acq_perf.add_argument("--top-n", type=int, default=50, help="热点数量")
+
+    # acquire asm
+    acq_asm = acquire_sub.add_parser(
+        "asm",
+        help="采集机器码（反汇编）。",
+    )
+    acq_asm.add_argument("project", help="project.yaml 路径")
+    acq_asm.add_argument("--platform", required=True, help="目标平台 ID")
+    acq_asm.add_argument("--run-dir", required=True, help="运行输出目录")
+    acq_asm.add_argument("--perf-data", help="perf.data 文件路径")
+    acq_asm.add_argument("--kits-dir", help="python-performance-kits 目录路径")
+    acq_asm.add_argument("--binary", action="append", dest="binaries",
+                         help="要 objdump 的二进制文件路径（可多次指定）")
+    acq_asm.add_argument("--top-n", type=int, default=20, help="热点数量")
+
+    # acquire validate
+    acq_validate = acquire_sub.add_parser(
+        "validate",
+        help="校验采集清单完整性。",
+    )
+    acq_validate.add_argument("run_dir", help="运行输出目录")
+
+    # acquire all
+    acq_all = acquire_sub.add_parser(
+        "all",
+        help="执行全部采集子步骤。",
+    )
+    acq_all.add_argument("project", help="project.yaml 路径")
+    acq_all.add_argument("--platform", required=True, help="目标平台 ID")
+    acq_all.add_argument("--run-dir", required=True, help="运行输出目录")
+    acq_all.add_argument("--perf-data", help="perf.data 文件路径")
+    acq_all.add_argument("--kits-dir", help="python-performance-kits 目录路径")
+    acq_all.add_argument("--binary", action="append", dest="binaries",
+                         help="要 objdump 的二进制文件路径（可多次指定）")
+    acq_all.add_argument("--stdout-file", action="append", dest="stdout_files",
+                         help="TM stdout 日志文件路径")
+    acq_all.add_argument("--top-n", type=int, default=50, help="热点数量")
+
     return parser
 
 
@@ -83,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "environment":
         return _handle_environment(args)
+
+    if args.command == "acquire":
+        return _handle_acquire(args)
 
     parser.print_help(sys.stderr)
     return 2
@@ -151,3 +221,172 @@ def _cmd_env_validate(args) -> int:
     report = validate_run(run_dir, schemas)
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     return 0 if report.status == "ok" else 1
+
+
+def _handle_acquire(args) -> int:
+    if args.acquire_command == "timing":
+        return _cmd_acquire_timing(args)
+    if args.acquire_command == "perf":
+        return _cmd_acquire_perf(args)
+    if args.acquire_command == "asm":
+        return _cmd_acquire_asm(args)
+    if args.acquire_command == "validate":
+        return _cmd_acquire_validate(args)
+    if args.acquire_command == "all":
+        return _cmd_acquire_all(args)
+    return 2
+
+
+def _resolve_run_dir(args) -> Path:
+    """Resolve run-dir relative to the project directory."""
+    project_dir = Path(args.project).resolve().parent
+    run_dir = Path(args.run_dir)
+    if not run_dir.is_absolute():
+        run_dir = project_dir / run_dir
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def _write_manifest(run_dir: Path, manifest: "AcquisitionManifest") -> None:
+    """Write acquisition manifest to run_dir."""
+    from .acquisition.manifest import AcquisitionManifest
+    manifest.write(run_dir / "acquisition-manifest.json")
+
+
+def _cmd_acquire_timing(args) -> int:
+    from .acquisition.timing import collect_timing
+    from .acquisition.manifest import AcquisitionManifest, AcquisitionSection
+
+    run_dir = _resolve_run_dir(args)
+    stdout_files = [Path(f) for f in (args.stdout_files or [])]
+
+    result = collect_timing(run_dir, args.platform, stdout_files or None)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    # Update manifest
+    manifest_path = run_dir / "acquisition-manifest.json"
+    if manifest_path.exists():
+        from .acquisition.manifest import load_manifest
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = AcquisitionManifest(platform=args.platform, runDir=str(run_dir))
+    manifest.timing = AcquisitionSection(
+        status="collected" if result["cases"] else "skipped",
+        files={"raw": result.get("raw_file", ""), "normalized": result.get("normalized_file", "")},
+        extra={"cases": result.get("cases", [])},
+    )
+    _write_manifest(run_dir, manifest)
+    return 0
+
+
+def _cmd_acquire_perf(args) -> int:
+    from .acquisition.perf_profile import collect_perf
+    from .acquisition.manifest import AcquisitionManifest, AcquisitionSection
+
+    run_dir = _resolve_run_dir(args)
+    perf_data = Path(args.perf_data) if args.perf_data else None
+    kits_dir = Path(args.kits_dir) if args.kits_dir else None
+
+    result = collect_perf(run_dir, args.platform, perf_data, kits_dir, top_n=args.top_n)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    manifest_path = run_dir / "acquisition-manifest.json"
+    if manifest_path.exists():
+        from .acquisition.manifest import load_manifest
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = AcquisitionManifest(platform=args.platform, runDir=str(run_dir))
+    manifest.perf = AcquisitionSection(
+        status=result.get("status", "pending"),
+        files=result.get("files", {}),
+    )
+    _write_manifest(run_dir, manifest)
+    return 0 if result.get("status") != "failed" else 1
+
+
+def _cmd_acquire_asm(args) -> int:
+    from .acquisition.machine_code import collect_asm
+    from .acquisition.manifest import AcquisitionManifest, AcquisitionSection
+
+    run_dir = _resolve_run_dir(args)
+    perf_data = Path(args.perf_data) if args.perf_data else None
+    kits_dir = Path(args.kits_dir) if args.kits_dir else None
+    binaries = [Path(b) for b in (args.binaries or [])]
+
+    result = collect_asm(run_dir, args.platform, perf_data, kits_dir, binaries, args.top_n)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    manifest_path = run_dir / "acquisition-manifest.json"
+    if manifest_path.exists():
+        from .acquisition.manifest import load_manifest
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = AcquisitionManifest(platform=args.platform, runDir=str(run_dir))
+    manifest.asm = AcquisitionSection(
+        status=result.get("status", "pending"),
+        extra={
+            "hotspotCount": result.get("hotspotCount", 0),
+            "objdumpFiles": result.get("objdumpFiles", []),
+        },
+    )
+    _write_manifest(run_dir, manifest)
+    return 0 if result.get("status") != "failed" else 1
+
+
+def _cmd_acquire_validate(args) -> int:
+    import jsonschema as _js
+
+    run_dir = Path(args.run_dir)
+    manifest_path = run_dir / "acquisition-manifest.json"
+
+    if not manifest_path.exists():
+        print(json.dumps({
+            "status": "error",
+            "errors": [f"acquisition-manifest.json not found in {run_dir}"],
+        }, ensure_ascii=False, indent=2))
+        return 1
+
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    schema_path = _schemas_dir() / "acquisition-manifest.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    try:
+        _js.validate(instance=manifest_data, schema=schema)
+    except _js.ValidationError as e:
+        print(json.dumps({
+            "status": "error",
+            "errors": [str(e.message)],
+        }, ensure_ascii=False, indent=2))
+        return 1
+
+    # Check that collected sections have their files
+    errors = []
+    for section in ("timing", "perf", "asm"):
+        sec = manifest_data.get(section, {})
+        if sec.get("status") == "collected":
+            for fname in sec.get("files", {}).values():
+                fpath = run_dir / fname
+                if not fpath.exists():
+                    errors.append(f"{section}: missing file {fname}")
+
+    if errors:
+        print(json.dumps({"status": "error", "errors": errors}, ensure_ascii=False, indent=2))
+        return 1
+
+    print(json.dumps({
+        "status": "ok",
+        "sections": {
+            s: manifest_data.get(s, {}).get("status", "pending")
+            for s in ("timing", "perf", "asm")
+        },
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_acquire_all(args) -> int:
+    """Run all three acquisition sub-steps in sequence."""
+    rc = 0
+    rc |= _cmd_acquire_timing(args)
+    rc |= _cmd_acquire_perf(args)
+    rc |= _cmd_acquire_asm(args)
+    return rc
