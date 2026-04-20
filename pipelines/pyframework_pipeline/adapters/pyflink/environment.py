@@ -35,7 +35,10 @@ class PyFlinkEnvironmentAdapter:
         """Return framework-specific plan steps for PyFlink."""
         steps: list[PlanStep] = []
 
-        image = software.get("flinkImage", DEFAULT_IMAGE)
+        image = software.get("flinkPyflinkImages", {}).get(
+            platform,
+            software.get("flinkImage", DEFAULT_IMAGE),
+        )
         network = software.get("containerNetwork", DEFAULT_NETWORK)
         tm_count = DEFAULT_TM_COUNT
         use_tmpfs = software.get("taskmanagerTmpfs", False)
@@ -71,7 +74,7 @@ class PyFlinkEnvironmentAdapter:
             id="pull-flink-image",
             kind="prepare",
             hostRef=host,
-            command=f"docker pull {image}",
+            command=_docker_pull_if_missing(image),
             description=f"Pull Flink image {image} on {host_alias}",
             mutatesHost=True,
             requiresApproval=True,
@@ -83,10 +86,14 @@ class PyFlinkEnvironmentAdapter:
             id="start-jobmanager",
             kind="framework-start",
             hostRef=host,
-            command=(
+            command=_docker_reconcile_container(
+                name="flink-jm",
+                image=image,
+                run_args=(
                 f"docker run -d --name flink-jm --network {network} "
                 f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
                 f"-p 8081:8081 {image} jobmanager"
+                ),
             ),
             description=f"Start JobManager container on {host_alias}",
             mutatesHost=True,
@@ -102,10 +109,14 @@ class PyFlinkEnvironmentAdapter:
                 id=f"start-taskmanager-{i}",
                 kind="framework-start",
                 hostRef=host,
-                command=(
+                command=_docker_reconcile_container(
+                    name=f"flink-tm{i}",
+                    image=image,
+                    run_args=(
                     f"docker run -d --name flink-tm{i} --network {network} "
                     f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm'"
                     f"{tmpfs_flag}{privileged_flag} {image} taskmanager"
+                    ),
                 ),
                 description=f"Start TaskManager {i} container on {host_alias}",
                 mutatesHost=True,
@@ -145,7 +156,7 @@ class PyFlinkEnvironmentAdapter:
         if profiling_tools:
             # Map tool names to package names
             tool_packages = {
-                "perf": "linux-perf",
+                "perf": "linux-tools-common",
                 "strace": "strace",
                 "objdump": "binutils",
                 "gdb": "gdb",
@@ -160,18 +171,28 @@ class PyFlinkEnvironmentAdapter:
                     kind="prepare",
                     hostRef=host,
                     command=(
-                        f"docker exec {name} bash -c "
-                        f"'apt-get update -qq && apt-get install -y -qq {pkg_str}'"
+                        f"docker exec -u root {name} bash -c "
+                        f"'apt-get update -qq && apt-get install -y -qq {pkg_str} && "
+                        f"perf_pkg=$(apt-cache search --names-only "
+                        f"\"^linux-tools-.*-generic$\" | "
+                        f"awk \"{{print \\$1}}\" | sort -V | tail -1); "
+                        f"if [ -n \"$perf_pkg\" ]; then "
+                        f"apt-get install -y -qq \"$perf_pkg\"; fi; "
+                        f"perf_bin=$(find /usr/lib -path \"*linux-tools*\" "
+                        f"-name perf -type f | "
+                        f"sort -V | tail -1); "
+                        f"if [ -n \"$perf_bin\" ]; then "
+                        f"install -D -m 0755 \"$perf_bin\" /usr/local/bin/perf; fi'"
                     ),
                     description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
                     mutatesHost=True,
                     requiresApproval=True,
-                    rollbackHint=f"docker exec {name} apt-get remove -y {pkg_str}",
+                    rollbackHint=f"docker exec -u root {name} apt-get remove -y {pkg_str}",
                 ))
 
             # Step 8: Verify profiling tools
             verify_cmds = {
-                "perf": "perf --version",
+                "perf": "/usr/local/bin/perf --version",
                 "strace": "strace --version",
                 "objdump": "objdump --version",
                 "gdb": "gdb --version",
@@ -202,3 +223,21 @@ class PyFlinkEnvironmentAdapter:
                 ))
 
         return steps
+
+
+def _docker_pull_if_missing(image: str) -> str:
+    return f"docker image inspect {image} >/dev/null 2>&1 || docker pull {image}"
+
+
+def _docker_reconcile_container(name: str, image: str, run_args: str) -> str:
+    return (
+        f"if docker inspect {name} >/dev/null 2>&1; then "
+        f"current=$(docker inspect -f '{{{{.Config.Image}}}}' {name}); "
+        f"if [ \"$current\" = \"{image}\" ]; then "
+        f"state=$(docker inspect -f '{{{{.State.Running}}}}' {name}); "
+        f"if [ \"$state\" = \"true\" ]; then "
+        f"echo {name} already running with {image}; "
+        f"else docker start {name}; fi; "
+        f"else docker rm -f {name} && {run_args}; fi; "
+        f"else {run_args}; fi"
+    )

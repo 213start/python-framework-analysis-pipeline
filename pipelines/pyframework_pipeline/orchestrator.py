@@ -132,7 +132,7 @@ def run_pipeline(
 
     Returns 0 on success, 1 on failure.
     """
-    from ..config import (
+    from .config import (
         get_run_config,
         get_workload_config,
         get_bridge_config,
@@ -231,7 +231,7 @@ def _execute_step(
 ) -> None:
     """Execute a single pipeline step."""
     if step_id == "3":
-        from ..environment.deploy import deploy_plan
+        from .environment.deploy import deploy_plan
         plan_path = run_dir / platform / "environment-plan.json"
         result = deploy_plan(project_path, platform, plan_path, yes=yes)
         # Save record.
@@ -275,8 +275,8 @@ def _execute_step(
 def _run_workload_deploy(
     project_path: Path, run_dir: Path, platform: str, *, yes: bool = False,
 ) -> None:
-    from ..config import get_workload_config, load_environment_config
-    from ..remote import build_executor, get_platform_host_ref
+    from .config import get_workload_config, load_environment_config
+    from .remote import build_executor, get_platform_host_ref
 
     workload = get_workload_config(project_path)
     local_dir = project_path.parent / workload["localDir"]
@@ -322,8 +322,8 @@ def _run_workload_deploy(
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
 ) -> None:
-    from ..config import get_workload_config, load_environment_config
-    from ..remote import build_executor, get_platform_host_ref
+    from .config import get_workload_config, load_environment_config
+    from .remote import build_executor, get_platform_host_ref
 
     workload = get_workload_config(project_path)
     queries = workload.get("queries", [])
@@ -334,7 +334,7 @@ def _run_benchmark(
     # Start perf record on TM containers (background).
     for i in range(1, 3):
         executor.run(
-            f"docker exec -d flink-tm{i} perf record -g -o /tmp/perf.data -a",
+            f"docker exec -d flink-tm{i} /usr/local/bin/perf record -g -o /tmp/perf.data -a",
             timeout=10,
         )
 
@@ -369,8 +369,8 @@ def _run_benchmark(
 def _run_collect(
     project_path: Path, run_dir: Path, platform: str,
 ) -> None:
-    from ..config import load_environment_config
-    from ..remote import build_executor, get_platform_host_ref
+    from .config import load_environment_config
+    from .remote import build_executor, get_platform_host_ref
 
     env_config = load_environment_config(project_path)
     host_ref = get_platform_host_ref(env_config, platform)
@@ -407,9 +407,9 @@ def _run_collect(
 
 
 def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
-    from ..acquisition.timing import collect_timing
-    from ..acquisition.perf_profile import collect_perf
-    from ..acquisition.machine_code import collect_asm
+    from .acquisition.timing import collect_timing
+    from .acquisition.perf_profile import collect_perf
+    from .acquisition.machine_code import collect_asm
 
     config = load_project_config(project_path)
     run_config = get_run_config(project_path)
@@ -439,8 +439,8 @@ def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
 
 
 def _run_backfill(project_path: Path, run_dir: Path) -> None:
-    from ..backfill.pipeline import run_backfill
-    from ..config import get_run_config
+    from .backfill.pipeline import run_backfill
+    from .config import get_run_config
 
     run_config = get_run_config(project_path)
     platforms = run_config.get("platforms", [])
@@ -457,8 +457,8 @@ def _run_backfill(project_path: Path, run_dir: Path) -> None:
 
 
 def _run_bridge_publish(project_path: Path) -> None:
-    from ..bridge.analysis import publish
-    from ..config import get_bridge_config
+    from .bridge.analysis import publish
+    from .config import get_bridge_config
 
     bridge_config = get_bridge_config(project_path)
     result = publish(
@@ -473,7 +473,7 @@ def _run_bridge_publish(project_path: Path) -> None:
 
 import sys
 
-from ..config import load_project_config, get_run_config
+from .config import load_project_config, get_run_config
 
 
 def _print_resume_hint(

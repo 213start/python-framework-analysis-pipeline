@@ -4,9 +4,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pyframework_pipeline.bridge.comment_parser import (
     ParsedAnalysis,
+    find_approved_analysis_comment,
     find_analysis_comment,
     parse_comment_body,
 )
@@ -221,6 +223,56 @@ class TestParseCommentBody(unittest.TestCase):
         assert result is not None
         self.assertEqual(result.symbol, "f2")
 
+    def test_find_approved_analysis_comment_requires_following_approval(self):
+        comments = [
+            {"body": "## 跨平台机器码差异分析：f1\n\nold"},
+            {"body": "needs revision: 根因表还不完整"},
+            {"body": _SAMPLE_DUAL_COMMENT},
+            {"body": "Approved. 结论可接受。"},
+        ]
+
+        result = find_approved_analysis_comment(comments)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.symbol, "_PyObject_Malloc")
+
+    def test_find_approved_analysis_comment_accepts_narrow_chinese_approval(self):
+        comments = [
+            {"body": _SAMPLE_DUAL_COMMENT},
+            {"body": "审核通过，结论可接受，可以回填。"},
+        ]
+
+        result = find_approved_analysis_comment(comments)
+
+        self.assertIsNotNone(result)
+
+    def test_find_approved_analysis_comment_rejects_revision_requests(self):
+        comments = [
+            {"body": _SAMPLE_DUAL_COMMENT},
+            {
+                "body": (
+                    "Approve with minor revisions? no, needs revision "
+                    "before backfill."
+                ),
+            },
+        ]
+
+        result = find_approved_analysis_comment(comments)
+
+        self.assertIsNone(result)
+
+    def test_find_approved_analysis_comment_does_not_reuse_old_approval(self):
+        comments = [
+            {"body": "## 跨平台机器码差异分析：f1\n\nold"},
+            {"body": "Approved"},
+            {"body": _SAMPLE_DUAL_COMMENT},
+        ]
+
+        result = find_approved_analysis_comment(comments)
+
+        self.assertIsNone(result)
+
 
 # ---------------------------------------------------------------------------
 # Manifest tests
@@ -414,6 +466,109 @@ class TestAnalysisPublishDryRun(unittest.TestCase):
         self.assertEqual(result["total_functions"], 1)
         self.assertTrue(result["issues"][0]["dry_run"])
         self.assertIn("test_func", result["issues"][0]["title"])
+
+
+class TestAnalysisFetchReviewGate(unittest.TestCase):
+    class _FakeClient:
+        def __init__(self, comments):
+            self._comments = comments
+
+        def get_issue_comments(self, owner, repo, issue_number):
+            return self._comments
+
+    def test_fetch_backfills_after_approved_review(self):
+        from pyframework_pipeline.bridge import analysis
+        from pyframework_pipeline.bridge.analysis import fetch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            root, yaml_path, dataset_path = self._write_fetch_fixture(tmp)
+
+            comments = [
+                {"body": _SAMPLE_DUAL_COMMENT},
+                {"body": "Approve With Minor Revisions"},
+            ]
+            with patch.object(
+                analysis,
+                "create_client",
+                return_value=self._FakeClient(comments),
+            ):
+                result = fetch(
+                    yaml_path, repo="o/r", platform="gitcode", token="fake",
+                )
+
+            dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+            manifest = load_bridge_manifest(root / "bridge-manifest.json")
+
+        self.assertEqual(result["parsed"], 1)
+        self.assertEqual(dataset["functions"][0]["diffView"]["diffGuide"],
+                         "由 LLM 评论自动生成，按逐行对照分析分段。")
+        self.assertEqual(len(dataset["rootCauses"]), 2)
+        self.assertEqual(manifest.issues[0].status, "parsed")
+
+    def test_fetch_waits_without_approved_review(self):
+        from pyframework_pipeline.bridge import analysis
+        from pyframework_pipeline.bridge.analysis import fetch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            root, yaml_path, dataset_path = self._write_fetch_fixture(tmp)
+
+            comments = [
+                {"body": _SAMPLE_DUAL_COMMENT},
+                {"body": "需要修改根因汇总后再通过。"},
+            ]
+            with patch.object(
+                analysis,
+                "create_client",
+                return_value=self._FakeClient(comments),
+            ):
+                result = fetch(
+                    yaml_path, repo="o/r", platform="gitcode", token="fake",
+                )
+
+            dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+            manifest = load_bridge_manifest(root / "bridge-manifest.json")
+
+        self.assertEqual(result["parsed"], 0)
+        self.assertNotIn("diffView", dataset["functions"][0])
+        self.assertEqual(dataset["rootCauses"], [])
+        self.assertEqual(manifest.issues[0].status, "analysed")
+
+    def _write_fetch_fixture(self, tmp: Path):
+        root = tmp / "four-layer"
+        ds_dir = root / "datasets"
+        ds_dir.mkdir(parents=True)
+        dataset_path = ds_dir / "test.dataset.json"
+        dataset_path.write_text(
+            json.dumps({
+                "id": "test",
+                "frameworkId": "cpython",
+                "cases": [],
+                "stackOverview": {"components": [], "categories": []},
+                "functions": [{"id": "func_001", "symbol": "_PyObject_Malloc"}],
+                "patterns": [],
+                "rootCauses": [],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        manifest = BridgeManifest()
+        manifest.issues.append(BridgeIssueEntry(
+            issue_type="asm-diff",
+            function_id="func_001",
+            platform="gitcode",
+            repo="o/r",
+            issue_number=1,
+            issue_url="",
+            status="created",
+            created_at="",
+        ))
+        manifest.write(root / "bridge-manifest.json")
+
+        yaml_path = tmp / "project.yaml"
+        yaml_path.write_text(f"fourLayerRoot: {root}\n", encoding="utf-8")
+        return root, yaml_path, dataset_path
 
 
 class TestAnalysisStatus(unittest.TestCase):

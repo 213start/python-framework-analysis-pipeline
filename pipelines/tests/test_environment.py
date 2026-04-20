@@ -88,6 +88,41 @@ class EnvironmentPlanTest(unittest.TestCase):
         self.assertIn("readiness-cluster-health", step_ids)
         self.assertIn("readiness-taskmanager-count", step_ids)
 
+    def test_plan_uses_platform_specific_pyflink_image(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        pull_step = next(s for s in plan["steps"] if s["id"] == "pull-flink-image")
+        start_step = next(s for s in plan["steps"] if s["id"] == "start-jobmanager")
+
+        self.assertIn("flink-pyflink:2.2.0-py314-arm-final", pull_step["command"])
+        self.assertIn("flink-pyflink:2.2.0-py314-arm-final", start_step["command"])
+
+    def test_plan_skips_pull_when_image_exists(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        pull_step = next(s for s in plan["steps"] if s["id"] == "pull-flink-image")
+
+        self.assertIn("docker image inspect", pull_step["command"])
+        self.assertIn("|| docker pull", pull_step["command"])
+
+    def test_plan_recreates_existing_container_when_image_differs(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "x86"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        start_step = next(s for s in plan["steps"] if s["id"] == "start-jobmanager")
+
+        self.assertIn("docker inspect -f '{{.Config.Image}}' flink-jm", start_step["command"])
+        self.assertIn("docker rm -f flink-jm", start_step["command"])
+        self.assertIn("flink-pyflink:2.2.0-py314-x86-final", start_step["command"])
+
     def test_plan_contains_profiling_tool_steps(self) -> None:
         result = CliInvoker.run(
             "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
@@ -107,7 +142,9 @@ class EnvironmentPlanTest(unittest.TestCase):
             s for s in plan["steps"]
             if s["id"] == "install-profiling-tools-flink-jm"
         )
-        self.assertIn("linux-perf", install_step["command"])
+        self.assertIn("docker exec -u root flink-jm", install_step["command"])
+        self.assertIn("linux-tools-.*-generic", install_step["command"])
+        self.assertIn("/usr/local/bin/perf", install_step["command"])
         self.assertIn("strace", install_step["command"])
         self.assertIn("binutils", install_step["command"])
         self.assertTrue(install_step["mutatesHost"])

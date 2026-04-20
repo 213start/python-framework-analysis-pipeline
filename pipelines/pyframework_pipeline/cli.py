@@ -24,6 +24,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # config
+    config_parser = subparsers.add_parser(
+        "config",
+        help="[Step 1] 配置获取和完整性校验。",
+    )
+    config_sub = config_parser.add_subparsers(dest="config_command", required=True)
+    config_validate = config_sub.add_parser(
+        "validate",
+        help="[S1] 校验 project.yaml / environment.yaml / 运行配置。",
+    )
+    config_validate.add_argument("project", help="project.yaml 路径")
+    config_validate.add_argument(
+        "--skip-bridge-token",
+        action="store_true",
+        help="只做桥接前流程时跳过 token 校验。",
+    )
+
     # validate
     subparsers.add_parser(
         "validate",
@@ -252,6 +269,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
         return 0 if report.status == "ok" else 1
 
+    if args.command == "config":
+        return _handle_config(args)
+
     if args.command == "run":
         return _cmd_run(args)
 
@@ -281,14 +301,49 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# config
+# ---------------------------------------------------------------------------
+
+def _handle_config(args) -> int:
+    if args.config_command == "validate":
+        return _cmd_config_validate(args)
+    return 2
+
+
+def _cmd_config_validate(args) -> int:
+    from .config import validate_pipeline_config
+
+    result = validate_pipeline_config(
+        Path(args.project),
+        require_bridge_token=not args.skip_bridge_token,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "ok" else 1
+
+
+# ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
 
 def _cmd_run(args) -> int:
-    from .config import get_run_config, load_project_config
-    from .orchestrator import run_pipeline
+    from .config import get_run_config, load_project_config, validate_pipeline_config
 
     project_path = Path(args.project)
+    config_report = validate_pipeline_config(
+        project_path,
+        require_bridge_token=_run_requires_bridge_token(args.stop_before),
+    )
+    if config_report["status"] != "ok":
+        print("Error: config validation failed", file=sys.stderr)
+        for issue in config_report["issues"]:
+            print(
+                f"  - {issue['path']}: {issue['message']}",
+                file=sys.stderr,
+            )
+        return 1
+
+    from .orchestrator import run_pipeline
+
     config = load_project_config(project_path)
     run_config = get_run_config(project_path)
 
@@ -308,6 +363,15 @@ def _cmd_run(args) -> int:
         force=args.force,
         yes=args.yes,
     )
+
+
+def _run_requires_bridge_token(stop_before: str | None) -> bool:
+    if stop_before is None:
+        return True
+    step_ids = ["3", "4", "5a", "5b", "5c", "6", "7"]
+    if stop_before not in step_ids:
+        return True
+    return step_ids.index(stop_before) > step_ids.index("7")
 
 
 def _now_date_str() -> str:

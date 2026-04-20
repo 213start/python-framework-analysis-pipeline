@@ -75,15 +75,62 @@
 
 ## Pipeline CLI
 
-当前 CLI 先提供四层输入的跨引用校验，用来保证 `Framework / Dataset / Source / Project` 之间的绑定关系没有断链。
+当前 CLI 的第一步是配置获取和完整性校验。真实项目必须先通过 `config validate`，再进入远程环境、workload、benchmark、采集、回填和 Issue 桥接；配置不完整时 `run` 会在本地直接失败，不会连接 SSH 或修改远程 Docker 状态。
 
 ```bash
 PYTHONPATH=pipelines python3 -m pyframework_pipeline --help
+PYTHONPATH=pipelines python3 -m pyframework_pipeline config validate projects/pyflink-tpch-reference/project.yaml
 PYTHONPATH=pipelines python3 -m pyframework_pipeline validate examples/four-layer/pyflink-reference
 PYTHONPATH=pipelines python3 -m pyframework_pipeline validate projects/pyflink-tpch-reference/project.yaml
 ```
 
-第一版不引入外部 Python 依赖，`project.yaml` 只支持当前项目配置需要的简单 `key: value` 格式。
+`config validate` 会检查 `project.yaml`、同目录 `environment.yaml`、四层输入目录、`workload.localDir`、`run.platforms`、平台 `hostRef`、`software.flinkPyflinkImages` 以及 `bridge` 配置。默认还会检查 `bridge.tokenEnvVar` 指向的环境变量是否存在，并拒绝明显占位 token；只验证桥接前流程时可加 `--skip-bridge-token`。
+
+真实一键流程示例：
+
+```bash
+export PYFRAMEWORK_BRIDGE_TOKEN=<real-github-or-gitcode-token>
+PYTHONPATH=pipelines python3 -m pyframework_pipeline run projects/pyflink-tpch-reference/project.yaml --yes
+```
+
+`run` 会按 Step 3→7 串起环境部署、workload 上传、benchmark、远程采集、本地解析、回填和 issue 发布。常用控制参数：
+
+```bash
+# 指定运行目录
+PYTHONPATH=pipelines python3 -m pyframework_pipeline run projects/pyflink-tpch-reference/project.yaml --run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e --yes
+
+# 从失败步骤恢复，例如重新从采集阶段开始
+PYTHONPATH=pipelines python3 -m pyframework_pipeline run projects/pyflink-tpch-reference/project.yaml --run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e --resume-from 5b --yes
+
+# 只跑到某一步之前，用于本地预检
+PYTHONPATH=pipelines python3 -m pyframework_pipeline run projects/pyflink-tpch-reference/project.yaml --stop-before 3
+```
+
+如果 `--stop-before 7` 或更早，本次运行不会进入 Issue 桥接，因此 `run` 不要求 `PYFRAMEWORK_BRIDGE_TOKEN`。完整运行到 Step 7 时仍必须提供 token。
+
+也可以逐阶段执行：
+
+```bash
+# Step 3: 环境
+PYTHONPATH=pipelines python3 -m pyframework_pipeline environment plan projects/pyflink-tpch-reference/project.yaml --platform arm --output projects/pyflink-tpch-reference/runs/arm-env
+PYTHONPATH=pipelines python3 -m pyframework_pipeline environment deploy projects/pyflink-tpch-reference/project.yaml --platform arm --plan projects/pyflink-tpch-reference/runs/arm-env/environment-plan.json --yes
+PYTHONPATH=pipelines python3 -m pyframework_pipeline environment validate projects/pyflink-tpch-reference/runs/arm-env
+
+# Step 4-5: workload、benchmark、远程采集和本地解析
+PYTHONPATH=pipelines python3 -m pyframework_pipeline workload deploy projects/pyflink-tpch-reference/project.yaml --platform arm
+PYTHONPATH=pipelines python3 -m pyframework_pipeline benchmark run projects/pyflink-tpch-reference/project.yaml --platform arm --run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e
+PYTHONPATH=pipelines python3 -m pyframework_pipeline collect run projects/pyflink-tpch-reference/project.yaml --platform arm --run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e
+PYTHONPATH=pipelines python3 -m pyframework_pipeline acquire all projects/pyflink-tpch-reference/project.yaml --platform arm --run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e/arm
+
+# Step 6-7: 回填和 Issue 桥接
+PYTHONPATH=pipelines python3 -m pyframework_pipeline backfill run projects/pyflink-tpch-reference/project.yaml --arm-run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e/arm --x86-run-dir projects/pyflink-tpch-reference/runs/2026-04-20-e2e/x86
+PYTHONPATH=pipelines python3 -m pyframework_pipeline bridge publish projects/pyflink-tpch-reference/project.yaml --dry-run
+PYTHONPATH=pipelines python3 -m pyframework_pipeline bridge fetch projects/pyflink-tpch-reference/project.yaml
+```
+
+环境计划会优先使用 `environment.yaml` 中的 `software.flinkPyflinkImages.<platform>`，例如 arm 使用 `flink-pyflink:2.2.0-py314-arm-final`，x86 使用 `flink-pyflink:2.2.0-py314-x86-final`。`software.flinkImage` 只作为未配置平台专属镜像时的 fallback。
+
+环境部署命令是幂等的：镜像已存在时跳过 `docker pull`；容器已存在且镜像匹配时复用/启动；容器已存在但镜像不匹配时删除并按当前配置重建。
 
 ## 前端应用
 

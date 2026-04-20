@@ -8,12 +8,15 @@
 
 1. 在项目目录准备 `project.yaml`。
 2. 在项目目录准备 `environment.yaml`。
-3. 运行环境计划生成命令。
-4. 审查生成的 `environment-plan.json`。
-5. 在目标机器上执行计划中的命令。
-6. 把执行日志和环境事实回填到 `runs/<run-id>/`。
-7. 运行环境记录校验。
-8. readiness 通过后，才进入用例和采集阶段。
+3. 运行 `config validate`，确认配置完整。
+4. 运行环境计划生成命令。
+5. 审查生成的 `environment-plan.json`。
+6. 在目标机器上执行计划中的命令。
+7. 把执行日志和环境事实回填到 `runs/<run-id>/`。
+8. 运行环境记录校验。
+9. readiness 通过后，才进入用例和采集阶段。
+
+`config validate` 是真实端到端流程的门禁。没有 `project.yaml`、`environment.yaml` 或必要字段时，不应进入 SSH、Docker 或 benchmark 阶段。
 
 ## 3. 目录约定
 
@@ -36,16 +39,34 @@ projects/<project>/
 
 ## 4. 当前阶段命令形态
 
-后续 CLI 应提供：
+当前 CLI 提供：
 
 ```bash
-PYTHONPATH=pipelines python3 -m pyframework_pipeline environment plan projects/pyflink-tpch-reference/project.yaml
+PYTHONPATH=pipelines python3 -m pyframework_pipeline config validate projects/pyflink-tpch-reference/project.yaml --skip-bridge-token
+PYTHONPATH=pipelines python3 -m pyframework_pipeline environment plan projects/pyflink-tpch-reference/project.yaml --platform arm --output projects/pyflink-tpch-reference/runs/2026-04-15-arm-env
 PYTHONPATH=pipelines python3 -m pyframework_pipeline environment validate projects/pyflink-tpch-reference/runs/2026-04-15-arm-env
 ```
 
-第一条命令只生成计划，不连接远程机器。
+第一条命令只做本地配置校验，不连接远程机器。它检查：
 
-第二条命令校验人工回填的执行记录和 readiness 报告。
+- `project.yaml` 存在并包含 `id`、`fourLayerRoot`、`workload.localDir`、`run.platforms` 和 `bridge` 配置。
+- `environment.yaml` 存在。
+- `run.platforms` 中的平台都存在于 `environment.yaml`。
+- 平台引用的 `hostRef` 都存在。
+- `software.flinkPyflinkImages` 为每个平台提供镜像。
+- 四层输入通过跨引用校验。
+
+完整跑到 Issue 桥接时，还必须从 `bridge.tokenEnvVar` 指向的环境变量获取真实 API token；`fake-token`、`dummy-token` 这类占位值不能通过配置门禁。只验证桥接前流程时使用 `--skip-bridge-token`。
+
+第二条命令只生成计划，不连接远程机器。计划中的容器镜像优先来自 `software.flinkPyflinkImages.<platform>`；`software.flinkImage` 只是 fallback。
+
+生成的部署步骤按当前配置收敛远程 Docker 状态：
+
+- 镜像已存在：跳过 `docker pull`。
+- 容器已存在且镜像匹配：复用运行中容器，或启动已停止容器。
+- 容器已存在但镜像不匹配：删除旧容器并用配置中的镜像重建。
+
+第三条命令校验人工回填的执行记录和 readiness 报告。
 
 ## 5. 手工执行要求
 

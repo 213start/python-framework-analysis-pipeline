@@ -47,6 +47,56 @@ _RE_SINGLE = re.compile(
 # Sub-section heading ### or ####
 _RE_HEADING = re.compile(r"^(#{2,4})\s+(.+)", re.MULTILINE)
 
+_RE_REVIEW_BLOCKED = re.compile(
+    r"\b("
+    r"not\s+approved|cannot\s+approve|can't\s+approve|do\s+not\s+approve|"
+    r"needs?\s+revisions?|needs?\s+changes?|request\s+changes?|"
+    r"changes?\s+requested|major\s+revisions?|blockers?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_RE_REVIEW_APPROVED = re.compile(
+    r"\b("
+    r"approved|approve\s+with\s+minor\s+revisions?|"
+    r"approved\s+with\s+minor\s+revisions?|lgtm"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_REVIEW_BLOCKED_TERMS = (
+    "未通过",
+    "不通过",
+    "不能通过",
+    "无法通过",
+    "不予通过",
+    "需要修改",
+    "需要修订",
+    "请求修改",
+    "请修改",
+    "阻塞",
+)
+
+_REVIEW_APPROVED_TERMS = (
+    "审核通过",
+    "评审通过",
+    "review通过",
+    "结论通过",
+    "可以回填",
+    "可回填",
+    "可以接受",
+    "可接受",
+    "结论可接受",
+    "同意发布",
+    "同意回填",
+    "允许回填",
+)
+
+_REVIEW_APPROVED_LINE = re.compile(
+    r"^\s*(通过|批准|同意)\s*[。.!！]?\s*$",
+    re.MULTILINE,
+)
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -68,6 +118,38 @@ def find_analysis_comment(comments: list[dict[str, Any]]) -> ParsedAnalysis | No
             matched_body = body
 
     if matched_body is None:
+        return None
+    return parse_comment_body(matched_body)
+
+
+def find_approved_analysis_comment(
+    comments: list[dict[str, Any]],
+) -> ParsedAnalysis | None:
+    """Find the latest analysis comment only if later review approves it.
+
+    Review comments before the latest analysis are ignored. Later decisive
+    review comments override earlier ones, so an approval followed by a change
+    request does not pass the gate.
+    """
+
+    matched_index: int | None = None
+    matched_body: str | None = None
+    for index, comment in enumerate(comments):
+        body = comment.get("body", "")
+        if body and _is_analysis_body(body):
+            matched_index = index
+            matched_body = body
+
+    if matched_index is None or matched_body is None:
+        return None
+
+    review_state: str | None = None
+    for comment in comments[matched_index + 1:]:
+        state = _review_state(comment.get("body", ""))
+        if state is not None:
+            review_state = state
+
+    if review_state != "approved":
         return None
     return parse_comment_body(matched_body)
 
@@ -155,6 +237,30 @@ def parse_comment_body(body: str) -> ParsedAnalysis | None:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _is_analysis_body(body: str) -> bool:
+    return bool(_RE_CROSS.search(body) or _RE_SINGLE.search(body))
+
+
+def _review_state(body: str) -> str | None:
+    """Return the decisive review state for one comment, if present."""
+
+    if not body:
+        return None
+
+    normalized = body.lower()
+    if _RE_REVIEW_BLOCKED.search(normalized) or any(
+        term in body for term in _REVIEW_BLOCKED_TERMS
+    ):
+        return "blocked"
+    if _RE_REVIEW_APPROVED.search(normalized) or any(
+        term in body for term in _REVIEW_APPROVED_TERMS
+    ):
+        return "approved"
+    if _REVIEW_APPROVED_LINE.search(body):
+        return "approved"
+    return None
+
 
 def _first_contiguous_table(text: str) -> str:
     """Return the first contiguous Markdown table block from *text*.

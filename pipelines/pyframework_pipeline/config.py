@@ -97,3 +97,154 @@ def load_environment_config(project_path: Path) -> dict[str, Any]:
         raise FileNotFoundError(f"environment.yaml not found at {env_path}")
     from .environment.parser import load_environment_yaml
     return load_environment_yaml(env_path)
+
+
+def validate_pipeline_config(
+    project_path: Path,
+    *,
+    require_bridge_token: bool = True,
+) -> dict[str, Any]:
+    """Validate project configuration before any remote pipeline work starts."""
+
+    issues: list[dict[str, str]] = []
+
+    def add(path: str, message: str) -> None:
+        issues.append({"path": path, "message": message})
+
+    project_id = ""
+    project_config: dict[str, Any] = {}
+    if not project_path.exists():
+        add("project.yaml", f"project.yaml not found: {project_path}")
+    elif project_path.name != "project.yaml":
+        add("project.yaml", f"expected project.yaml, got {project_path.name}")
+    else:
+        try:
+            project_config = load_project_config(project_path)
+            project_id = str(project_config.get("id", ""))
+            if not project_id:
+                add("project.id", "project.yaml missing id")
+        except Exception as exc:
+            add("project.yaml", f"failed to parse project.yaml: {exc}")
+
+    root: Path | None = None
+    if project_config:
+        root_value = project_config.get("fourLayerRoot")
+        if not root_value:
+            add("fourLayerRoot", "project.yaml missing fourLayerRoot")
+        else:
+            root = (project_path.parent / str(root_value)).resolve()
+            if not root.exists():
+                add("fourLayerRoot", f"fourLayerRoot does not exist: {root}")
+            else:
+                from .validators.four_layer import validate_four_layer_project
+                report = validate_four_layer_project(project_path)
+                if report.status != "ok":
+                    add(
+                        "fourLayerRoot",
+                        f"four-layer validation failed with {report.error_count} errors",
+                    )
+
+    env_path = project_path.parent / "environment.yaml"
+    env_config: dict[str, Any] = {}
+    if not env_path.exists():
+        add("environment.yaml", f"environment.yaml not found at {env_path}")
+    else:
+        try:
+            from .environment.parser import load_environment_yaml
+            env_config = load_environment_yaml(env_path)
+        except Exception as exc:
+            add("environment.yaml", f"failed to parse environment.yaml: {exc}")
+
+    workload = project_config.get("workload", {}) if project_config else {}
+    local_dir = workload.get("localDir") if isinstance(workload, dict) else None
+    if not local_dir:
+        add("workload.localDir", "project.yaml missing workload.localDir")
+    else:
+        workload_path = (project_path.parent / str(local_dir)).resolve()
+        if not workload_path.exists():
+            add("workload.localDir", f"workload.localDir does not exist: {workload_path}")
+
+    run = project_config.get("run", {}) if project_config else {}
+    platforms = run.get("platforms", []) if isinstance(run, dict) else []
+    if not platforms:
+        add("run.platforms", "project.yaml missing run.platforms")
+
+    if env_config:
+        env_platforms = {
+            str(p.get("id")): p for p in env_config.get("platforms", [])
+        }
+        host_refs = env_config.get("hostRefs", {})
+        for platform in platforms:
+            platform_id = str(platform)
+            platform_config = env_platforms.get(platform_id)
+            if platform_config is None:
+                add(
+                    f"run.platforms.{platform_id}",
+                    f"platform {platform_id} not found in environment.yaml",
+                )
+                continue
+            for host_entry in platform_config.get("hosts", []):
+                host_ref = host_entry.get("hostRef")
+                if host_ref not in host_refs:
+                    add(
+                        f"environment.platforms.{platform_id}.hosts",
+                        f"hostRef {host_ref} not found in environment.yaml hostRefs",
+                    )
+
+        software = env_config.get("software", {})
+        pyflink_images = software.get("flinkPyflinkImages", {})
+        if not pyflink_images:
+            add(
+                "software.flinkPyflinkImages",
+                "environment.yaml missing software.flinkPyflinkImages",
+            )
+        else:
+            for platform in platforms:
+                if str(platform) not in pyflink_images:
+                    add(
+                        f"software.flinkPyflinkImages.{platform}",
+                        f"missing PyFlink image for platform {platform}",
+                    )
+
+    bridge = project_config.get("bridge", {}) if project_config else {}
+    if not isinstance(bridge, dict) or not bridge.get("repo"):
+        add("bridge.repo", "project.yaml missing bridge.repo")
+    if not isinstance(bridge, dict) or not bridge.get("platform"):
+        add("bridge.platform", "project.yaml missing bridge.platform")
+    if require_bridge_token:
+        token_env = bridge.get("tokenEnvVar", "PYFRAMEWORK_BRIDGE_TOKEN") if isinstance(bridge, dict) else "PYFRAMEWORK_BRIDGE_TOKEN"
+        token = os.environ.get(str(token_env), "")
+        if not token:
+            add("bridge.token", f"Bridge token not set: export {token_env}=<your-api-token>")
+        elif _is_placeholder_token(token):
+            add("bridge.token", f"Bridge token in {token_env} looks like a placeholder")
+
+    return {
+        "status": "ok" if not issues else "error",
+        "projectId": project_id,
+        "project": str(project_path),
+        "fourLayerRoot": str(root) if root else "",
+        "issueCount": len(issues),
+        "issues": issues,
+    }
+
+
+def _is_placeholder_token(token: str) -> bool:
+    normalized = token.strip().lower()
+    if not normalized:
+        return True
+    placeholders = {
+        "fake",
+        "fake-token",
+        "dummy",
+        "dummy-token",
+        "test",
+        "test-token",
+        "token",
+        "your-api-token",
+        "<your-api-token>",
+        "changeme",
+        "change-me",
+        "placeholder",
+    }
+    return normalized in placeholders or normalized.startswith("fake-")

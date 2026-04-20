@@ -3,7 +3,7 @@ name: PyFlink TPC-H Reference
 fourLayerRoot: ../../examples/four-layer/pyflink-reference
 
 workload:
-  localDir: workload/tpch/pyflink
+  localDir: ../../workload/tpch/pyflink
   build: prebuilt
   queries:
     - q01

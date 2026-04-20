@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .comment_parser import ParsedAnalysis, find_analysis_comment
+from .comment_parser import ParsedAnalysis, find_approved_analysis_comment
 from .issue_client import IssueClient, create_client
 from .issue_template import build_asm_diff_issue, check_chunking
 from .manifest import BridgeIssueEntry, BridgeManifest, load_bridge_manifest
@@ -336,9 +336,12 @@ def fetch(
         fetched += 1
         entry.status = "analysed"
 
-        parsed_result = find_analysis_comment(comments)
+        parsed_result = find_approved_analysis_comment(comments)
         if parsed_result is None:
-            logger.info("No analysis comment on #%s yet", entry.issue_number)
+            logger.info(
+                "No approved analysis comment on #%s yet",
+                entry.issue_number,
+            )
             continue
 
         func = func_map.get(entry.function_id)
