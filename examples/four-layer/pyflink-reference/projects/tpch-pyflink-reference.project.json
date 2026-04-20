@@ -8,69 +8,26 @@
     {
       "caseId": "tpch-q01-pyflink",
       "legacyCaseId": "q01",
-      "sourceFileIds": [
-        "srcfile_obmalloc",
-        "srcfile_row_adapter",
-        "srcfile_dictobject"
-      ],
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_alloc_slowpath",
-        "anchor_row_adapter_wrap",
-        "anchor_row_adapter_writeback",
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
       "primaryArtifactIds": [
         "sql_q01",
         "pyflink_q01"
-      ],
-      "notes": "Q1 主要绑定对象分配、行包装与字典探测路径。"
+      ]
     },
     {
       "caseId": "tpch-q06-pyflink",
       "legacyCaseId": "q06",
-      "sourceFileIds": [
-        "srcfile_ceval",
-        "srcfile_row_adapter",
-        "srcfile_wrapper_dispatch",
-        "srcfile_kernel_wait"
-      ],
-      "sourceAnchorIds": [
-        "anchor_opcode_dispatch",
-        "anchor_row_adapter_wrap",
-        "anchor_wrapper_dispatch",
-        "anchor_wrapper_error_guard",
-        "anchor_wait_enqueue",
-        "anchor_wait_retry"
-      ],
       "primaryArtifactIds": [
         "sql_q06",
         "pyflink_q06"
-      ],
-      "notes": "Q6 主要绑定解释器分派、包装层调用与等待重试路径。"
+      ]
     },
     {
       "caseId": "tpch-q12-pyflink",
       "legacyCaseId": "q12",
-      "sourceFileIds": [
-        "srcfile_obmalloc",
-        "srcfile_ceval",
-        "srcfile_wrapper_dispatch",
-        "srcfile_dictobject"
-      ],
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_opcode_dispatch",
-        "anchor_wrapper_dispatch",
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
       "primaryArtifactIds": [
         "sql_q12",
         "pyflink_q12"
-      ],
-      "notes": "Q12 绑定内存、解释器分派与对象模型三条热点路径。"
+      ]
     }
   ],
   "functionBindings": [
@@ -81,9 +38,11 @@
         "anchor_alloc_slowpath"
       ],
       "armArtifactIds": [
+        "asm_arm64_59ad9455",
         "asm_arm_func_001"
       ],
       "x86ArtifactIds": [
+        "asm_x86_64_59ad9455",
         "asm_x86_func_001"
       ],
       "notes": "对象分配快路径与慢路径回退。"
@@ -94,9 +53,11 @@
         "anchor_opcode_dispatch"
       ],
       "armArtifactIds": [
+        "asm_arm64_a8fe4a73",
         "asm_arm_func_002"
       ],
       "x86ArtifactIds": [
+        "asm_x86_64_a8fe4a73",
         "asm_x86_func_002"
       ],
       "notes": "解释器 dispatch 准备与 opcode 读取。"
@@ -150,12 +111,101 @@
         "anchor_dict_lookup_miss"
       ],
       "armArtifactIds": [
+        "asm_arm64_24048964",
         "asm_arm_func_006"
       ],
       "x86ArtifactIds": [
+        "asm_x86_64_24048964",
         "asm_x86_func_006"
       ],
       "notes": "对象模型中的字典探测路径。"
+    },
+    {
+      "functionId": "func_20adef2c"
+    },
+    {
+      "functionId": "func_6eb7d298"
+    },
+    {
+      "functionId": "func_5a7b6172"
+    },
+    {
+      "functionId": "func_2006bd89"
+    },
+    {
+      "functionId": "func_2c27c597"
+    },
+    {
+      "functionId": "func_5f6a3a1d"
+    },
+    {
+      "functionId": "func_8d518bff"
+    },
+    {
+      "functionId": "func_20f19630"
+    },
+    {
+      "functionId": "func_4d826596"
+    },
+    {
+      "functionId": "func_95ab81b0"
+    },
+    {
+      "functionId": "func_37f4e6da"
+    },
+    {
+      "functionId": "func_55cb5b04"
+    },
+    {
+      "functionId": "func_9a3c64dc"
+    },
+    {
+      "functionId": "func_72d4bd12"
+    },
+    {
+      "functionId": "func_9382568d"
+    },
+    {
+      "functionId": "func_adca762f"
+    },
+    {
+      "functionId": "func_684f5e96"
+    },
+    {
+      "functionId": "func_5bb359c8"
+    },
+    {
+      "functionId": "func_be2d59c7"
+    },
+    {
+      "functionId": "func_11e371a4"
+    },
+    {
+      "functionId": "func_4f686adb"
+    },
+    {
+      "functionId": "func_c38a9b3d"
+    },
+    {
+      "functionId": "func_17c8a931"
+    },
+    {
+      "functionId": "func_5a24914c"
+    },
+    {
+      "functionId": "func_a5a29186"
+    },
+    {
+      "functionId": "func_ec667127"
+    },
+    {
+      "functionId": "func_8bf7f8cb"
+    },
+    {
+      "functionId": "func_b78d65eb"
+    },
+    {
+      "functionId": "func_2631aa03"
     }
   ],
   "patternBindings": [

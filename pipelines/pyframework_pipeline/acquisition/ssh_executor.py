@@ -67,6 +67,34 @@ class SshExecutor:
         result = subprocess.run(args, capture_output=True, text=True, check=False)
         return result.returncode == 0
 
+    def push_file(self, local_path: Path, remote_path: str) -> bool:
+        """Upload a file to the remote host via scp."""
+        target = f"{self.user}@{self.host}" if self.user else self.host
+        args = ["scp"]
+        if self.port != 22:
+            args.extend(["-P", str(self.port)])
+        if self.key:
+            args.extend(["-i", str(self.key)])
+        args.extend(["-o", "StrictHostKeyChecking=no"])
+        args.append(str(local_path))
+        args.append(f"{target}:{remote_path}")
+        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        return result.returncode == 0
+
+    def push_dir(self, local_dir: Path, remote_dir: str) -> bool:
+        """Upload a directory to the remote host via scp -r."""
+        target = f"{self.user}@{self.host}" if self.user else self.host
+        args = ["scp", "-r"]
+        if self.port != 22:
+            args.extend(["-P", str(self.port)])
+        if self.key:
+            args.extend(["-i", str(self.key)])
+        args.extend(["-o", "StrictHostKeyChecking=no"])
+        args.append(str(local_dir))
+        args.append(f"{target}:{remote_dir}")
+        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        return result.returncode == 0
+
     def docker_exec(self, container: str, command: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:
         """Execute a command inside a Docker container on the remote host."""
         return self.run(f"docker exec {container} {command}", timeout=timeout)

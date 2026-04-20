@@ -179,9 +179,9 @@ def publish(
             content = _read_asm_content(source_data, aid)
             if content is None:
                 continue
-            if "_arm_" in aid:
+            if "_arm_" in aid or aid.startswith("asm_arm64_"):
                 arm_asm = content
-            elif "_x86_" in aid:
+            elif "_x86_" in aid or aid.startswith("asm_x86_64_"):
                 x86_asm = content
 
         if arm_asm is None and x86_asm is None:

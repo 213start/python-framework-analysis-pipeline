@@ -616,7 +616,7 @@ def _estimate_total_ms(
     total_ms = 0.0
     for case in dataset.get("cases", []):
         metrics = case.get("metrics", {})
-        demo = metrics.get("demo", {})
+        demo = metrics.get("demo") or {}
         time_str = demo.get(platform, "")
         if time_str:
             total_ms += _parse_time_to_ms(time_str)

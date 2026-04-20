@@ -7,12 +7,10 @@ from .validators.four_layer import validate_four_layer_project
 
 
 def _schemas_dir() -> Path:
-    """Resolve the schemas/ directory relative to this package."""
     return Path(__file__).resolve().parent.parent.parent / "schemas"
 
 
 def _load_adapter(framework: str):
-    """Load the environment adapter for a given framework."""
     if framework == "pyflink":
         from .adapters.pyflink.environment import PyFlinkEnvironmentAdapter
         return PyFlinkEnvironmentAdapter()
@@ -27,184 +25,220 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # validate
-    validate_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "validate",
         help="校验四层输入目录或 project.yaml。",
-    )
-    validate_parser.add_argument("path", help="四层输入目录或 project.yaml 路径")
+    ).add_argument("path", help="四层输入目录或 project.yaml 路径")
 
-    # environment
+    # run (one-click)
+    run_p = subparsers.add_parser(
+        "run",
+        help="[S3→S7] 一键全流程（可断点续跑）。",
+    )
+    run_p.add_argument("project", help="project.yaml 路径")
+    run_p.add_argument("--run-dir", help="运行输出目录")
+    run_p.add_argument("--resume-from", help="从指定步骤恢复（如 5a）")
+    run_p.add_argument("--stop-before", help="在指定步骤前停止")
+    run_p.add_argument("--force", action="store_true", help="清空状态重新跑")
+    run_p.add_argument("--yes", action="store_true", help="跳过确认提示")
+
+    # environment [Step 3]
     env_parser = subparsers.add_parser(
         "environment",
-        help="环境搭建相关命令。",
+        help="[Step 3] 环境搭建。",
     )
     env_sub = env_parser.add_subparsers(dest="env_command", required=True)
 
     # environment plan
     plan_parser = env_sub.add_parser(
         "plan",
-        help="生成环境搭建计划（plan-only，不执行远程命令）。",
+        help="[S3] 生成环境搭建计划（plan-only，不执行）。",
     )
-    plan_parser.add_argument(
-        "project",
-        help="project.yaml 路径",
+    plan_parser.add_argument("project", help="project.yaml 路径")
+    plan_parser.add_argument("--platform", required=True, help="目标平台 ID")
+    plan_parser.add_argument("--output", help="输出目录")
+
+    # environment deploy
+    deploy_parser = env_sub.add_parser(
+        "deploy",
+        help="[S3] SSH 执行环境部署计划。",
     )
-    plan_parser.add_argument(
-        "--platform",
-        required=True,
-        help="目标平台 ID，例如 arm、x86",
+    deploy_parser.add_argument("project", help="project.yaml 路径")
+    deploy_parser.add_argument("--platform", required=True, help="目标平台 ID")
+    deploy_parser.add_argument("--plan", help="已有的 environment-plan.json 路径")
+    deploy_parser.add_argument("--yes", action="store_true", help="跳过确认提示")
+
+    # environment teardown
+    teardown_parser = env_sub.add_parser(
+        "teardown",
+        help="[S3] 销毁远程集群。",
     )
-    plan_parser.add_argument(
-        "--output",
-        help="输出目录（默认打印到 stdout）",
-    )
+    teardown_parser.add_argument("project", help="project.yaml 路径")
+    teardown_parser.add_argument("--platform", required=True, help="目标平台 ID")
+    teardown_parser.add_argument("--yes", action="store_true", help="跳过确认提示")
 
     # environment validate
     env_validate_parser = env_sub.add_parser(
         "validate",
-        help="校验环境记录和 readiness 报告。",
+        help="[S3] 校验环境记录和 readiness 报告。",
     )
-    env_validate_parser.add_argument(
-        "run_dir",
-        help="包含 environment-plan.json / environment-record.json / readiness-report.json 的运行目录",
-    )
+    env_validate_parser.add_argument("run_dir", help="运行目录")
 
-    # acquire
+    # workload [Step 4]
+    workload_parser = subparsers.add_parser(
+        "workload",
+        help="[Step 4] Workload 部署。",
+    )
+    workload_sub = workload_parser.add_subparsers(dest="workload_command", required=True)
+
+    workload_deploy = workload_sub.add_parser(
+        "deploy",
+        help="[S4] 上传 workload 并分发到容器。",
+    )
+    workload_deploy.add_argument("project", help="project.yaml 路径")
+    workload_deploy.add_argument("--platform", required=True, help="目标平台 ID")
+
+    # benchmark [Step 5a]
+    bench_parser = subparsers.add_parser(
+        "benchmark",
+        help="[Step 5a] 基准测试执行。",
+    )
+    bench_sub = bench_parser.add_subparsers(dest="bench_command", required=True)
+
+    bench_run = bench_sub.add_parser(
+        "run",
+        help="[S5a] SSH 执行 benchmark + 容器内 perf 采集。",
+    )
+    bench_run.add_argument("project", help="project.yaml 路径")
+    bench_run.add_argument("--platform", required=True, help="目标平台 ID")
+    bench_run.add_argument("--run-dir", help="运行输出目录")
+
+    # collect [Step 5b]
+    collect_parser = subparsers.add_parser(
+        "collect",
+        help="[Step 5b] 远程数据采集。",
+    )
+    collect_sub = collect_parser.add_subparsers(dest="collect_command", required=True)
+
+    collect_run = collect_sub.add_parser(
+        "run",
+        help="[S5b] 从远程容器拉取 perf/asm/logs。",
+    )
+    collect_run.add_argument("project", help="project.yaml 路径")
+    collect_run.add_argument("--platform", required=True, help="目标平台 ID")
+    collect_run.add_argument("--run-dir", required=True, help="本地运行输出目录")
+
+    # acquire [Step 5c]
     acquire_parser = subparsers.add_parser(
         "acquire",
-        help="数据采集相关命令。",
+        help="[Step 5c] 数据解析（本地）。",
     )
     acquire_sub = acquire_parser.add_subparsers(dest="acquire_command", required=True)
 
-    # bridge
-    bridge_parser = subparsers.add_parser(
-        "bridge",
-        help="差异分析 Issue 桥接相关命令。",
+    acq_timing = acquire_sub.add_parser(
+        "timing",
+        help="[S5c] 采集用例数据（框架开销计时）。",
     )
-    bridge_sub = bridge_parser.add_subparsers(
-        dest="bridge_command", required=True,
-    )
+    acq_timing.add_argument("project", help="project.yaml 路径")
+    acq_timing.add_argument("--platform", required=True)
+    acq_timing.add_argument("--run-dir", required=True)
+    acq_timing.add_argument("--stdout-file", action="append", dest="stdout_files")
 
-    # bridge publish
-    br_pub = bridge_sub.add_parser(
-        "publish",
-        help="发布分析 Issue（每函数一个）。",
+    acq_perf = acquire_sub.add_parser(
+        "perf",
+        help="[S5c] 采集性能分析数据（perf profile）。",
     )
-    br_pub.add_argument("project", help="project.yaml 路径")
-    br_pub.add_argument("--repo", required=True, help="owner/repo")
-    br_pub.add_argument(
-        "--platform", required=True, choices=["github", "gitcode"],
-        help="目标平台",
-    )
-    br_pub.add_argument("--token", required=True, help="API token")
-    br_pub.add_argument("--dry-run", action="store_true", help="只生成不发布")
-    br_pub.add_argument("--max-lines", type=int, default=2000, help="最大汇编行数")
-    br_pub.add_argument("--base-url", help="覆盖默认 API base URL")
+    acq_perf.add_argument("project", help="project.yaml 路径")
+    acq_perf.add_argument("--platform", required=True)
+    acq_perf.add_argument("--run-dir", required=True)
+    acq_perf.add_argument("--perf-data")
+    acq_perf.add_argument("--kits-dir")
+    acq_perf.add_argument("--top-n", type=int, default=50)
 
-    # bridge fetch
-    br_fetch = bridge_sub.add_parser(
-        "fetch",
-        help="拉取分析评论并回填 Dataset。",
+    acq_asm = acquire_sub.add_parser(
+        "asm",
+        help="[S5c] 采集机器码（反汇编）。",
     )
-    br_fetch.add_argument("project", help="project.yaml 路径")
-    br_fetch.add_argument("--repo", required=True, help="owner/repo")
-    br_fetch.add_argument(
-        "--platform", required=True, choices=["github", "gitcode"],
-        help="目标平台",
-    )
-    br_fetch.add_argument("--token", required=True, help="API token")
-    br_fetch.add_argument("--base-url", help="覆盖默认 API base URL")
+    acq_asm.add_argument("project", help="project.yaml 路径")
+    acq_asm.add_argument("--platform", required=True)
+    acq_asm.add_argument("--run-dir", required=True)
+    acq_asm.add_argument("--perf-data")
+    acq_asm.add_argument("--kits-dir")
+    acq_asm.add_argument("--binary", action="append", dest="binaries")
+    acq_asm.add_argument("--top-n", type=int, default=20)
 
-    # bridge status
-    br_status = bridge_sub.add_parser(
-        "status",
-        help="查看桥接状态。",
-    )
-    br_status.add_argument("project", help="project.yaml 路径")
+    acquire_sub.add_parser(
+        "validate",
+        help="[S5c] 校验采集清单完整性。",
+    ).add_argument("run_dir")
 
-    # backfill
+    acq_all = acquire_sub.add_parser(
+        "all",
+        help="[S5c] 执行全部采集子步骤。",
+    )
+    acq_all.add_argument("project", help="project.yaml 路径")
+    acq_all.add_argument("--platform", required=True)
+    acq_all.add_argument("--run-dir", required=True)
+    acq_all.add_argument("--perf-data")
+    acq_all.add_argument("--kits-dir")
+    acq_all.add_argument("--binary", action="append", dest="binaries")
+    acq_all.add_argument("--stdout-file", action="append", dest="stdout_files")
+    acq_all.add_argument("--top-n", type=int, default=50)
+
+    # backfill [Step 6]
     backfill_parser = subparsers.add_parser(
         "backfill",
-        help="数据回填相关命令。",
+        help="[Step 6] 数据回填。",
     )
     backfill_sub = backfill_parser.add_subparsers(dest="backfill_command", required=True)
 
-    # backfill run
     bf_run = backfill_sub.add_parser(
         "run",
-        help="执行数据回填（timing + perf + asm → 四层模型）。",
+        help="[S6] 执行数据回填。",
     )
     bf_run.add_argument("project", help="project.yaml 路径")
-    bf_run.add_argument("--arm-run-dir", required=True, help="ARM 平台运行目录")
-    bf_run.add_argument("--x86-run-dir", required=True, help="x86 平台运行目录")
-    bf_run.add_argument("--output", help="输出目录（默认就地更新）")
+    bf_run.add_argument("--arm-run-dir", required=True)
+    bf_run.add_argument("--x86-run-dir", required=True)
+    bf_run.add_argument("--output")
 
-    # backfill status
-    bf_status = backfill_sub.add_parser(
+    backfill_sub.add_parser(
         "status",
-        help="查看回填状态。",
-    )
-    bf_status.add_argument("project", help="project.yaml 路径")
+        help="[S6] 查看回填状态。",
+    ).add_argument("project")
 
-    # acquire timing
-    acq_timing = acquire_sub.add_parser(
-        "timing",
-        help="采集用例数据（框架开销计时）。",
+    # bridge [Step 7]
+    bridge_parser = subparsers.add_parser(
+        "bridge",
+        help="[Step 7] 差异分析 Issue 桥接。",
     )
-    acq_timing.add_argument("project", help="project.yaml 路径")
-    acq_timing.add_argument("--platform", required=True, help="目标平台 ID")
-    acq_timing.add_argument("--run-dir", required=True, help="运行输出目录")
-    acq_timing.add_argument("--stdout-file", action="append", dest="stdout_files",
-                            help="TM stdout 日志文件路径（可多次指定）")
+    bridge_sub = bridge_parser.add_subparsers(dest="bridge_command", required=True)
 
-    # acquire perf
-    acq_perf = acquire_sub.add_parser(
-        "perf",
-        help="采集性能分析数据（perf profile）。",
+    br_pub = bridge_sub.add_parser(
+        "publish",
+        help="[S7] 发布分析 Issue。",
     )
-    acq_perf.add_argument("project", help="project.yaml 路径")
-    acq_perf.add_argument("--platform", required=True, help="目标平台 ID")
-    acq_perf.add_argument("--run-dir", required=True, help="运行输出目录")
-    acq_perf.add_argument("--perf-data", help="perf.data 文件路径")
-    acq_perf.add_argument("--kits-dir", help="python-performance-kits 目录路径")
-    acq_perf.add_argument("--top-n", type=int, default=50, help="热点数量")
+    br_pub.add_argument("project", help="project.yaml 路径")
+    br_pub.add_argument("--repo", help="覆盖 project.yaml 中的 bridge.repo")
+    br_pub.add_argument("--platform", choices=["github", "gitcode"], help="覆盖 bridge.platform")
+    br_pub.add_argument("--token", help="覆盖环境变量中的 token")
+    br_pub.add_argument("--dry-run", action="store_true")
+    br_pub.add_argument("--max-lines", type=int, default=2000)
+    br_pub.add_argument("--base-url")
 
-    # acquire asm
-    acq_asm = acquire_sub.add_parser(
-        "asm",
-        help="采集机器码（反汇编）。",
+    br_fetch = bridge_sub.add_parser(
+        "fetch",
+        help="[S7] 拉取分析评论并回填 Dataset。",
     )
-    acq_asm.add_argument("project", help="project.yaml 路径")
-    acq_asm.add_argument("--platform", required=True, help="目标平台 ID")
-    acq_asm.add_argument("--run-dir", required=True, help="运行输出目录")
-    acq_asm.add_argument("--perf-data", help="perf.data 文件路径")
-    acq_asm.add_argument("--kits-dir", help="python-performance-kits 目录路径")
-    acq_asm.add_argument("--binary", action="append", dest="binaries",
-                         help="要 objdump 的二进制文件路径（可多次指定）")
-    acq_asm.add_argument("--top-n", type=int, default=20, help="热点数量")
+    br_fetch.add_argument("project", help="project.yaml 路径")
+    br_fetch.add_argument("--repo", help="覆盖 project.yaml 中的 bridge.repo")
+    br_fetch.add_argument("--platform", choices=["github", "gitcode"], help="覆盖 bridge.platform")
+    br_fetch.add_argument("--token", help="覆盖环境变量中的 token")
+    br_fetch.add_argument("--base-url")
 
-    # acquire validate
-    acq_validate = acquire_sub.add_parser(
-        "validate",
-        help="校验采集清单完整性。",
-    )
-    acq_validate.add_argument("run_dir", help="运行输出目录")
-
-    # acquire all
-    acq_all = acquire_sub.add_parser(
-        "all",
-        help="执行全部采集子步骤。",
-    )
-    acq_all.add_argument("project", help="project.yaml 路径")
-    acq_all.add_argument("--platform", required=True, help="目标平台 ID")
-    acq_all.add_argument("--run-dir", required=True, help="运行输出目录")
-    acq_all.add_argument("--perf-data", help="perf.data 文件路径")
-    acq_all.add_argument("--kits-dir", help="python-performance-kits 目录路径")
-    acq_all.add_argument("--binary", action="append", dest="binaries",
-                         help="要 objdump 的二进制文件路径（可多次指定）")
-    acq_all.add_argument("--stdout-file", action="append", dest="stdout_files",
-                         help="TM stdout 日志文件路径")
-    acq_all.add_argument("--top-n", type=int, default=50, help="热点数量")
+    bridge_sub.add_parser(
+        "status",
+        help="[S7] 查看桥接状态。",
+    ).add_argument("project")
 
     return parser
 
@@ -218,8 +252,20 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
         return 0 if report.status == "ok" else 1
 
+    if args.command == "run":
+        return _cmd_run(args)
+
     if args.command == "environment":
         return _handle_environment(args)
+
+    if args.command == "workload":
+        return _handle_workload(args)
+
+    if args.command == "benchmark":
+        return _handle_benchmark(args)
+
+    if args.command == "collect":
+        return _handle_collect(args)
 
     if args.command == "acquire":
         return _handle_acquire(args)
@@ -234,9 +280,52 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+def _cmd_run(args) -> int:
+    from .config import get_run_config, load_project_config
+    from .orchestrator import run_pipeline
+
+    project_path = Path(args.project)
+    config = load_project_config(project_path)
+    run_config = get_run_config(project_path)
+
+    # Resolve run directory.
+    if args.run_dir:
+        run_dir = Path(args.run_dir)
+    else:
+        runs_base = project_path.parent / "runs"
+        run_dir = runs_base / _now_date_str()
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    return run_pipeline(
+        project_path,
+        run_dir,
+        resume_from=args.resume_from,
+        stop_before=args.stop_before,
+        force=args.force,
+        yes=args.yes,
+    )
+
+
+def _now_date_str() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+# ---------------------------------------------------------------------------
+# environment
+# ---------------------------------------------------------------------------
+
 def _handle_environment(args) -> int:
     if args.env_command == "plan":
         return _cmd_env_plan(args)
+    if args.env_command == "deploy":
+        return _cmd_env_deploy(args)
+    if args.env_command == "teardown":
+        return _cmd_env_teardown(args)
     if args.env_command == "validate":
         return _cmd_env_validate(args)
     return 2
@@ -247,11 +336,6 @@ def _cmd_env_plan(args) -> int:
     from .environment.planning import generate_plan
 
     project_path = Path(args.project)
-    if not project_path.exists():
-        print(f"Error: {project_path} not found", file=sys.stderr)
-        return 1
-
-    # Detect framework from environment.yaml
     env_yaml_path = project_path.parent / "environment.yaml"
     if not env_yaml_path.exists():
         print(f"Error: environment.yaml not found at {env_yaml_path}", file=sys.stderr)
@@ -273,7 +357,6 @@ def _cmd_env_plan(args) -> int:
         return 1
 
     plan_json = json.dumps(plan, ensure_ascii=False, indent=2)
-
     if args.output:
         output_dir = Path(args.output)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -281,8 +364,27 @@ def _cmd_env_plan(args) -> int:
         print(f"Plan written to {output_dir / 'environment-plan.json'}")
     else:
         print(plan_json)
-
     return 0
+
+
+def _cmd_env_deploy(args) -> int:
+    from .environment.deploy import deploy_plan
+
+    project_path = Path(args.project)
+    plan_path = Path(args.plan) if args.plan else None
+
+    result = deploy_plan(project_path, args.platform, plan_path, yes=args.yes)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("status") != "failed" else 1
+
+
+def _cmd_env_teardown(args) -> int:
+    from .environment.deploy import teardown
+
+    project_path = Path(args.project)
+    result = teardown(project_path, args.platform, yes=args.yes)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("status") != "failed" else 1
 
 
 def _cmd_env_validate(args) -> int:
@@ -299,6 +401,85 @@ def _cmd_env_validate(args) -> int:
     return 0 if report.status == "ok" else 1
 
 
+# ---------------------------------------------------------------------------
+# workload
+# ---------------------------------------------------------------------------
+
+def _handle_workload(args) -> int:
+    if args.workload_command == "deploy":
+        return _cmd_workload_deploy(args)
+    return 2
+
+
+def _cmd_workload_deploy(args) -> int:
+    from .orchestrator import _run_workload_deploy
+
+    project_path = Path(args.project)
+    try:
+        _run_workload_deploy(project_path, Path("/tmp/run"), args.platform, yes=False)
+        print(json.dumps({"status": "deployed", "platform": args.platform}))
+        return 0
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error": str(exc)}), file=sys.stderr)
+        return 1
+
+
+# ---------------------------------------------------------------------------
+# benchmark
+# ---------------------------------------------------------------------------
+
+def _handle_benchmark(args) -> int:
+    if args.bench_command == "run":
+        return _cmd_benchmark_run(args)
+    return 2
+
+
+def _cmd_benchmark_run(args) -> int:
+    from .orchestrator import _run_benchmark
+    from .config import load_project_config
+
+    project_path = Path(args.project)
+    run_dir = Path(args.run_dir) if args.run_dir else project_path.parent / "runs" / _now_date_str()
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        _run_benchmark(project_path, run_dir, args.platform)
+        print(json.dumps({"status": "completed", "platform": args.platform}))
+        return 0
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error": str(exc)}), file=sys.stderr)
+        return 1
+
+
+# ---------------------------------------------------------------------------
+# collect
+# ---------------------------------------------------------------------------
+
+def _handle_collect(args) -> int:
+    if args.collect_command == "run":
+        return _cmd_collect_run(args)
+    return 2
+
+
+def _cmd_collect_run(args) -> int:
+    from .orchestrator import _run_collect
+
+    project_path = Path(args.project)
+    run_dir = Path(args.run_dir)
+
+    try:
+        _run_collect(project_path, run_dir, args.platform)
+        print(json.dumps({"status": "collected", "platform": args.platform}))
+        return 0
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error": str(exc)}), file=sys.stderr)
+        return 1
+
+
+# ---------------------------------------------------------------------------
+# acquire
+# ---------------------------------------------------------------------------
+
 def _handle_acquire(args) -> int:
     if args.acquire_command == "timing":
         return _cmd_acquire_timing(args)
@@ -314,7 +495,6 @@ def _handle_acquire(args) -> int:
 
 
 def _resolve_run_dir(args) -> Path:
-    """Resolve run-dir relative to the project directory."""
     project_dir = Path(args.project).resolve().parent
     run_dir = Path(args.run_dir)
     if not run_dir.is_absolute():
@@ -324,7 +504,6 @@ def _resolve_run_dir(args) -> Path:
 
 
 def _write_manifest(run_dir: Path, manifest: "AcquisitionManifest") -> None:
-    """Write acquisition manifest to run_dir."""
     from .acquisition.manifest import AcquisitionManifest
     manifest.write(run_dir / "acquisition-manifest.json")
 
@@ -339,7 +518,6 @@ def _cmd_acquire_timing(args) -> int:
     result = collect_timing(run_dir, args.platform, stdout_files or None)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
-    # Update manifest
     manifest_path = run_dir / "acquisition-manifest.json"
     if manifest_path.exists():
         from .acquisition.manifest import load_manifest
@@ -429,20 +607,15 @@ def _cmd_acquire_validate(args) -> int:
     try:
         _js.validate(instance=manifest_data, schema=schema)
     except _js.ValidationError as e:
-        print(json.dumps({
-            "status": "error",
-            "errors": [str(e.message)],
-        }, ensure_ascii=False, indent=2))
+        print(json.dumps({"status": "error", "errors": [str(e.message)]}, ensure_ascii=False, indent=2))
         return 1
 
-    # Check that collected sections have their files
     errors = []
     for section in ("timing", "perf", "asm"):
         sec = manifest_data.get(section, {})
         if sec.get("status") == "collected":
             for fname in sec.get("files", {}).values():
-                fpath = run_dir / fname
-                if not fpath.exists():
+                if not (run_dir / fname).exists():
                     errors.append(f"{section}: missing file {fname}")
 
     if errors:
@@ -460,13 +633,16 @@ def _cmd_acquire_validate(args) -> int:
 
 
 def _cmd_acquire_all(args) -> int:
-    """Run all three acquisition sub-steps in sequence."""
     rc = 0
     rc |= _cmd_acquire_timing(args)
     rc |= _cmd_acquire_perf(args)
     rc |= _cmd_acquire_asm(args)
     return rc
 
+
+# ---------------------------------------------------------------------------
+# backfill
+# ---------------------------------------------------------------------------
 
 def _handle_backfill(args) -> int:
     if args.backfill_command == "run":
@@ -497,19 +673,16 @@ def _cmd_backfill_status(args) -> int:
     project_path = Path(args.project)
     root = resolve_four_layer_root(project_path)
 
-    info: dict[str, Any] = {"project": str(project_path), "fourLayerRoot": str(root)}
+    info: dict = {"project": str(project_path), "fourLayerRoot": str(root)}
 
-    # Check dataset.
     ds_dir = root / "datasets"
     ds_files = list(ds_dir.glob("*.dataset.json")) if ds_dir.is_dir() else []
     info["dataset"] = {"exists": bool(ds_files), "file": ds_files[0].name if ds_files else None}
 
-    # Check source.
     src_dir = root / "sources"
     src_files = list(src_dir.glob("*.source.json")) if src_dir.is_dir() else []
     info["source"] = {"exists": bool(src_files), "file": src_files[0].name if src_files else None}
 
-    # Check project.
     proj_dir = root / "projects"
     proj_files = list(proj_dir.glob("*.project.json")) if proj_dir.is_dir() else []
     info["project"] = {"exists": bool(proj_files), "file": proj_files[0].name if proj_files else None}
@@ -524,6 +697,10 @@ def _cmd_backfill_status(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# bridge
+# ---------------------------------------------------------------------------
+
 def _handle_bridge(args) -> int:
     if args.bridge_command == "publish":
         return _cmd_bridge_publish(args)
@@ -534,6 +711,40 @@ def _handle_bridge(args) -> int:
     return 2
 
 
+def _resolve_bridge_config(args):
+    """Get bridge config from project.yaml, with CLI overrides."""
+    from .config import get_bridge_config
+
+    project_path = Path(args.project)
+    try:
+        config = get_bridge_config(project_path)
+    except ValueError:
+        # Config not available in project.yaml — require CLI args.
+        config = {}
+
+    # CLI overrides.
+    if hasattr(args, "repo") and args.repo:
+        config["repo"] = args.repo
+    if hasattr(args, "platform") and args.platform:
+        config["platform"] = args.platform
+    if hasattr(args, "token") and args.token:
+        config["token"] = args.token
+
+    missing = []
+    if not config.get("repo"):
+        missing.append("bridge.repo (project.yaml or --repo)")
+    if not config.get("platform"):
+        missing.append("bridge.platform (project.yaml or --platform)")
+    if not config.get("token"):
+        missing.append("token (env var PYFRAMEWORK_BRIDGE_TOKEN or --token)")
+
+    if missing:
+        print(f"Error: missing {', '.join(missing)}", file=sys.stderr)
+        return None
+
+    return config
+
+
 def _cmd_bridge_publish(args) -> int:
     from .bridge.analysis import publish
 
@@ -542,12 +753,16 @@ def _cmd_bridge_publish(args) -> int:
         print(f"Error: {project_path} not found", file=sys.stderr)
         return 1
 
+    config = _resolve_bridge_config(args)
+    if config is None:
+        return 1
+
     try:
         result = publish(
             project_path,
-            repo=args.repo,
-            platform=args.platform,
-            token=args.token,
+            repo=config["repo"],
+            platform=config["platform"],
+            token=config["token"],
             dry_run=args.dry_run,
             max_lines=args.max_lines,
             base_url=args.base_url,
@@ -568,12 +783,16 @@ def _cmd_bridge_fetch(args) -> int:
         print(f"Error: {project_path} not found", file=sys.stderr)
         return 1
 
+    config = _resolve_bridge_config(args)
+    if config is None:
+        return 1
+
     try:
         result = fetch(
             project_path,
-            repo=args.repo,
-            platform=args.platform,
-            token=args.token,
+            repo=config["repo"],
+            platform=config["platform"],
+            token=config["token"],
             base_url=args.base_url,
         )
     except (FileNotFoundError, ValueError) as exc:

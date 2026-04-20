@@ -29,6 +29,11 @@ def load_environment_yaml(path: Path) -> dict[str, Any]:
     return _parse_yaml(text)
 
 
+def parse_yaml(text: str) -> dict[str, Any]:
+    """Parse a YAML string into a nested dict (public API)."""
+    return _parse_yaml(text)
+
+
 def _parse_yaml(text: str) -> dict[str, Any]:
     lines = text.splitlines()
     result: dict[str, Any] = {}

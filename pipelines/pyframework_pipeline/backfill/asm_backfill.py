@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -112,18 +113,23 @@ def _build_artifact_entry(
     symbol: str,
     platform: str,
     rel_path: str,
+    content: str = "",
 ) -> dict:
     """Build one artifactIndex entry for an assembly file."""
     platform_label = "Arm" if platform == _CANONICAL_ARM else "x86"
-    return {
+    entry: dict[str, Any] = {
         "id": _artifact_id(platform, symbol),
         "title": f"{symbol} 的 {platform_label} 汇编",
         "type": "assembly",
         "description": f"objdump -S -d 反汇编输出",
         "platform": platform,
-        "path": rel_path,
         "contentType": "text/plain",
     }
+    if content:
+        entry["content"] = content
+    else:
+        entry["filePath"] = rel_path
+    return entry
 
 
 # ---------------------------------------------------------------------------
@@ -212,27 +218,39 @@ def backfill_asm(
     # ------------------------------------------------------------------
     existing_ids = _existing_artifact_ids(source)
     new_artifact_ids: list[str] = []
+    artifacts_by_id = {a.get("id"): a for a in source.get("artifactIndex", [])}
 
     for symbol in all_symbols:
         has_arm = symbol in arm_files
         has_x86 = symbol in x86_files
 
         if has_arm:
-            arm_path = _artifact_path(_CANONICAL_ARM, symbol)
             aid = _artifact_id(_CANONICAL_ARM, symbol)
-            if aid not in existing_ids:
+            arm_content = arm_files[symbol].read_text(encoding="utf-8", errors="replace")
+            if aid in existing_ids:
+                # Update existing entry with content.
+                art = artifacts_by_id.get(aid)
+                if art is not None:
+                    art["content"] = arm_content
+                    art.pop("path", None)
+            else:
                 source.setdefault("artifactIndex", []).append(
-                    _build_artifact_entry(symbol, _CANONICAL_ARM, arm_path)
+                    _build_artifact_entry(symbol, _CANONICAL_ARM, "", content=arm_content)
                 )
                 existing_ids.add(aid)
                 new_artifact_ids.append(aid)
 
         if has_x86:
-            x86_path = _artifact_path(_CANONICAL_X86, symbol)
             aid = _artifact_id(_CANONICAL_X86, symbol)
-            if aid not in existing_ids:
+            x86_content = x86_files[symbol].read_text(encoding="utf-8", errors="replace")
+            if aid in existing_ids:
+                art = artifacts_by_id.get(aid)
+                if art is not None:
+                    art["content"] = x86_content
+                    art.pop("path", None)
+            else:
                 source.setdefault("artifactIndex", []).append(
-                    _build_artifact_entry(symbol, _CANONICAL_X86, x86_path)
+                    _build_artifact_entry(symbol, _CANONICAL_X86, "", content=x86_content)
                 )
                 existing_ids.add(aid)
                 new_artifact_ids.append(aid)
@@ -259,9 +277,18 @@ def backfill_asm(
             x86_only_count += 1
 
         if symbol in funcs_by_symbol:
-            # Function already exists (e.g. from perf_backfill) — just
-            # ensure it has a diffView skeleton.
-            _ensure_diff_view(funcs_by_symbol[symbol])
+            func = funcs_by_symbol[symbol]
+            _ensure_diff_view(func)
+            # Update artifactIds to reference new artifacts with content.
+            new_ids: list[str] = []
+            if has_arm:
+                new_ids.append(_artifact_id(_CANONICAL_ARM, symbol))
+            if has_x86:
+                new_ids.append(_artifact_id(_CANONICAL_X86, symbol))
+            if new_ids:
+                existing_ids_list = func.get("artifactIds", [])
+                merged = list(dict.fromkeys(new_ids + existing_ids_list))
+                func["artifactIds"] = merged
         else:
             # New function — add with minimal metadata.
             _add_new_function(

@@ -97,6 +97,7 @@ class PyFlinkEnvironmentAdapter:
         # Step 4: Start TaskManagers
         for i in range(1, tm_count + 1):
             tmpfs_flag = " --tmpfs /tmp:rw,exec" if use_tmpfs else ""
+            privileged_flag = " --privileged"
             steps.append(PlanStep(
                 id=f"start-taskmanager-{i}",
                 kind="framework-start",
@@ -104,7 +105,7 @@ class PyFlinkEnvironmentAdapter:
                 command=(
                     f"docker run -d --name flink-tm{i} --network {network} "
                     f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm'"
-                    f"{tmpfs_flag} {image} taskmanager"
+                    f"{tmpfs_flag}{privileged_flag} {image} taskmanager"
                 ),
                 description=f"Start TaskManager {i} container on {host_alias}",
                 mutatesHost=True,

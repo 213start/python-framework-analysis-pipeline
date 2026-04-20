@@ -21,7 +21,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "path"],
+        "required": ["id"],
         "additionalProperties": true
       }
     },
@@ -37,7 +37,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "path"],
+        "required": ["id"],
         "additionalProperties": true
       }
     }
