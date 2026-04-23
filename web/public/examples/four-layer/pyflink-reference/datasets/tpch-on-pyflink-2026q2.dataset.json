@@ -1,163 +1,188 @@
 {
   "id": "tpch-on-pyflink-2026q2",
-  "name": "TPC-H on PyFlink Reference Demo",
+  "schemaVersion": 2,
+  "name": "PyFlink TPC-H Reference Dataset",
   "frameworkId": "pyflink",
-  "benchmarkFamily": "TPC-H",
-  "platforms": [
-    "arm64",
-    "x86_64"
-  ],
-  "normalization": {
-    "default": "per_invocation",
-    "available": [
-      "batch_total",
-      "per_invocation",
-      "per_record"
-    ]
-  },
+  "projectId": "pyflink-tpch-reference",
   "cases": [
     {
       "id": "tpch-q01-pyflink",
       "legacyCaseId": "q01",
-      "name": "TPC-H Q1",
+      "name": "TPC-H Q01",
       "benchmarkFamily": "TPC-H",
       "implementationForm": "single-python-udf",
-      "semanticStatus": "verified",
-      "semanticNotes": "仅用于前端示例展示；这里用一个示意性的 Python UDF 承载整条 SQL 的完整语义。",
-      "knownDeviations": [],
-      "artifactIds": [
-        "sql_q01",
-        "pyflink_q01"
-      ],
-      "hotspots": [
-        {
-          "id": "func_001",
-          "symbol": "_PyObject_Malloc",
-          "component": "cpython",
-          "category": "内存",
-          "delta": "+14.6 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_003",
-          "symbol": "row_adapter_convert",
-          "component": "glibc",
-          "category": "原生边界",
-          "delta": "+3.8 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_006",
-          "symbol": "PyDict_GetItem",
-          "component": "cpython",
-          "category": "对象模型",
-          "delta": "+2.8 ms",
-          "patternCount": 1
-        }
-      ],
-      "patterns": [
-        "pattern_001"
-      ],
-      "rootCauses": [
-        "rc_001"
-      ],
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
       "metrics": {
-        "demoDelta": "+8.2%",
-        "tmDelta": "+7.6%",
-        "operatorDelta": "+4.1%",
-        "frameworkDelta": "+12.3%",
-        "demo": {
-          "arm": "5.23 s",
-          "x86": "4.83 s",
-          "delta": "+8.2%"
-        },
-        "tm": {
-          "arm": "4.18 s",
-          "x86": "3.88 s",
-          "delta": "+7.6%"
+        "framework": {
+          "arm": "18424.0 ms",
+          "x86": "26910.0 ms",
+          "delta": "-31.5%"
         },
         "operator": {
-          "arm": "1.77 ms",
-          "x86": "1.69 ms",
-          "delta": "+4.1%"
+          "arm": "2256.0 ms",
+          "x86": "0.0 ms",
+          "delta": null
         },
+        "demo": {
+          "arm": "20.68 s",
+          "x86": "26.91 s",
+          "delta": "-23.2%"
+        },
+        "tm": {
+          "arm": "20.68 s",
+          "x86": "26.91 s",
+          "delta": "-23.2%"
+        },
+        "tmDelta": "-23.2%",
+        "demoDelta": "-23.2%"
+      }
+    },
+    {
+      "id": "tpch-q03-pyflink",
+      "legacyCaseId": "q03",
+      "name": "TPC-H Q03",
+      "benchmarkFamily": "TPC-H",
+      "implementationForm": "single-python-udf",
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
+      "metrics": {
         "framework": {
-          "arm": "0.91 ms",
-          "x86": "0.81 ms",
-          "delta": "+12.3%"
-        }
+          "arm": "13978.4 ms",
+          "x86": "22930.0 ms",
+          "delta": "-39.0%"
+        },
+        "operator": {
+          "arm": "1711.6 ms",
+          "x86": "0.0 ms",
+          "delta": null
+        },
+        "demo": {
+          "arm": "15.69 s",
+          "x86": "22.93 s",
+          "delta": "-31.6%"
+        },
+        "tm": {
+          "arm": "15.69 s",
+          "x86": "22.93 s",
+          "delta": "-31.6%"
+        },
+        "tmDelta": "-31.6%",
+        "demoDelta": "-31.6%"
+      }
+    },
+    {
+      "id": "tpch-q05-pyflink",
+      "legacyCaseId": "q05",
+      "name": "TPC-H Q05",
+      "benchmarkFamily": "TPC-H",
+      "implementationForm": "single-python-udf",
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
+      "metrics": {
+        "framework": {
+          "arm": "13078.5 ms",
+          "x86": "22150.0 ms",
+          "delta": "-41.0%"
+        },
+        "operator": {
+          "arm": "1601.5 ms",
+          "x86": "0.0 ms",
+          "delta": null
+        },
+        "demo": {
+          "arm": "14.68 s",
+          "x86": "22.15 s",
+          "delta": "-33.8%"
+        },
+        "tm": {
+          "arm": "14.68 s",
+          "x86": "22.15 s",
+          "delta": "-33.8%"
+        },
+        "tmDelta": "-33.8%",
+        "demoDelta": "-33.8%"
       }
     },
     {
       "id": "tpch-q06-pyflink",
       "legacyCaseId": "q06",
-      "name": "TPC-H Q6",
+      "name": "TPC-H Q06",
       "benchmarkFamily": "TPC-H",
       "implementationForm": "single-python-udf",
-      "semanticStatus": "verified",
-      "semanticNotes": "将谓词较重的 SQL 改写为一个整体 Python UDF，以保持跨平台计时边界稳定。",
-      "knownDeviations": [],
-      "artifactIds": [
-        "sql_q06",
-        "pyflink_q06"
-      ],
-      "hotspots": [
-        {
-          "id": "func_002",
-          "symbol": "_PyEval_EvalFrameDefault",
-          "component": "cpython",
-          "category": "解释器",
-          "delta": "+11.8 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_004",
-          "symbol": "python_udf_wrapper",
-          "component": "bridge_runtime",
-          "category": "调用与分派",
-          "delta": "+1.4 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_005",
-          "symbol": "futex_wait",
-          "component": "kernel",
-          "category": "内核等待",
-          "delta": "+1.5 ms",
-          "patternCount": 1
-        }
-      ],
-      "patterns": [
-        "pattern_002"
-      ],
-      "rootCauses": [
-        "rc_002"
-      ],
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
       "metrics": {
-        "demoDelta": "+6.4%",
-        "tmDelta": "+5.8%",
-        "operatorDelta": "+3.5%",
-        "frameworkDelta": "+10.1%",
-        "demo": {
-          "arm": "4.12 s",
-          "x86": "3.87 s",
-          "delta": "+6.4%"
-        },
-        "tm": {
-          "arm": "3.34 s",
-          "x86": "3.16 s",
-          "delta": "+5.8%"
+        "framework": {
+          "arm": "12722.2 ms",
+          "x86": "20230.0 ms",
+          "delta": "-37.1%"
         },
         "operator": {
-          "arm": "1.31 ms",
-          "x86": "1.26 ms",
-          "delta": "+3.5%"
+          "arm": "1557.8 ms",
+          "x86": "0.0 ms",
+          "delta": null
         },
+        "demo": {
+          "arm": "14.28 s",
+          "x86": "20.23 s",
+          "delta": "-29.4%"
+        },
+        "tm": {
+          "arm": "14.28 s",
+          "x86": "20.23 s",
+          "delta": "-29.4%"
+        },
+        "tmDelta": "-29.4%",
+        "demoDelta": "-29.4%"
+      }
+    },
+    {
+      "id": "tpch-q10-pyflink",
+      "legacyCaseId": "q10",
+      "name": "TPC-H Q10",
+      "benchmarkFamily": "TPC-H",
+      "implementationForm": "single-python-udf",
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
+      "metrics": {
         "framework": {
-          "arm": "0.72 ms",
-          "x86": "0.65 ms",
-          "delta": "+10.1%"
-        }
+          "arm": "13328.0 ms",
+          "x86": "22980.0 ms",
+          "delta": "-42.0%"
+        },
+        "operator": {
+          "arm": "1632.0 ms",
+          "x86": "0.0 ms",
+          "delta": null
+        },
+        "demo": {
+          "arm": "14.96 s",
+          "x86": "22.98 s",
+          "delta": "-34.9%"
+        },
+        "tm": {
+          "arm": "14.96 s",
+          "x86": "22.98 s",
+          "delta": "-34.9%"
+        },
+        "tmDelta": "-34.9%",
+        "demoDelta": "-34.9%"
       }
     },
     {
@@ -166,1566 +191,886 @@
       "name": "TPC-H Q12",
       "benchmarkFamily": "TPC-H",
       "implementationForm": "single-python-udf",
-      "semanticStatus": "verified",
-      "semanticNotes": "将 Join 较重的 SQL 包装进一个整体 Python UDF，以保持一致的 Java-Python-Java 计时边界。",
-      "knownDeviations": [
-        "示例数据包中的 Join 策略说明做了简化。"
-      ],
-      "artifactIds": [
-        "sql_q12",
-        "pyflink_q12"
-      ],
-      "hotspots": [
-        {
-          "id": "func_001",
-          "symbol": "_PyObject_Malloc",
-          "component": "cpython",
-          "category": "内存",
-          "delta": "+16.3 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_002",
-          "symbol": "_PyEval_EvalFrameDefault",
-          "component": "cpython",
-          "category": "解释器",
-          "delta": "+9.4 ms",
-          "patternCount": 1
-        },
-        {
-          "id": "func_006",
-          "symbol": "PyDict_GetItem",
-          "component": "cpython",
-          "category": "对象模型",
-          "delta": "+2.8 ms",
-          "patternCount": 1
-        }
-      ],
-      "patterns": [
-        "pattern_001",
-        "pattern_002"
-      ],
-      "rootCauses": [
-        "rc_001",
-        "rc_002"
-      ],
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
       "metrics": {
-        "demoDelta": "+9.7%",
-        "tmDelta": "+8.8%",
-        "operatorDelta": "+5.0%",
-        "frameworkDelta": "+13.8%",
-        "demo": {
-          "arm": "6.54 s",
-          "x86": "5.96 s",
-          "delta": "+9.7%"
-        },
-        "tm": {
-          "arm": "5.11 s",
-          "x86": "4.70 s",
-          "delta": "+8.8%"
+        "framework": {
+          "arm": "11911.5 ms",
+          "x86": "19890.0 ms",
+          "delta": "-40.1%"
         },
         "operator": {
-          "arm": "2.08 ms",
-          "x86": "1.98 ms",
-          "delta": "+5.0%"
+          "arm": "1458.5 ms",
+          "x86": "0.0 ms",
+          "delta": null
         },
-        "framework": {
-          "arm": "1.04 ms",
-          "x86": "0.91 ms",
-          "delta": "+13.8%"
-        }
+        "demo": {
+          "arm": "13.37 s",
+          "x86": "19.89 s",
+          "delta": "-32.8%"
+        },
+        "tm": {
+          "arm": "13.37 s",
+          "x86": "19.89 s",
+          "delta": "-32.8%"
+        },
+        "tmDelta": "-32.8%",
+        "demoDelta": "-32.8%"
       }
+    },
+    {
+      "id": "tpch-q14-pyflink",
+      "legacyCaseId": "q14",
+      "name": "TPC-H Q14",
+      "benchmarkFamily": "TPC-H",
+      "implementationForm": "single-python-udf",
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
+      "metrics": {
+        "framework": {
+          "arm": "13434.9 ms",
+          "x86": "21410.0 ms",
+          "delta": "-37.2%"
+        },
+        "operator": {
+          "arm": "1645.1 ms",
+          "x86": "0.0 ms",
+          "delta": null
+        },
+        "demo": {
+          "arm": "15.08 s",
+          "x86": "21.41 s",
+          "delta": "-29.5%"
+        },
+        "tm": {
+          "arm": "15.08 s",
+          "x86": "21.41 s",
+          "delta": "-29.5%"
+        },
+        "tmDelta": "-29.5%",
+        "demoDelta": "-29.5%"
+      }
+    },
+    {
+      "id": "tpch-q19-pyflink",
+      "legacyCaseId": "q19",
+      "name": "TPC-H Q19",
+      "benchmarkFamily": "TPC-H",
+      "implementationForm": "single-python-udf",
+      "semanticStatus": "auto-generated",
+      "artifactIds": [],
+      "hotspots": [],
+      "patterns": [],
+      "rootCauses": [],
+      "metrics": {
+        "framework": {
+          "arm": "15902.7 ms",
+          "x86": "24800.0 ms",
+          "delta": "-35.9%"
+        },
+        "operator": {
+          "arm": "1947.3 ms",
+          "x86": "0.0 ms",
+          "delta": null
+        },
+        "demo": {
+          "arm": "17.85 s",
+          "x86": "24.80 s",
+          "delta": "-28.0%"
+        },
+        "tm": {
+          "arm": "17.85 s",
+          "x86": "24.80 s",
+          "delta": "-28.0%"
+        },
+        "tmDelta": "-28.0%",
+        "demoDelta": "-28.0%"
+      }
+    }
+  ],
+  "functions": [
+    {
+      "id": "func_b308163e",
+      "symbol": "default_idle_call",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "1793.2 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "1793.2 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "89.1%",
+        "x86Share": "0.0%",
+        "delta": "+1793.2 ms",
+        "deltaContribution": "+89.1%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_a8fe4a73",
+      "symbol": "_PyEval_EvalFrameDefault",
+      "component": "cpython",
+      "categoryL1": "interpreter",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "109.8 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "585.5 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "5.5%",
+        "x86Share": "0.0%",
+        "delta": "+109.8 ms",
+        "deltaContribution": "+5.5%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_647db2f0",
+      "symbol": "_Py_dict_lookup",
+      "component": "cpython",
+      "categoryL1": "lookup",
+      "categoryL2": "attribute",
+      "metrics": {
+        "selfArm": "73.2 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "73.2 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "3.6%",
+        "x86Share": "0.0%",
+        "delta": "+73.2 ms",
+        "deltaContribution": "+3.6%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_636ba82a",
+      "symbol": "_PyCode_New",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "36.6 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "36.6 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "1.8%",
+        "x86Share": "0.0%",
+        "delta": "+36.6 ms",
+        "deltaContribution": "+1.8%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_767232bd",
+      "symbol": "PyEval_SaveThread",
+      "component": "cpython",
+      "categoryL1": "interpreter",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_30b7301e",
+      "symbol": "PyUnicode_RPartition",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "str",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_f76d24cb",
+      "symbol": "builtin_next",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_a470ebbe",
+      "symbol": "builtin_getattr",
+      "component": "cpython",
+      "categoryL1": "lookup",
+      "categoryL2": "attribute",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_7b6e04db",
+      "symbol": "new_sync_read",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_698b197c",
+      "symbol": "_Py_UniversalNewlineFgetsWithSize",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_73e88c2c",
+      "symbol": "__d_lookup_rcu",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_3d03a07a",
+      "symbol": "_PyUnicode_JoinArray",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "str",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_faa6b5e4",
+      "symbol": "collections_exec",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_6f4d73ff",
+      "symbol": "_int_malloc",
+      "component": "glibc",
+      "categoryL1": "glibc",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_b81b1b75",
+      "symbol": "el0_svc_common",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "73.2 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_2f4a2dc8",
+      "symbol": "_dl_map_object",
+      "component": "glibc",
+      "categoryL1": "glibc",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_44b5dedb",
+      "symbol": "mro_internal_unlocked",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_1fb73148",
+      "symbol": "_PyErr_SetKeyError",
+      "component": "cpython",
+      "categoryL1": "exceptions",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_acd06106",
+      "symbol": "PyTuple_GetItem",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "tuple",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_4d566f26",
+      "symbol": "__sbrk",
+      "component": "glibc",
+      "categoryL1": "glibc",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
     }
   ],
   "stackOverview": {
     "platformTotals": {
-      "arm": "182.0 ms",
-      "x86": "129.0 ms"
+      "arm": "2012.8 ms",
+      "x86": "0.0 ms"
     },
     "components": [
       {
+        "id": "kernel",
+        "name": "Kernel",
+        "armTime": "1793.2 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "89.1%",
+        "x86Share": "0.0%",
+        "delta": "+1793.2 ms",
+        "deltaContribution": "+89.1%"
+      },
+      {
         "id": "cpython",
         "name": "CPython",
-        "armTime": "96.0 ms",
-        "x86Time": "61.0 ms",
-        "armShare": "52.7%",
-        "x86Share": "47.3%",
-        "delta": "+35.0 ms",
-        "deltaContribution": "66.0%"
+        "armTime": "219.6 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "10.9%",
+        "x86Share": "0.0%",
+        "delta": "+219.6 ms",
+        "deltaContribution": "+10.9%"
       },
       {
         "id": "glibc",
         "name": "glibc",
-        "armTime": "41.0 ms",
-        "x86Time": "28.0 ms",
-        "armShare": "22.5%",
-        "x86Share": "21.7%",
-        "delta": "+13.0 ms",
-        "deltaContribution": "24.5%"
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
       },
       {
-        "id": "kernel",
-        "name": "内核",
-        "armTime": "19.0 ms",
-        "x86Time": "16.0 ms",
-        "armShare": "10.4%",
-        "x86Share": "12.4%",
-        "delta": "+3.0 ms",
-        "deltaContribution": "5.7%"
-      },
-      {
-        "id": "third_party",
-        "name": "三方库",
-        "armTime": "14.0 ms",
-        "x86Time": "12.0 ms",
-        "armShare": "7.7%",
-        "x86Share": "9.3%",
-        "delta": "+2.0 ms",
-        "deltaContribution": "3.8%"
-      },
-      {
-        "id": "bridge_runtime",
-        "name": "桥接运行时",
-        "armTime": "12.0 ms",
-        "x86Time": "12.0 ms",
-        "armShare": "6.6%",
-        "x86Share": "9.3%",
+        "id": "unknown",
+        "name": "Unknown",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
         "delta": "+0.0 ms",
         "deltaContribution": "0.0%"
       }
     ],
     "categories": [
       {
-        "id": "memory",
-        "name": "内存",
+        "id": "kernel",
+        "name": "Kernel",
         "level": "L1",
-        "armTime": "54.0 ms",
-        "x86Time": "31.0 ms",
-        "armShare": "29.7%",
-        "x86Share": "24.0%",
-        "delta": "+32.0 ms",
-        "deltaContribution": "43.4%",
-        "topFunctionId": "func_001"
+        "armTime": "1793.2 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "89.1%",
+        "x86Share": "0.0%",
+        "delta": "+1793.2 ms",
+        "deltaContribution": "+89.1%",
+        "topFunctionId": "func_b308163e"
       },
       {
         "id": "interpreter",
-        "name": "解释器",
+        "name": "Interpreter",
         "level": "L1",
-        "armTime": "33.0 ms",
-        "x86Time": "24.0 ms",
-        "armShare": "18.1%",
-        "x86Share": "18.6%",
-        "delta": "+18.0 ms",
-        "deltaContribution": "17.0%",
-        "topFunctionId": "func_002"
+        "armTime": "109.8 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "5.5%",
+        "x86Share": "0.0%",
+        "delta": "+109.8 ms",
+        "deltaContribution": "+5.5%",
+        "topFunctionId": "func_a8fe4a73"
       },
       {
-        "id": "native_boundary",
-        "name": "原生边界",
+        "id": "lookup",
+        "name": "Lookup",
         "level": "L1",
-        "armTime": "28.0 ms",
-        "x86Time": "21.0 ms",
-        "armShare": "15.4%",
-        "x86Share": "16.3%",
-        "delta": "+7.0 ms",
-        "deltaContribution": "13.2%",
-        "topFunctionId": "func_003"
+        "armTime": "73.2 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "3.6%",
+        "x86Share": "0.0%",
+        "delta": "+73.2 ms",
+        "deltaContribution": "+3.6%",
+        "topFunctionId": "func_647db2f0"
       },
       {
-        "id": "object_model",
-        "name": "对象模型",
+        "id": "runtime",
+        "name": "Runtime",
         "level": "L1",
-        "armTime": "24.0 ms",
-        "x86Time": "18.0 ms",
-        "armShare": "13.2%",
-        "x86Share": "14.0%",
-        "delta": "+6.0 ms",
-        "deltaContribution": "11.3%",
-        "topFunctionId": "func_006"
+        "armTime": "36.6 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "1.8%",
+        "x86Share": "0.0%",
+        "delta": "+36.6 ms",
+        "deltaContribution": "+1.8%",
+        "topFunctionId": "func_636ba82a"
+      },
+      {
+        "id": "glibc",
+        "name": "glibc",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
       },
       {
         "id": "calls_dispatch",
-        "name": "调用与分派",
+        "name": "Calls / Dispatch",
         "level": "L1",
-        "armTime": "18.0 ms",
-        "x86Time": "15.0 ms",
-        "armShare": "9.9%",
-        "x86Share": "11.6%",
-        "delta": "+3.0 ms",
-        "deltaContribution": "5.7%",
-        "topFunctionId": "func_004"
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
       },
       {
-        "id": "kernel_wait",
-        "name": "内核等待",
+        "id": "import_loading",
+        "name": "Import",
         "level": "L1",
-        "armTime": "15.0 ms",
-        "x86Time": "12.0 ms",
-        "armShare": "8.2%",
-        "x86Share": "9.3%",
-        "delta": "+3.0 ms",
-        "deltaContribution": "5.7%",
-        "topFunctionId": "func_005"
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "memory",
+        "name": "Memory",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
       },
       {
         "id": "gc",
         "name": "GC",
         "level": "L1",
-        "armTime": "10.0 ms",
-        "x86Time": "8.0 ms",
-        "armShare": "5.5%",
-        "x86Share": "6.2%",
-        "delta": "+2.0 ms",
-        "deltaContribution": "3.8%",
-        "topFunctionId": "func_001"
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "object_model",
+        "name": "Object Model",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "compiler",
+        "name": "Compiler",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "library",
+        "name": "Library",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "concurrency",
+        "name": "Concurrency",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "exceptions",
+        "name": "Exceptions",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
       }
     ]
   },
   "componentDetails": [
     {
-      "id": "cpython",
-      "name": "CPython",
-      "armTime": "96.0 ms",
-      "x86Time": "61.0 ms",
-      "armShare": "52.7%",
-      "x86Share": "47.3%",
-      "delta": "+35.0 ms",
-      "deltaContribution": "66.0%",
+      "id": "kernel",
+      "name": "Kernel",
+      "armTime": "1793.2 ms",
+      "x86Time": "0.0 ms",
+      "armShare": "89.1%",
+      "x86Share": "0.0%",
+      "delta": "+1793.2 ms",
+      "deltaContribution": "+89.1%",
       "categories": [
         {
-          "id": "memory",
-          "name": "内存",
-          "delta": "+32.0 ms"
-        },
+          "id": "kernel",
+          "name": "Kernel",
+          "delta": "+1793.2 ms"
+        }
+      ],
+      "hotspotIds": [
+        "func_b308163e",
+        "func_7b6e04db",
+        "func_73e88c2c",
+        "func_b81b1b75"
+      ]
+    },
+    {
+      "id": "cpython",
+      "name": "CPython",
+      "armTime": "219.6 ms",
+      "x86Time": "0.0 ms",
+      "armShare": "10.9%",
+      "x86Share": "0.0%",
+      "delta": "+219.6 ms",
+      "deltaContribution": "+10.9%",
+      "categories": [
         {
           "id": "interpreter",
-          "name": "解释器",
-          "delta": "+18.0 ms"
+          "name": "Interpreter",
+          "delta": "+109.8 ms"
         },
         {
-          "id": "object_model",
-          "name": "对象模型",
-          "delta": "+6.0 ms"
+          "id": "lookup",
+          "name": "Lookup",
+          "delta": "+73.2 ms"
+        },
+        {
+          "id": "runtime",
+          "name": "Runtime",
+          "delta": "+36.6 ms"
+        },
+        {
+          "id": "calls_dispatch",
+          "name": "Calls / Dispatch",
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "import_loading",
+          "name": "Import",
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "memory",
+          "name": "Memory",
+          "delta": "+0.0 ms"
         },
         {
           "id": "gc",
           "name": "GC",
-          "delta": "+2.0 ms"
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "object_model",
+          "name": "Object Model",
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "compiler",
+          "name": "Compiler",
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "concurrency",
+          "name": "Concurrency",
+          "delta": "+0.0 ms"
+        },
+        {
+          "id": "exceptions",
+          "name": "Exceptions",
+          "delta": "+0.0 ms"
         }
       ],
       "hotspotIds": [
-        "func_001",
-        "func_002",
-        "func_006"
-      ],
-      "patternIds": [
-        "pattern_001",
-        "pattern_002"
-      ],
-      "rootCauseIds": [
-        "rc_001",
-        "rc_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_001",
-        "asm_x86_func_001",
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "asm_arm_func_006",
-        "asm_x86_func_006",
-        "source_interpreter_loop_excerpt",
-        "source_object_lookup_excerpt"
+        "func_a8fe4a73",
+        "func_647db2f0",
+        "func_636ba82a",
+        "func_767232bd",
+        "func_30b7301e"
       ]
     },
     {
       "id": "glibc",
       "name": "glibc",
-      "armTime": "41.0 ms",
-      "x86Time": "28.0 ms",
-      "armShare": "22.5%",
-      "x86Share": "21.7%",
-      "delta": "+13.0 ms",
-      "deltaContribution": "24.5%",
-      "categories": [
-        {
-          "id": "native_boundary",
-          "name": "原生边界",
-          "delta": "+7.0 ms"
-        }
-      ],
-      "hotspotIds": [
-        "func_003"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "rootCauseIds": [
-        "rc_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "source_row_adapter_excerpt"
-      ]
-    },
-    {
-      "id": "kernel",
-      "name": "内核",
-      "armTime": "19.0 ms",
-      "x86Time": "16.0 ms",
-      "armShare": "10.4%",
-      "x86Share": "12.4%",
-      "delta": "+3.0 ms",
-      "deltaContribution": "5.7%",
-      "categories": [
-        {
-          "id": "kernel_wait",
-          "name": "内核等待",
-          "delta": "+3.0 ms"
-        }
-      ],
-      "hotspotIds": [
-        "func_005"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "rootCauseIds": [
-        "rc_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_005",
-        "asm_x86_func_005",
-        "source_kernel_wait_excerpt"
-      ]
-    },
-    {
-      "id": "third_party",
-      "name": "三方库",
-      "armTime": "14.0 ms",
-      "x86Time": "12.0 ms",
-      "armShare": "7.7%",
-      "x86Share": "9.3%",
-      "delta": "+2.0 ms",
-      "deltaContribution": "3.8%",
-      "categories": [
-        {
-          "id": "native_boundary",
-          "name": "原生边界",
-          "delta": "+2.0 ms"
-        }
-      ],
-      "hotspotIds": [
-        "func_003"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "rootCauseIds": [
-        "rc_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "source_row_adapter_excerpt"
-      ]
-    },
-    {
-      "id": "bridge_runtime",
-      "name": "桥接运行时",
-      "armTime": "12.0 ms",
-      "x86Time": "12.0 ms",
-      "armShare": "6.6%",
-      "x86Share": "9.3%",
+      "armTime": "0.0 ms",
+      "x86Time": "0.0 ms",
+      "armShare": "0.0%",
+      "x86Share": "0.0%",
       "delta": "+0.0 ms",
       "deltaContribution": "0.0%",
       "categories": [
         {
-          "id": "calls_dispatch",
-          "name": "调用与分派",
+          "id": "glibc",
+          "name": "glibc",
           "delta": "+0.0 ms"
         }
       ],
       "hotspotIds": [
-        "func_004"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "rootCauseIds": [
-        "rc_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_004",
-        "asm_x86_func_004",
-        "source_wrapper_dispatch_excerpt"
-      ]
-    }
-  ],
-  "categoryDetails": [
-    {
-      "id": "memory",
-      "name": "内存",
-      "level": "L1",
-      "componentIds": [
-        "cpython"
-      ],
-      "armTime": "54.0 ms",
-      "x86Time": "31.0 ms",
-      "armShare": "29.7%",
-      "x86Share": "24.0%",
-      "delta": "+32.0 ms",
-      "deltaContribution": "43.4%",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "hotspotIds": [
-        "func_001"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_001",
-        "asm_x86_func_001"
+        "func_6f4d73ff",
+        "func_2f4a2dc8",
+        "func_4d566f26"
       ]
     },
     {
-      "id": "interpreter",
-      "name": "解释器",
-      "level": "L1",
-      "componentIds": [
-        "cpython"
+      "id": "unknown",
+      "name": "Unknown",
+      "armTime": "0.0 ms",
+      "x86Time": "0.0 ms",
+      "armShare": "0.0%",
+      "x86Share": "0.0%",
+      "delta": "+0.0 ms",
+      "deltaContribution": "0.0%",
+      "categories": [
+        {
+          "id": "library",
+          "name": "Library",
+          "delta": "+0.0 ms"
+        }
       ],
-      "armTime": "33.0 ms",
-      "x86Time": "24.0 ms",
-      "armShare": "18.1%",
-      "x86Share": "18.6%",
-      "delta": "+18.0 ms",
-      "deltaContribution": "17.0%",
-      "caseIds": [
-        "tpch-q06-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "hotspotIds": [
-        "func_002"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "source_interpreter_loop_excerpt"
-      ]
-    },
-    {
-      "id": "native_boundary",
-      "name": "原生边界",
-      "level": "L1",
-      "componentIds": [
-        "third_party",
-        "glibc"
-      ],
-      "armTime": "28.0 ms",
-      "x86Time": "21.0 ms",
-      "armShare": "15.4%",
-      "x86Share": "16.3%",
-      "delta": "+7.0 ms",
-      "deltaContribution": "13.2%",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q06-pyflink"
-      ],
-      "hotspotIds": [
-        "func_003"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "source_row_adapter_excerpt"
-      ]
-    },
-    {
-      "id": "object_model",
-      "name": "对象模型",
-      "level": "L1",
-      "componentIds": [
-        "cpython"
-      ],
-      "armTime": "24.0 ms",
-      "x86Time": "18.0 ms",
-      "armShare": "13.2%",
-      "x86Share": "14.0%",
-      "delta": "+6.0 ms",
-      "deltaContribution": "11.3%",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "hotspotIds": [
-        "func_006"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_006",
-        "asm_x86_func_006",
-        "source_object_lookup_excerpt"
-      ]
-    },
-    {
-      "id": "calls_dispatch",
-      "name": "调用与分派",
-      "level": "L1",
-      "componentIds": [
-        "bridge_runtime",
-        "cpython"
-      ],
-      "armTime": "18.0 ms",
-      "x86Time": "15.0 ms",
-      "armShare": "9.9%",
-      "x86Share": "11.6%",
-      "delta": "+3.0 ms",
-      "deltaContribution": "5.7%",
-      "caseIds": [
-        "tpch-q06-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "hotspotIds": [
-        "func_004"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "source_wrapper_dispatch_excerpt",
-        "asm_arm_func_004",
-        "asm_x86_func_004"
-      ]
-    },
-    {
-      "id": "kernel_wait",
-      "name": "内核等待",
-      "level": "L1",
-      "componentIds": [
-        "kernel"
-      ],
-      "armTime": "15.0 ms",
-      "x86Time": "12.0 ms",
-      "armShare": "8.2%",
-      "x86Share": "9.3%",
-      "delta": "+3.0 ms",
-      "deltaContribution": "5.7%",
-      "caseIds": [
-        "tpch-q06-pyflink"
-      ],
-      "hotspotIds": [
-        "func_005"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_005",
-        "asm_x86_func_005",
-        "source_kernel_wait_excerpt"
-      ]
-    },
-    {
-      "id": "gc",
-      "name": "GC",
-      "level": "L1",
-      "componentIds": [
-        "cpython"
-      ],
-      "armTime": "10.0 ms",
-      "x86Time": "8.0 ms",
-      "armShare": "5.5%",
-      "x86Share": "6.2%",
-      "delta": "+2.0 ms",
-      "deltaContribution": "3.8%",
-      "caseIds": [
-        "tpch-q12-pyflink"
-      ],
-      "hotspotIds": [
-        "func_006"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_006",
-        "asm_x86_func_006",
-        "source_object_lookup_excerpt"
-      ]
-    }
-  ],
-  "functions": [
-    {
-      "id": "func_001",
-      "symbol": "_PyObject_Malloc",
-      "component": "cpython",
-      "categoryL1": "内存",
-      "categoryL2": "alloc_free",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_001",
-        "asm_x86_func_001",
-        "source_row_adapter_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "21.2 ms",
-        "selfX86": "10.4 ms",
-        "totalArm": "33.5 ms",
-        "totalX86": "18.9 ms",
-        "armShare": "11.6%",
-        "x86Share": "8.1%",
-        "delta": "+14.6 ms",
-        "deltaContribution": "27.5%"
-      },
-      "callPath": [
-        "pyflink.operator.invoke",
-        "_PyEval_EvalFrameDefault",
-        "_PyObject_Malloc"
-      ],
-      "diffView": {
-        "functionId": "func_001",
-        "sourceFile": "Objects/obmalloc.c",
-        "sourceLocation": "Objects/obmalloc.c:1421-1432",
-        "diffGuide": "本视图按逻辑分析块对齐，不按源码行顺序强行逐行对照。同一源码语义可能映射到多个离散机器码区块。",
-        "analysisBlocks": [
-          {
-            "id": "blk_001",
-            "label": "Fast-Path Alloc",
-            "summary": "对齐 freelist 探测、慢路径回退和 pool 重新装载。",
-            "patternTag": "ObjectManipulator",
-            "mappingType": "一对多",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "Freeblock 判空",
-                "role": "Fast Path",
-                "location": "Objects/obmalloc.c:1421",
-                "snippet": "if (pool->freeblock != NULL) {",
-                "defaultExpanded": true
-              },
-              {
-                "id": "src_002",
-                "label": "Slow Path 回退",
-                "role": "Slow Path",
-                "location": "Objects/obmalloc.c:1432",
-                "snippet": "goto allocate_from_new_pool(pool);",
-                "defaultExpanded": false
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Freeblock Load",
-                "location": "0x0000-0x0008",
-                "role": "Fast Path",
-                "snippet": "ldr x9, [x0, #16]\ncbz x9, slow_path",
-                "highlights": [
-                  "ldr",
-                  "cbz"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "arm_002",
-                "label": "Pool Reload",
-                "location": "0x0018-0x0028",
-                "role": "Reload Chain",
-                "snippet": "ldr x10, [x19, #24]\nldr x11, [x10, #8]\nstr x0, [sp, #16]",
-                "highlights": [
-                  "ldr",
-                  "str"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Freeblock Load",
-                "location": "0x0000-0x0006",
-                "role": "Fast Path",
-                "snippet": "mov rax, qword ptr [rdi+16]\ntest rax, rax",
-                "highlights": [
-                  "mov",
-                  "test"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "freeblock 判空 -> fast path",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都直接对应到 fast path 入口区块。"
-              },
-              {
-                "id": "map_002",
-                "label": "慢路径回退 -> Arm pool reload",
-                "sourceAnchorIds": [
-                  "src_002"
-                ],
-                "armRegionIds": [
-                  "arm_002"
-                ],
-                "x86RegionIds": [],
-                "note": "x86 侧被编译器合并到主 fast path 后续路径，Arm 侧保留为独立 reload 区块。"
-              }
-            ],
-            "diffSignals": [
-              "额外加载链",
-              "更长依赖链"
-            ],
-            "alignmentNote": "按 fast-path block 对齐",
-            "performanceNote": "Arm 侧 pool reload 被拆成多个离散区块，依赖链更长。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "func_002",
-      "symbol": "_PyEval_EvalFrameDefault",
-      "component": "cpython",
-      "categoryL1": "解释器",
-      "categoryL2": "frame_eval",
-      "caseIds": [
-        "tpch-q06-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "source_interpreter_loop_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "28.1 ms",
-        "selfX86": "18.7 ms",
-        "totalArm": "41.3 ms",
-        "totalX86": "29.5 ms",
-        "armShare": "12.4%",
-        "x86Share": "11.8%",
-        "delta": "+11.8 ms",
-        "deltaContribution": "22.3%"
-      },
-      "callPath": [
-        "pyflink.operator.invoke",
-        "python_udf_wrapper",
-        "_PyEval_EvalFrameDefault"
-      ],
-      "diffView": {
-        "functionId": "func_002",
-        "sourceFile": "Python/ceval.c",
-        "sourceLocation": "Python/ceval.c:2114-2124",
-        "diffGuide": "本视图按逻辑分析块对齐，不按源码行顺序强行逐行对照。同一 dispatch 语义可能被拆分到多个离散区块。",
-        "analysisBlocks": [
-          {
-            "id": "blk_002",
-            "label": "Opcode Dispatch",
-            "summary": "对齐 opcode 读取、dispatch table 基址准备和分派跳转。",
-            "patternTag": "CallDispatcher",
-            "mappingType": "重排",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "Opcode 读取",
-                "role": "Dispatch Setup",
-                "location": "Python/ceval.c:2114",
-                "snippet": "switch (opcode) {",
-                "defaultExpanded": true
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Opcode Load",
-                "location": "0x0100-0x0108",
-                "role": "Dispatch Setup",
-                "snippet": "ldr w10, [x19, #24]\nadrp x11, dispatch_table",
-                "highlights": [
-                  "ldr",
-                  "adrp"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Opcode Load",
-                "location": "0x0040-0x0048",
-                "role": "Dispatch Setup",
-                "snippet": "mov eax, dword ptr [rbx+24]\nlea rcx, [rip+dispatch_table]",
-                "highlights": [
-                  "mov",
-                  "lea"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "opcode 读取 -> dispatch setup",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都对应到 dispatch table 基址准备，但地址恢复顺序不同。"
-              }
-            ],
-            "diffSignals": [
-              "地址准备路径更长"
-            ],
-            "alignmentNote": "按 opcode dispatch block 对齐",
-            "performanceNote": "Arm 侧 dispatch 准备路径更长。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "func_003",
-      "symbol": "row_adapter_convert",
-      "component": "glibc",
-      "categoryL1": "原生边界",
-      "categoryL2": "row_adapter",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q06-pyflink"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "source_row_adapter_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "8.2 ms",
-        "selfX86": "5.4 ms",
-        "totalArm": "14.1 ms",
-        "totalX86": "10.3 ms",
-        "armShare": "4.5%",
-        "x86Share": "4.2%",
-        "delta": "+3.8 ms",
-        "deltaContribution": "7.2%"
-      },
-      "callPath": [
-        "python_udf_wrapper",
-        "row_adapter_convert",
-        "native_row_pack"
-      ],
-      "diffView": {
-        "functionId": "func_003",
-        "sourceFile": "pyflink/fn_execution/row_adapter.py",
-        "sourceLocation": "row_adapter.py:88-89",
-        "diffGuide": "本视图按逻辑分析块对齐，不按源码顺序逐行比对。wrap_row 调用前后的装载、调用与结果回写在两个平台上可能分散出现。",
-        "analysisBlocks": [
-          {
-            "id": "blk_003",
-            "label": "Adapter Convert",
-            "summary": "对齐 wrap_row 入口、参数准备与结果回写。由于寄存器保存策略不同，Arm 上出现了额外的 reload 区块。",
-            "patternTag": "ObjectManipulator",
-            "mappingType": "多对多",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "包装调用",
-                "role": "Call Setup",
-                "location": "row_adapter.py:88",
-                "snippet": "converted = adapter.wrap_row(raw_row)",
-                "defaultExpanded": true
-              },
-              {
-                "id": "src_002",
-                "label": "结果缓存",
-                "role": "Result Writeback",
-                "location": "row_adapter.py:89",
-                "snippet": "buffered_rows.append(converted)",
-                "defaultExpanded": false
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Call Prepare",
-                "location": "0x0100-0x0110",
-                "role": "Call Setup",
-                "snippet": "ldr x10, [x0, #32]\nmov x0, x21\nblr x10",
-                "highlights": [
-                  "ldr",
-                  "mov",
-                  "blr"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "arm_002",
-                "label": "Result Spill",
-                "location": "0x0138-0x0148",
-                "role": "Spill + Reload",
-                "snippet": "str x0, [sp, #16]\nldr x9, [sp, #16]\nstr x9, [x22, #8]",
-                "highlights": [
-                  "str",
-                  "ldr"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Call Prepare",
-                "location": "0x0060-0x006c",
-                "role": "Call Setup",
-                "snippet": "mov rax, qword ptr [rdi+32]\nmov rdi, r13\ncall rax",
-                "highlights": [
-                  "mov",
-                  "call"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "x86_002",
-                "label": "Result Store",
-                "location": "0x0078-0x0080",
-                "role": "Store",
-                "snippet": "mov qword ptr [rsp+16], rax\nmov qword ptr [r14+8], rax",
-                "highlights": [
-                  "mov"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "包装调用 -> call prepare",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都保留了独立调用准备区块。"
-              },
-              {
-                "id": "map_002",
-                "label": "结果缓存 -> spill/store",
-                "sourceAnchorIds": [
-                  "src_002"
-                ],
-                "armRegionIds": [
-                  "arm_002"
-                ],
-                "x86RegionIds": [
-                  "x86_002"
-                ],
-                "note": "Arm 侧先 spill 再 reload，x86 侧直接写回结果缓存。"
-              }
-            ],
-            "diffSignals": [
-              "额外 spill/reload",
-              "结果回写链更长"
-            ],
-            "alignmentNote": "按 wrap_row 调用块对齐",
-            "performanceNote": "Arm 侧结果对象先 spill 再 reload，包装结果回写路径更重。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "func_004",
-      "symbol": "python_udf_wrapper",
-      "component": "bridge_runtime",
-      "categoryL1": "调用与分派",
-      "categoryL2": "wrapper_dispatch",
-      "caseIds": [
-        "tpch-q06-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_004",
-        "asm_x86_func_004",
-        "source_wrapper_dispatch_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "5.1 ms",
-        "selfX86": "4.0 ms",
-        "totalArm": "9.6 ms",
-        "totalX86": "8.2 ms",
-        "armShare": "2.8%",
-        "x86Share": "3.2%",
-        "delta": "+1.4 ms",
-        "deltaContribution": "2.6%"
-      },
-      "callPath": [
-        "java_post_udf",
-        "python_udf_wrapper",
-        "_PyEval_EvalFrameDefault"
-      ],
-      "diffView": {
-        "functionId": "func_004",
-        "sourceFile": "pyflink/fn_execution/beam/operation.py",
-        "sourceLocation": "operation.py:144-148",
-        "diffGuide": "本视图按逻辑分析块对齐。调用出口、空值检查和异常回跳可能被编译器拆到不同位置。",
-        "analysisBlocks": [
-          {
-            "id": "blk_004",
-            "label": "Wrapper Dispatch",
-            "summary": "对齐 wrapper 调用、返回值检查和错误出口。Arm 上调用返回后的检查与异常分支被拆为多个区块。",
-            "patternTag": "CallDispatcher",
-            "mappingType": "拆分",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "Wrapper 调用",
-                "role": "Dispatch",
-                "location": "operation.py:144",
-                "snippet": "return udf_callable(*converted_args)",
-                "defaultExpanded": true
-              },
-              {
-                "id": "src_002",
-                "label": "错误出口",
-                "role": "Error Guard",
-                "location": "operation.py:148",
-                "snippet": "raise RuntimeError(\"wrapper dispatch failed\")",
-                "defaultExpanded": false
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Call Site",
-                "location": "0x0200-0x020c",
-                "role": "Dispatch",
-                "snippet": "ldr x11, [x20, #8]\nblr x11",
-                "highlights": [
-                  "ldr",
-                  "blr"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "arm_002",
-                "label": "Null-Check Branch",
-                "location": "0x0220-0x0228",
-                "role": "Error Guard",
-                "snippet": "cbz x0, wrapper_error\nb done_dispatch",
-                "highlights": [
-                  "cbz",
-                  "b"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Call Site",
-                "location": "0x0088-0x0094",
-                "role": "Dispatch",
-                "snippet": "mov rax, qword ptr [r12+8]\ncall rax\ntest rax, rax",
-                "highlights": [
-                  "mov",
-                  "call",
-                  "test"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "wrapper 调用 -> dispatch",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都对应调用出口，但 Arm 侧后续检查被拆出独立区块。"
-              },
-              {
-                "id": "map_002",
-                "label": "错误出口 -> Arm null-check",
-                "sourceAnchorIds": [
-                  "src_002"
-                ],
-                "armRegionIds": [
-                  "arm_002"
-                ],
-                "x86RegionIds": [],
-                "note": "x86 侧错误检查并入主调用区块，Arm 侧保留独立 guard 区块。"
-              }
-            ],
-            "diffSignals": [
-              "检查与回跳拆分",
-              "调用后控制流更重"
-            ],
-            "alignmentNote": "按 wrapper 调用出口对齐",
-            "performanceNote": "Arm 侧调用后检查与回跳被拆分，控制流恢复成本更高。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "func_005",
-      "symbol": "futex_wait",
-      "component": "kernel",
-      "categoryL1": "内核等待",
-      "categoryL2": "scheduler_wait",
-      "caseIds": [
-        "tpch-q06-pyflink"
-      ],
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "asm_arm_func_005",
-        "asm_x86_func_005",
-        "source_kernel_wait_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "4.1 ms",
-        "selfX86": "3.4 ms",
-        "totalArm": "8.2 ms",
-        "totalX86": "6.7 ms",
-        "armShare": "2.3%",
-        "x86Share": "2.6%",
-        "delta": "+1.5 ms",
-        "deltaContribution": "2.8%"
-      },
-      "callPath": [
-        "python_udf_wrapper",
-        "ipc_flush",
-        "futex_wait"
-      ],
-      "diffView": {
-        "functionId": "func_005",
-        "sourceFile": "kernel/futex.c",
-        "sourceLocation": "futex.c:219-226",
-        "diffGuide": "本视图按逻辑分析块对齐。等待队列入队、原子重试与挂起恢复在两个平台上不会严格线性排列。",
-        "analysisBlocks": [
-          {
-            "id": "blk_005",
-            "label": "Wait Enqueue",
-            "summary": "对齐 futex 入队前的原子探测与重试。Arm 上显式的独占装载/存储序列让重试路径更可见。",
-            "patternTag": "BranchFSM",
-            "mappingType": "一对多",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "队列入队",
-                "role": "Atomic Probe",
-                "location": "futex.c:219",
-                "snippet": "queue_me(&q, hb);",
-                "defaultExpanded": true
-              },
-              {
-                "id": "src_002",
-                "label": "等待重试",
-                "role": "Retry Branch",
-                "location": "futex.c:226",
-                "snippet": "if (unlikely(retry)) goto wait_retry;",
-                "defaultExpanded": false
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Exclusive Load",
-                "location": "0x00c0-0x00d0",
-                "role": "Atomic Probe",
-                "snippet": "ldxr w8, [x19]\ncbnz w8, wait_retry",
-                "highlights": [
-                  "ldxr",
-                  "cbnz"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "arm_002",
-                "label": "Exclusive Store",
-                "location": "0x00e4-0x00f4",
-                "role": "Atomic Commit",
-                "snippet": "stxr w9, w20, [x19]\ncbnz w9, wait_retry",
-                "highlights": [
-                  "stxr",
-                  "cbnz"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Probe + Branch",
-                "location": "0x0044-0x0054",
-                "role": "Atomic Probe",
-                "snippet": "mov eax, dword ptr [rbx]\ntest eax, eax\njne wait_retry",
-                "highlights": [
-                  "mov",
-                  "test",
-                  "jne"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "队列入队 -> atomic probe",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都保留原子探测入口，但 Arm 侧显式使用独占装载。"
-              },
-              {
-                "id": "map_002",
-                "label": "等待重试 -> Arm exclusive store",
-                "sourceAnchorIds": [
-                  "src_002"
-                ],
-                "armRegionIds": [
-                  "arm_002"
-                ],
-                "x86RegionIds": [],
-                "note": "x86 侧重试检查被合并到 probe 路径，Arm 侧独占提交失败单独成块。"
-              }
-            ],
-            "diffSignals": [
-              "显式独占序列",
-              "重试路径更长"
-            ],
-            "alignmentNote": "按 wait enqueue 块对齐",
-            "performanceNote": "Arm 侧原子等待前的独占序列更长，重试路径更重。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "func_006",
-      "symbol": "PyDict_GetItem",
-      "component": "cpython",
-      "categoryL1": "对象模型",
-      "categoryL2": "dict_lookup",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "asm_arm_func_006",
-        "asm_x86_func_006",
-        "source_object_lookup_excerpt"
-      ],
-      "metrics": {
-        "selfArm": "6.4 ms",
-        "selfX86": "4.1 ms",
-        "totalArm": "10.8 ms",
-        "totalX86": "8.0 ms",
-        "armShare": "3.5%",
-        "x86Share": "3.1%",
-        "delta": "+2.8 ms",
-        "deltaContribution": "5.3%"
-      },
-      "callPath": [
-        "row_adapter_convert",
-        "PyDict_GetItem",
-        "hash_lookup"
-      ],
-      "diffView": {
-        "functionId": "func_006",
-        "sourceFile": "Objects/dictobject.c",
-        "sourceLocation": "dictobject.c:1298-1303",
-        "diffGuide": "本视图按逻辑分析块对齐。dict probe 的地址计算、slot 读取和 miss 处理可能在不同平台上交错分布。",
-        "analysisBlocks": [
-          {
-            "id": "blk_006",
-            "label": "Dict Probe",
-            "summary": "对齐 hash 读取、probe 地址计算与 slot 装载。Arm 上 probe 地址恢复与后续 slot 装载被拆成多个区块。",
-            "patternTag": "ObjectManipulator",
-            "mappingType": "多对多",
-            "sourceAnchors": [
-              {
-                "id": "src_001",
-                "label": "Probe 入口",
-                "role": "Probe Setup",
-                "location": "dictobject.c:1298",
-                "snippet": "entry = find_key(hash, key, ep0);",
-                "defaultExpanded": true
-              },
-              {
-                "id": "src_002",
-                "label": "Miss 继续探测",
-                "role": "Probe Miss",
-                "location": "dictobject.c:1303",
-                "snippet": "if (entry == NULL) goto next_probe;",
-                "defaultExpanded": false
-              }
-            ],
-            "armRegions": [
-              {
-                "id": "arm_001",
-                "label": "Hash Load",
-                "location": "0x0150-0x015c",
-                "role": "Probe Setup",
-                "snippet": "ldr x12, [x1, #24]\nadd x13, x0, x12, lsl #4",
-                "highlights": [
-                  "ldr",
-                  "add"
-                ],
-                "defaultExpanded": true
-              },
-              {
-                "id": "arm_002",
-                "label": "Slot Load",
-                "location": "0x0174-0x0180",
-                "role": "Probe Read",
-                "snippet": "ldr x14, [x13]\ncbz x14, next_probe",
-                "highlights": [
-                  "ldr",
-                  "cbz"
-                ],
-                "defaultExpanded": false
-              }
-            ],
-            "x86Regions": [
-              {
-                "id": "x86_001",
-                "label": "Hash + Slot Load",
-                "location": "0x0068-0x0078",
-                "role": "Probe Read",
-                "snippet": "mov rcx, qword ptr [rsi+24]\nlea rdx, [rdi+rcx*16]\nmov r8, qword ptr [rdx]",
-                "highlights": [
-                  "mov",
-                  "lea"
-                ],
-                "defaultExpanded": true
-              }
-            ],
-            "mappings": [
-              {
-                "id": "map_001",
-                "label": "probe 入口 -> hash/probe read",
-                "sourceAnchorIds": [
-                  "src_001"
-                ],
-                "armRegionIds": [
-                  "arm_001"
-                ],
-                "x86RegionIds": [
-                  "x86_001"
-                ],
-                "note": "两个平台都围绕 probe 入口建立地址恢复与 slot 读取。"
-              },
-              {
-                "id": "map_002",
-                "label": "miss 继续探测 -> Arm slot load",
-                "sourceAnchorIds": [
-                  "src_002"
-                ],
-                "armRegionIds": [
-                  "arm_002"
-                ],
-                "x86RegionIds": [],
-                "note": "x86 侧 miss 检查与 probe 读取合并，Arm 侧拆成单独 slot load + branch。"
-              }
-            ],
-            "diffSignals": [
-              "地址恢复更长",
-              "slot 读取拆分"
-            ],
-            "alignmentNote": "按 dict probe 块对齐",
-            "performanceNote": "Arm 侧 probe 地址恢复与 slot 读取被拆分，加载链更长。",
-            "defaultExpanded": true
-          }
-        ]
-      }
-    }
-  ],
-  "patterns": [
-    {
-      "id": "pattern_001",
-      "title": "热点路径上存在高频临时对象抖动",
-      "summary": "短生命周期对象会在行转换与包装层中被反复创建。",
-      "confidence": "高",
-      "caseIds": [
-        "tpch-q01-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "functionIds": [
-        "func_001",
-        "func_003",
-        "func_006"
-      ],
-      "rootCauseIds": [
-        "rc_001"
-      ],
-      "artifactIds": [
-        "source_row_adapter_excerpt",
-        "source_object_lookup_excerpt",
-        "asm_arm_func_003",
-        "asm_x86_func_003"
-      ]
-    },
-    {
-      "id": "pattern_002",
-      "title": "行适配层级放大了解释器分派开销",
-      "summary": "重复的 frame 进入与包装层求值会在真正业务逻辑执行前增加解释器侧成本。",
-      "confidence": "高置信",
-      "caseIds": [
-        "tpch-q06-pyflink",
-        "tpch-q12-pyflink"
-      ],
-      "functionIds": [
-        "func_002",
-        "func_004",
-        "func_005"
-      ],
-      "rootCauseIds": [
-        "rc_002"
-      ],
-      "artifactIds": [
-        "source_interpreter_loop_excerpt",
-        "source_wrapper_dispatch_excerpt",
-        "source_kernel_wait_excerpt",
-        "asm_arm_func_004",
-        "asm_x86_func_004"
-      ]
-    }
-  ],
-  "rootCauses": [
-    {
-      "id": "rc_001",
-      "title": "当前行表示设计导致临时对象过多",
-      "summary": "对象密集型行转换逻辑会反复分配临时包装对象，并放大平台敏感的内存开销。",
-      "confidence": "高置信",
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "source_row_adapter_excerpt",
-        "source_object_lookup_excerpt",
-        "asm_arm_func_001",
-        "asm_x86_func_001",
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "asm_arm_func_006",
-        "asm_x86_func_006"
-      ],
-      "optimizationIdeas": [
-        "减少临时包装对象创建",
-        "在安全前提下复用中间对象"
-      ],
-      "validationPlan": [
-        "对比改写前后的对象分配次数",
-        "对比 Arm 与 x86 上的分配敏感型微基准"
-      ]
-    },
-    {
-      "id": "rc_002",
-      "title": "行适配层级增加了解释器分派成本",
-      "summary": "嵌套的适配器与包装层切换会在热点解释器路径上带来额外的 frame 求值与分派开销。",
-      "confidence": "高置信",
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "source_interpreter_loop_excerpt",
-        "source_wrapper_dispatch_excerpt",
-        "source_kernel_wait_excerpt",
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "asm_arm_func_004",
-        "asm_x86_func_004",
-        "asm_arm_func_005",
-        "asm_x86_func_005"
-      ],
-      "optimizationIdeas": [
-        "收敛冗余的适配器 frame",
-        "针对常见行形态特化热点包装路径"
-      ],
-      "validationPlan": [
-        "对比简化前后每条记录的 frame 切换次数",
-        "对比收敛适配层后 Arm 与 x86 的解释器 self time"
-      ]
-    }
-  ],
-  "opportunities": [
-    {
-      "id": "opp_001",
-      "title": "减少临时包装对象创建",
-      "impact": "高",
-      "effort": "中",
-      "estimatedGainPct": 8.0,
-      "rootCauseId": "rc_001"
-    },
-    {
-      "id": "opp_002",
-      "title": "收敛冗余的行适配层级",
-      "impact": "中",
-      "effort": "中",
-      "estimatedGainPct": 5.0,
-      "rootCauseId": "rc_002"
+      "hotspotIds": []
     }
   ]
 }

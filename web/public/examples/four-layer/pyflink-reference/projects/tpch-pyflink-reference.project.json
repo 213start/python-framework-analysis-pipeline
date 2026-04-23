@@ -8,69 +8,46 @@
     {
       "caseId": "tpch-q01-pyflink",
       "legacyCaseId": "q01",
-      "sourceFileIds": [
-        "srcfile_obmalloc",
-        "srcfile_row_adapter",
-        "srcfile_dictobject"
-      ],
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_alloc_slowpath",
-        "anchor_row_adapter_wrap",
-        "anchor_row_adapter_writeback",
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
       "primaryArtifactIds": [
         "sql_q01",
         "pyflink_q01"
-      ],
-      "notes": "Q1 主要绑定对象分配、行包装与字典探测路径。"
+      ]
     },
     {
       "caseId": "tpch-q06-pyflink",
       "legacyCaseId": "q06",
-      "sourceFileIds": [
-        "srcfile_ceval",
-        "srcfile_row_adapter",
-        "srcfile_wrapper_dispatch",
-        "srcfile_kernel_wait"
-      ],
-      "sourceAnchorIds": [
-        "anchor_opcode_dispatch",
-        "anchor_row_adapter_wrap",
-        "anchor_wrapper_dispatch",
-        "anchor_wrapper_error_guard",
-        "anchor_wait_enqueue",
-        "anchor_wait_retry"
-      ],
       "primaryArtifactIds": [
         "sql_q06",
         "pyflink_q06"
-      ],
-      "notes": "Q6 主要绑定解释器分派、包装层调用与等待重试路径。"
+      ]
     },
     {
       "caseId": "tpch-q12-pyflink",
       "legacyCaseId": "q12",
-      "sourceFileIds": [
-        "srcfile_obmalloc",
-        "srcfile_ceval",
-        "srcfile_wrapper_dispatch",
-        "srcfile_dictobject"
-      ],
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_opcode_dispatch",
-        "anchor_wrapper_dispatch",
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
       "primaryArtifactIds": [
         "sql_q12",
         "pyflink_q12"
-      ],
-      "notes": "Q12 绑定内存、解释器分派与对象模型三条热点路径。"
+      ]
+    },
+    {
+      "caseId": "tpch-q03-pyflink",
+      "legacyCaseId": "q03"
+    },
+    {
+      "caseId": "tpch-q05-pyflink",
+      "legacyCaseId": "q05"
+    },
+    {
+      "caseId": "tpch-q10-pyflink",
+      "legacyCaseId": "q10"
+    },
+    {
+      "caseId": "tpch-q14-pyflink",
+      "legacyCaseId": "q14"
+    },
+    {
+      "caseId": "tpch-q19-pyflink",
+      "legacyCaseId": "q19"
     }
   ],
   "functionBindings": [
@@ -81,10 +58,10 @@
         "anchor_alloc_slowpath"
       ],
       "armArtifactIds": [
-        "asm_arm_func_001"
+        "asm_arm64_59ad9455"
       ],
       "x86ArtifactIds": [
-        "asm_x86_func_001"
+        "asm_x86_64_59ad9455"
       ],
       "notes": "对象分配快路径与慢路径回退。"
     },
@@ -94,10 +71,10 @@
         "anchor_opcode_dispatch"
       ],
       "armArtifactIds": [
-        "asm_arm_func_002"
+        "asm_arm64_a8fe4a73"
       ],
       "x86ArtifactIds": [
-        "asm_x86_func_002"
+        "asm_x86_64_a8fe4a73"
       ],
       "notes": "解释器 dispatch 准备与 opcode 读取。"
     },
@@ -107,12 +84,8 @@
         "anchor_row_adapter_wrap",
         "anchor_row_adapter_writeback"
       ],
-      "armArtifactIds": [
-        "asm_arm_func_003"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_func_003"
-      ],
+      "armArtifactIds": [],
+      "x86ArtifactIds": [],
       "notes": "行包装适配路径。"
     },
     {
@@ -121,12 +94,8 @@
         "anchor_wrapper_dispatch",
         "anchor_wrapper_error_guard"
       ],
-      "armArtifactIds": [
-        "asm_arm_func_004"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_func_004"
-      ],
+      "armArtifactIds": [],
+      "x86ArtifactIds": [],
       "notes": "包装层调用与错误出口。"
     },
     {
@@ -135,12 +104,8 @@
         "anchor_wait_enqueue",
         "anchor_wait_retry"
       ],
-      "armArtifactIds": [
-        "asm_arm_func_005"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_func_005"
-      ],
+      "armArtifactIds": [],
+      "x86ArtifactIds": [],
       "notes": "等待入队与原子重试路径。"
     },
     {
@@ -150,100 +115,272 @@
         "anchor_dict_lookup_miss"
       ],
       "armArtifactIds": [
-        "asm_arm_func_006"
+        "asm_arm64_24048964"
       ],
       "x86ArtifactIds": [
-        "asm_x86_func_006"
+        "asm_x86_64_24048964"
       ],
       "notes": "对象模型中的字典探测路径。"
-    }
-  ],
-  "patternBindings": [
-    {
-      "patternId": "pattern_001",
-      "functionIds": [
-        "func_001",
-        "func_003",
-        "func_006"
-      ],
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_row_adapter_wrap",
-        "anchor_row_adapter_writeback",
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
-      "artifactIds": [
-        "source_row_adapter_excerpt",
-        "source_object_lookup_excerpt",
-        "asm_arm_func_001",
-        "asm_x86_func_001",
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "asm_arm_func_006",
-        "asm_x86_func_006"
-      ]
     },
     {
-      "patternId": "pattern_002",
-      "functionIds": [
-        "func_002",
-        "func_004",
-        "func_005"
-      ],
-      "sourceAnchorIds": [
-        "anchor_opcode_dispatch",
-        "anchor_wrapper_dispatch",
-        "anchor_wrapper_error_guard",
-        "anchor_wait_enqueue",
-        "anchor_wait_retry"
-      ],
-      "artifactIds": [
-        "source_interpreter_loop_excerpt",
-        "source_wrapper_dispatch_excerpt",
-        "source_kernel_wait_excerpt",
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "asm_arm_func_004",
-        "asm_x86_func_004",
-        "asm_arm_func_005",
-        "asm_x86_func_005"
-      ]
-    }
-  ],
-  "rootCauseBindings": [
-    {
-      "rootCauseId": "rc_001",
-      "patternIds": [
-        "pattern_001"
-      ],
-      "artifactIds": [
-        "source_row_adapter_excerpt",
-        "source_object_lookup_excerpt",
-        "asm_arm_func_001",
-        "asm_x86_func_001",
-        "asm_arm_func_003",
-        "asm_x86_func_003",
-        "asm_arm_func_006",
-        "asm_x86_func_006"
-      ]
+      "functionId": "func_20adef2c"
     },
     {
-      "rootCauseId": "rc_002",
-      "patternIds": [
-        "pattern_002"
-      ],
-      "artifactIds": [
-        "source_interpreter_loop_excerpt",
-        "source_wrapper_dispatch_excerpt",
-        "source_kernel_wait_excerpt",
-        "asm_arm_func_002",
-        "asm_x86_func_002",
-        "asm_arm_func_004",
-        "asm_x86_func_004",
-        "asm_arm_func_005",
-        "asm_x86_func_005"
-      ]
+      "functionId": "func_6eb7d298"
+    },
+    {
+      "functionId": "func_5a7b6172"
+    },
+    {
+      "functionId": "func_2006bd89"
+    },
+    {
+      "functionId": "func_2c27c597"
+    },
+    {
+      "functionId": "func_5f6a3a1d"
+    },
+    {
+      "functionId": "func_8d518bff"
+    },
+    {
+      "functionId": "func_20f19630"
+    },
+    {
+      "functionId": "func_4d826596"
+    },
+    {
+      "functionId": "func_95ab81b0"
+    },
+    {
+      "functionId": "func_37f4e6da"
+    },
+    {
+      "functionId": "func_55cb5b04"
+    },
+    {
+      "functionId": "func_9a3c64dc"
+    },
+    {
+      "functionId": "func_72d4bd12"
+    },
+    {
+      "functionId": "func_9382568d"
+    },
+    {
+      "functionId": "func_adca762f"
+    },
+    {
+      "functionId": "func_684f5e96"
+    },
+    {
+      "functionId": "func_5bb359c8"
+    },
+    {
+      "functionId": "func_be2d59c7"
+    },
+    {
+      "functionId": "func_11e371a4"
+    },
+    {
+      "functionId": "func_4f686adb"
+    },
+    {
+      "functionId": "func_c38a9b3d"
+    },
+    {
+      "functionId": "func_17c8a931"
+    },
+    {
+      "functionId": "func_5a24914c"
+    },
+    {
+      "functionId": "func_a5a29186"
+    },
+    {
+      "functionId": "func_ec667127"
+    },
+    {
+      "functionId": "func_8bf7f8cb"
+    },
+    {
+      "functionId": "func_b78d65eb"
+    },
+    {
+      "functionId": "func_2631aa03"
+    },
+    {
+      "functionId": "func_b4c4cf7d"
+    },
+    {
+      "functionId": "func_cf34da4c"
+    },
+    {
+      "functionId": "func_821617ad"
+    },
+    {
+      "functionId": "func_839d7c42"
+    },
+    {
+      "functionId": "func_b58cfa14"
+    },
+    {
+      "functionId": "func_9da296ba"
+    },
+    {
+      "functionId": "func_55d3584e"
+    },
+    {
+      "functionId": "func_b4410a94"
+    },
+    {
+      "functionId": "func_425a8fb1"
+    },
+    {
+      "functionId": "func_b1338727"
+    },
+    {
+      "functionId": "func_2226ce31"
+    },
+    {
+      "functionId": "func_01721272"
+    },
+    {
+      "functionId": "func_f004967e"
+    },
+    {
+      "functionId": "func_43b0463c"
+    },
+    {
+      "functionId": "func_8525f613"
+    },
+    {
+      "functionId": "func_ddfd638a"
+    },
+    {
+      "functionId": "func_b9bd9d6a"
+    },
+    {
+      "functionId": "func_5b5bcc1f"
+    },
+    {
+      "functionId": "func_07c7ff5d"
+    },
+    {
+      "functionId": "func_1bf2dfb0"
+    },
+    {
+      "functionId": "func_5173c62c"
+    },
+    {
+      "functionId": "func_186b592d"
+    },
+    {
+      "functionId": "func_43ff6dff"
+    },
+    {
+      "functionId": "func_a7ce3947"
+    },
+    {
+      "functionId": "func_24adac1a"
+    },
+    {
+      "functionId": "func_e5a6ef68"
+    },
+    {
+      "functionId": "func_be0cb544"
+    },
+    {
+      "functionId": "func_31464506"
+    },
+    {
+      "functionId": "func_105fb6ab"
+    },
+    {
+      "functionId": "func_3dcd9a31"
+    },
+    {
+      "functionId": "func_15a4fc97"
+    },
+    {
+      "functionId": "func_0f15127f"
+    },
+    {
+      "functionId": "func_69e065db"
+    },
+    {
+      "functionId": "func_6426c1b2"
+    },
+    {
+      "functionId": "func_88189656"
+    },
+    {
+      "functionId": "func_30ca2413"
+    },
+    {
+      "functionId": "func_2d9abb08"
+    },
+    {
+      "functionId": "func_296bddc8"
+    },
+    {
+      "functionId": "func_c9377aa4"
+    },
+    {
+      "functionId": "func_e85bbd76"
+    },
+    {
+      "functionId": "func_b4979c0d"
+    },
+    {
+      "functionId": "func_0518eb5d"
+    },
+    {
+      "functionId": "func_19e5ae30"
+    },
+    {
+      "functionId": "func_76d615a8"
+    },
+    {
+      "functionId": "func_b8f925d4"
+    },
+    {
+      "functionId": "func_f005f3cb"
+    },
+    {
+      "functionId": "func_f90a89d5"
+    },
+    {
+      "functionId": "func_632890d9"
+    },
+    {
+      "functionId": "func_eb3657f8"
+    },
+    {
+      "functionId": "func_25a80988"
+    },
+    {
+      "functionId": "func_34ae7a5f"
+    },
+    {
+      "functionId": "func_1396dd43"
+    },
+    {
+      "functionId": "func_c6d243b2"
+    },
+    {
+      "functionId": "func_86269ace"
+    },
+    {
+      "functionId": "func_09c6b063"
+    },
+    {
+      "functionId": "func_86578425"
+    },
+    {
+      "functionId": "func_21ebc9c5"
     }
-  ]
+  ],
+  "patternBindings": [],
+  "rootCauseBindings": []
 }
