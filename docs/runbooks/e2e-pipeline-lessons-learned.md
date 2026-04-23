@@ -299,38 +299,57 @@ host staging dir → docker cp → container /opt/flink/perf-kits-scripts/
 - 将统计信息通过 SQL 管道写回到 sink（修改 SQL schema）
 - 使用共享内存或 TCP socket 传递
 
-### 7.2 从 perf 数据估算 operator/framework 时间
+### 7.2 perf 采样严重低估 bursty 工作负载（已废弃估算方法）
 
-**现状**: 由于 7.1 的限制，per-invocation 计时不可用。采用 perf 采样数估算：
+**现象**: 用 perf 采样数估算 operator/framework 时间，得到 12.9 ns/row，但实际值约 2 us/row（160 倍低估）。
+
+**根因**: `perf -F 999`（999Hz 采样率）对 PyFlink 的 bursty 工作负载严重欠采样。PyFlink UDF 执行是批量突发模式——在 Java 端触发时集中处理大量行，然后长时间等待下一批。999Hz 采样在突发窗口内只捕获极少量样本：
 
 ```
-Python worker CPU time = total_samples / sample_rate (999 Hz)
-CPU utilization ratio = CPU time / sum(all case wall-clock times)
-Per case: operator = case_wallclock × ratio
-          framework = case_wallclock - operator
+ARM 实测：1034 samples / 999 Hz = 1.035s CPU time（80M rows）
+→ 估算: 1.035s / 80M = 12.9 ns/row
+→ 实际: ~2 us/row（从 PostUDF BENCHMARK_SUMMARY 得知）
+→ 低估倍数: ~160x
 ```
 
-ARM 实测数据（CPU time = 1.04s, wall-clock total = 126.6s, ratio = 0.8%）:
+**结论**: perf 采样数据**不能**用于估算 operator/framework 时间。perf 适合热点分析（哪些函数最耗时），不适合绝对耗时估算。
 
-| Case | 总耗时 | Operator (Python执行) | Framework (框架开销) |
-|------|--------|----------------------|---------------------|
-| q01 | 20.68 s | 2256.0 ms (10.9%) | 18424.0 ms (89.1%) |
-| q06 | 14.28 s | 1557.8 ms (10.9%) | 12722.2 ms (89.1%) |
-| q19 | 17.85 s | 1947.3 ms (10.9%) | 15902.7 ms (89.1%) |
+### 7.3 PostUDF BENCHMARK_SUMMARY：真实 operator/framework 计时来源
 
-**注意**: 这里的比例是 CPU time / wall-clock 比例按各 case wall-clock 等比分配，所有 case 的 operator/framework 百分比相同。当有真实的 per-invocation 数据时应替换此估算。
+**方案**: Java UDF `PostUDF.java` 的 `close()` 方法已经通过 AtomicLong 累积了：
+- `totalPyDurationNs` — Python UDF 真实执行耗时（operator time）
+- `totalFrameworkOverheadNs` — 框架调用开销（framework time）
+- `recordCount` — 处理的行数
 
-**演进历史**:
-1. 最初用 CPython share（CPython self% / 总 self%）估算，但过滤 idle 后 CPython = 100%
-2. 改用 CPU utilization（采样数 / 采样率 / 总 wall-clock），更准确反映实际 CPU 占比
+在作业结束时打印 `[BENCHMARK_SUMMARY]` JSON 到 stdout。但 Flink 将 System.out 重定向到 TM 日志文件（`/opt/flink/log/taskexecutor.log`），而非 docker stdout。
 
-### 7.3 frameworkCallTime 从未生成
+**orchestrator 实现**: `_collect_operator_timing` 从各 TM 容器的 Flink 日志中提取最后一个 `[BENCHMARK_SUMMARY]` 行：
+
+```python
+grep BENCHMARK_SUMMARY /opt/flink/log/taskexecutor.log | tail -1
+```
+
+解析 JSON 后累加各 TM 的统计数据，写入 timing-normalized.json 的 `businessOperatorTime` 和 `frameworkCallTime`（以 `total_ns` 字段）。
+
+**timing_backfill 适配**: `_extract_per_invocation_ns` 已更新为同时检查 `per_invocation_ns` 和 `total_ns`：
+
+```python
+val = metric.get("per_invocation_ns") or metric.get("total_ns")
+```
+
+**注意**: 在下次 E2E 运行之前，数据集中 operator/framework 值为 None（当前运行未采集 TM 日志）。
+
+### 7.4 frameworkCallTime 从未生成（已解决）
 
 **现象**: timing-normalized.json 中没有 `frameworkCallTime` 指标。
 
 **根因**: orchestrator 的 `_merge_wall_clock_times` 只写入了 `wallClockTime` 和 `tmE2eTime`，从未计算或写入 `frameworkCallTime`。
 
-**修复**: 在 `perf_backfill` 中通过估算补充（见 7.2），而非修改 orchestrator。
+**修复**: 通过 PostUDF BENCHMARK_SUMMARY 采集真实数据（见 7.3），`_merge_wall_clock_times` 现在同时写入 `businessOperatorTime`（`totalPyDurationNs`）和 `frameworkCallTime`（`totalFrameworkOverheadNs`）。
+
+### 7.5 perf_backfill 移除估算逻辑
+
+**变更**: `perf_backfill.py` 中的 `_estimate_case_operator_framework` 函数已移除。函数热图分析（stackOverview、functions、categories）保留不变，operator/framework 时间现在完全由 PostUDF 的真实计时数据驱动。
 
 ---
 
@@ -340,14 +359,17 @@ ARM 实测数据（CPU time = 1.04s, wall-clock total = 126.6s, ratio = 0.8%）:
 perf record -a (容器内)
     ↓ perf.data
 perf report (容器内) → perf_records.csv (744K 行)
-    ↓ _filter_python_rows (按 pid_command)
+    ↓ _filter_python_rows (按 pid_command, 排除 idle/0x)
     ↓ 1051 行 (已解析 Python worker 符号)
     ↓ _aggregate_symbols
     ↓ {symbol: {self_share, component, category...}}
     ↓ _build_components / _build_categories / _build_functions
     ↓ stackOverview + functions + componentDetails
-    ↓ _estimate_case_operator_framework
-    ↓ cases[].metrics.operator / framework
+    ↓
+PostUDF [BENCHMARK_SUMMARY] (TM 日志)
+    ↓ _collect_operator_timing (grep + JSON parse)
+    ↓ businessOperatorTime + frameworkCallTime (total_ns)
+    ↓ timing_backfill → _build_metrics → cases[].metrics
     ↓
 dataset.json → web/public/
 ```

@@ -170,9 +170,10 @@ def _extract_wallclock_ns(case: dict | None, metric_key: str) -> float | None:
 
 
 def _extract_per_invocation_ns(case: dict | None, metric_key: str) -> float | None:
-    """Extract per_invocation_ns from a timing case dict.
+    """Extract timing value from a timing case dict.
 
-    Returns None if the case or metric is absent.
+    Checks per_invocation_ns first (per-row timing), then total_ns
+    (aggregate from PostUDF [BENCHMARK_SUMMARY]).
     """
     if case is None:
         return None
@@ -182,7 +183,7 @@ def _extract_per_invocation_ns(case: dict | None, metric_key: str) -> float | No
     metric = case_metrics.get(metric_key)
     if metric is None:
         return None
-    val = metric.get("per_invocation_ns")
+    val = metric.get("per_invocation_ns") or metric.get("total_ns")
     if val is None:
         return None
     return float(val)

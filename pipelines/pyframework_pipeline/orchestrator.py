@@ -409,44 +409,41 @@ def _collect_operator_timing(
     query_id: str,
     wall_clock_times: dict[str, dict],
 ) -> None:
-    """Collect per-invocation operator timing stats from TM containers.
+    """Collect operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
 
-    The Python worker writes _pyflink_timing_stats.json to /tmp on the TM.
-    We read it and merge into the wall_clock_times dict.
+    PostUDF (CalcOverhead) accumulates per-record py_duration and framework
+    overhead in AtomicLongs, then prints a JSON summary to stdout on close().
+    Flink redirects System.out to the TM log file, so we read from there.
     """
     import json as _json
 
     for i in range(1, tm_count + 1):
+        # Read the last BENCHMARK_SUMMARY from TM's Flink log file.
         result = executor.run(
             f"docker exec flink-tm{i} bash -c "
-            f"'cat /tmp/_pyflink_timing_stats.json 2>/dev/null'",
+            f"'grep BENCHMARK_SUMMARY /opt/flink/log/taskexecutor.log 2>/dev/null | tail -1'",
             timeout=15,
         )
-        if result.returncode == 0 and result.stdout.strip():
+        if result.returncode == 0 and "BENCHMARK_SUMMARY" in (result.stdout or ""):
             try:
-                stats = _json.loads(result.stdout.strip())
+                # Extract JSON after [BENCHMARK_SUMMARY] marker
+                line = result.stdout.strip()
+                json_str = line.split("BENCHMARK_SUMMARY] ", 1)[1].strip()
+                stats = _json.loads(json_str)
                 wc = wall_clock_times.get(query_id, {})
-                wc["operatorCount"] = wc.get("operatorCount", 0) + stats.get("count", 0)
-                wc["operatorTotalNs"] = wc.get("operatorTotalNs", 0) + stats.get("total_ns", 0)
-                wc["operatorMinNs"] = min(
-                    wc.get("operatorMinNs", float("inf")),
-                    stats.get("min_ns", float("inf")),
-                )
-                wc["operatorMaxNs"] = max(
-                    wc.get("operatorMaxNs", 0),
-                    stats.get("max_ns", 0),
+                wc["recordCount"] = wc.get("recordCount", 0) + stats.get("recordCount", 0)
+                wc["totalPyDurationNs"] = wc.get("totalPyDurationNs", 0) + stats.get("totalPyDurationNs", 0)
+                wc["totalFrameworkOverheadNs"] = (
+                    wc.get("totalFrameworkOverheadNs", 0)
+                    + stats.get("totalFrameworkOverheadNs", 0)
                 )
                 wall_clock_times[query_id] = wc
-                logger.info("  %s TM%d: %d invocations, avg %.0f ns",
-                            query_id, i, stats.get("count", 0),
-                            stats.get("total_ns", 0) / max(stats.get("count", 1), 1))
-            except _json.JSONDecodeError:
+                logger.info("  %s TM%d: %d records, py=%d ns, fw=%d ns",
+                            query_id, i, stats.get("recordCount", 0),
+                            stats.get("totalPyDurationNs", 0),
+                            stats.get("totalFrameworkOverheadNs", 0))
+            except (_json.JSONDecodeError, IndexError):
                 pass
-        # Clean up stats file for next query.
-        executor.run(
-            f"docker exec flink-tm{i} rm -f /tmp/_pyflink_timing_stats.json",
-            timeout=10,
-        )
 
 
 def _ensure_container_perf(
@@ -527,11 +524,16 @@ def _merge_wall_clock_times(
         case["metrics"]["wallClockTime"] = {"wall_clock_ns": wall_clock_ns}
         case["metrics"]["tmE2eTime"] = {"wall_clock_ns": wall_clock_ns}
 
-        # Per-invocation operator timing from Python worker.
-        if wc.get("operatorCount") and wc["operatorCount"] > 0:
-            avg_ns = wc["operatorTotalNs"] // wc["operatorCount"]
+        # Operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
+        py_ns = wc.get("totalPyDurationNs", 0)
+        fw_ns = wc.get("totalFrameworkOverheadNs", 0)
+        if py_ns > 0:
             case["metrics"]["businessOperatorTime"] = {
-                "per_invocation_ns": avg_ns,
+                "total_ns": py_ns,
+            }
+        if fw_ns > 0:
+            case["metrics"]["frameworkCallTime"] = {
+                "total_ns": fw_ns,
             }
 
     timing_path.write_text(

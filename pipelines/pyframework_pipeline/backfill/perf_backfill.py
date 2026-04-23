@@ -872,13 +872,11 @@ def backfill_perf(
         functions,
     )
 
-    # Estimate operator/framework timing from perf data when per-invocation
-    # stats are unavailable (PyFlink process mode cannot write timing files).
-    # Use sample count to estimate Python worker CPU utilization, then derive
-    # operator = wall_clock × cpu_util, framework = wall_clock - operator.
-    arm_cpu_util = _compute_cpu_utilization(arm_rows)
-    x86_cpu_util = _compute_cpu_utilization(x86_rows)
-    _estimate_case_operator_framework(dataset, arm_cpu_util, x86_cpu_util)
+    # Do NOT estimate operator/framework from perf data.
+    # perf -F 999 with -a severely undersamples PyFlink's bursty workload
+    # (estimated 12.9 ns/row vs actual ~2 us/row, 160x underestimate).
+    # Real timing comes from PostUDF's [BENCHMARK_SUMMARY] in TM log files.
+    # TODO: orchestrator should capture TM log files and parse BENCHMARK_SUMMARY.
 
     summary = {
         "components": len(components),
@@ -942,13 +940,9 @@ def _estimate_case_operator_framework(
 
     for case in dataset.get("cases", []):
         metrics = case.get("metrics", {})
-        op = metrics.get("operator")
-        fw = metrics.get("framework")
 
-        # Skip if both already populated
-        if (op and op.get("arm") is not None) and (fw and fw.get("arm") is not None):
-            continue
-
+        # Always overwrite — perf estimation improves with each run and
+        # previous estimates from different methods may be stale.
         demo = metrics.get("demo") or {}
         arm_demo_ms = _parse_time_to_ms(demo.get("arm", ""))
         x86_demo_ms = _parse_time_to_ms(demo.get("x86", ""))
