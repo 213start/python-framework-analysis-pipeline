@@ -322,53 +322,258 @@ def _run_workload_deploy(
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
 ) -> None:
+    import time
+
     from .config import get_workload_config, load_environment_config
     from .remote import build_executor, get_platform_host_ref
 
     workload = get_workload_config(project_path)
     queries = workload.get("queries", [])
+    rows = workload.get("rows", 10_000_000)
     env_config = load_environment_config(project_path)
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
-    # Start perf record on TM containers (background).
-    for i in range(1, 3):
+    platform_run_dir = run_dir / platform
+    platform_run_dir.mkdir(parents=True, exist_ok=True)
+
+    tm_count = _parse_tm_count(env_config)
+
+    # Ensure perf is available inside TM containers.
+    _ensure_container_perf(executor, tm_count)
+
+    # Clean stale perf data inside TM containers.
+    for i in range(1, tm_count + 1):
         executor.run(
-            f"docker exec -d flink-tm{i} /usr/local/bin/perf record -g -o /tmp/perf.data -a",
+            f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
             timeout=10,
         )
 
-    # Run benchmarks.
-    platform_run_dir = run_dir / platform
-    platform_run_dir.mkdir(parents=True, exist_ok=True)
+    # Start perf recording inside TM1 container (system-wide within container
+    # PID namespace, captures Python worker subprocesses).
+    perf_binary = _find_container_perf(executor)
+    executor.run(
+        f"nohup docker exec flink-tm1 {perf_binary} record "
+        f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data "
+        f">/dev/null 2>&1 &",
+        timeout=10,
+    )
+
+    # Run all queries while perf is recording, capture wall-clock times.
+    if not queries:
+        raise StepError("No queries configured")
+
+    import json as _json
+
+    wall_clock_times: dict[str, dict] = {}
 
     for query in queries:
         logger.info("Running query %s on %s...", query, platform)
         result = executor.run(
-            f"docker exec flink-jm python3 /opt/flink/usrlib/benchmark_runner.py "
-            f"--query {query} --rows 100000",
+            f"docker exec flink-jm /opt/flink/.pyenv/versions/3.14.3/bin/python3 "
+            f"/opt/flink/usrlib/benchmark_runner.py "
+            f"--query {query} --rows {rows}",
             timeout=300,
         )
         if result.returncode != 0:
             raise StepError(f"Benchmark {query} failed: {result.stderr[:200]}")
 
-        # Save TM stdout.
-        for i in range(1, 3):
-            logs = executor.docker_logs(f"flink-tm{i}")
-            log_path = platform_run_dir / f"tm-stdout-tm{i}.log"
-            log_path.write_text(logs, encoding="utf-8")
+        # Parse BENCHMARK_RESULT from stdout.
+        wc = _parse_benchmark_result(result.stdout, query)
+        if wc:
+            wall_clock_times[query] = wc
+            logger.info("  %s: wall-clock %.3fs, throughput %s rows/s",
+                        query, wc["wallClockSeconds"], wc.get("throughputRowsPerSec", "-"))
 
-    # Stop perf.
-    for i in range(1, 3):
+        for i in range(1, tm_count + 1):
+            logs = executor.docker_logs(f"flink-tm{i}")
+            (platform_run_dir / f"tm-stdout-tm{i}.log").write_text(logs, encoding="utf-8")
+
+        # Collect per-invocation operator timing from TM worker stats file.
+        _collect_operator_timing(executor, tm_count, query, wall_clock_times)
+
+    # Write wall-clock timing to timing-normalized.json.
+    _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
+
+    # Stop perf inside TM1.
+    executor.run(
+        "docker exec flink-tm1 bash -c 'kill -INT $(pidof perf) || true'",
+        timeout=10,
+    )
+    time.sleep(2)
+
+
+def _collect_operator_timing(
+    executor: "SshExecutor",
+    tm_count: int,
+    query_id: str,
+    wall_clock_times: dict[str, dict],
+) -> None:
+    """Collect per-invocation operator timing stats from TM containers.
+
+    The Python worker writes _pyflink_timing_stats.json to /tmp on the TM.
+    We read it and merge into the wall_clock_times dict.
+    """
+    import json as _json
+
+    for i in range(1, tm_count + 1):
+        result = executor.run(
+            f"docker exec flink-tm{i} bash -c "
+            f"'cat /tmp/_pyflink_timing_stats.json 2>/dev/null'",
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                stats = _json.loads(result.stdout.strip())
+                wc = wall_clock_times.get(query_id, {})
+                wc["operatorCount"] = wc.get("operatorCount", 0) + stats.get("count", 0)
+                wc["operatorTotalNs"] = wc.get("operatorTotalNs", 0) + stats.get("total_ns", 0)
+                wc["operatorMinNs"] = min(
+                    wc.get("operatorMinNs", float("inf")),
+                    stats.get("min_ns", float("inf")),
+                )
+                wc["operatorMaxNs"] = max(
+                    wc.get("operatorMaxNs", 0),
+                    stats.get("max_ns", 0),
+                )
+                wall_clock_times[query_id] = wc
+                logger.info("  %s TM%d: %d invocations, avg %.0f ns",
+                            query_id, i, stats.get("count", 0),
+                            stats.get("total_ns", 0) / max(stats.get("count", 1), 1))
+            except _json.JSONDecodeError:
+                pass
+        # Clean up stats file for next query.
         executor.run(
-            f"docker exec flink-tm{i} bash -c 'kill -INT $(pidof perf) || true'",
+            f"docker exec flink-tm{i} rm -f /tmp/_pyflink_timing_stats.json",
             timeout=10,
         )
+
+
+def _ensure_container_perf(
+    executor: "SshExecutor",
+    tm_count: int,
+) -> str:
+    """Install linux-tools inside TM containers if perf is not available."""
+    # Check if perf already exists inside TM1.
+    check = executor.run(
+        "docker exec flink-tm1 bash -c "
+        "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
+        timeout=10,
+    )
+    if check.returncode == 0 and check.stdout.strip():
+        return check.stdout.strip()
+
+    logger.info("Installing linux-tools inside TM containers...")
+    for i in range(1, tm_count + 1):
+        executor.run(
+            f"docker exec -u root flink-tm{i} bash -c "
+            f"'apt-get update -qq && apt-get install -y -qq "
+            f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
+            timeout=120,
+        )
+
+    # Verify.
+    check = executor.run(
+        "docker exec flink-tm1 bash -c "
+        "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
+        timeout=10,
+    )
+    if check.returncode != 0 or not check.stdout.strip():
+        raise StepError("Could not install perf inside TM container")
+    return check.stdout.strip()
+
+
+def _parse_benchmark_result(stdout: str, query_id: str) -> dict | None:
+    """Parse BENCHMARK_RESULT JSON from benchmark_runner.py stdout."""
+    import json as _json
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if '"BENCHMARK_RESULT"' in line:
+            try:
+                data = _json.loads(line)
+                if data.get("type") == "BENCHMARK_RESULT":
+                    return data
+            except _json.JSONDecodeError:
+                continue
+    return None
+
+
+def _merge_wall_clock_times(
+    platform_run_dir: Path,
+    platform: str,
+    wall_clock_times: dict[str, dict],
+) -> None:
+    """Merge wall-clock timing into timing/timing-normalized.json."""
+    import json as _json
+
+    timing_path = platform_run_dir / "timing" / "timing-normalized.json"
+    timing_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if timing_path.exists():
+        data = _json.loads(timing_path.read_text(encoding="utf-8"))
+    else:
+        data = {"schemaVersion": 1, "platform": platform, "cases": []}
+
+    cases_by_id = {c["caseId"]: c for c in data.get("cases", [])}
+
+    for query_id, wc in wall_clock_times.items():
+        case = cases_by_id.get(query_id)
+        if case is None:
+            case = {"caseId": query_id, "metrics": {}}
+            data.setdefault("cases", []).append(case)
+            cases_by_id[query_id] = case
+
+        wall_clock_ns = int(wc["wallClockSeconds"] * 1e9)
+        case["metrics"]["wallClockTime"] = {"wall_clock_ns": wall_clock_ns}
+        case["metrics"]["tmE2eTime"] = {"wall_clock_ns": wall_clock_ns}
+
+        # Per-invocation operator timing from Python worker.
+        if wc.get("operatorCount") and wc["operatorCount"] > 0:
+            avg_ns = wc["operatorTotalNs"] // wc["operatorCount"]
+            case["metrics"]["businessOperatorTime"] = {
+                "per_invocation_ns": avg_ns,
+            }
+
+    timing_path.write_text(
+        _json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("Wrote wall-clock timing for %d queries to %s",
+                len(wall_clock_times), timing_path.relative_to(platform_run_dir))
+
+
+def _find_container_perf(executor: "SshExecutor") -> str:
+    """Find the perf binary path inside the TM container."""
+    result = executor.run(
+        "docker exec flink-tm1 bash -c "
+        "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
+        timeout=10,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    # Fallback to /usr/bin/perf.
+    return "/usr/bin/perf"
+
+
+def _parse_tm_count(env_config: dict) -> int:
+    """Parse TM count from environment.yaml software.clusterTopology (e.g. '1jm-2tm')."""
+    software = env_config.get("software", {})
+    topology = software.get("clusterTopology", "")
+    if "-" in topology:
+        parts = topology.split("-")
+        if len(parts) >= 2 and parts[-1].endswith("tm"):
+            try:
+                return int(parts[-1].rstrip("tm"))
+            except ValueError:
+                pass
+    return 2  # fallback
 
 
 def _run_collect(
     project_path: Path, run_dir: Path, platform: str,
 ) -> None:
+    import json as _json
+
     from .config import load_environment_config
     from .remote import build_executor, get_platform_host_ref
 
@@ -378,15 +583,30 @@ def _run_collect(
 
     platform_run_dir = run_dir / platform
 
-    # Collect perf.data from TM1.
+    # Find which TM is running the task via JM REST API.
+    tm_container = _find_task_tm(executor)
+    if not tm_container:
+        tm_container = "flink-tm1"
+        logger.warning("Could not determine task TM via JM, falling back to %s", tm_container)
+
+    # Collect perf.data from TM container via docker cp + scp.
     perf_dir = platform_run_dir / "perf" / "data"
     perf_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Collecting perf.data from flink-tm1...")
-    result = executor.run("docker exec flink-tm1 cat /tmp/perf.data", timeout=60)
-    if result.returncode == 0 and result.stdout:
-        (perf_dir / "perf.data").write_bytes(result.stdout.encode("utf-8", errors="replace"))
+    perf_data_local = perf_dir / f"perf-{platform}.data"
+    if not perf_data_local.exists() or perf_data_local.stat().st_size == 0:
+        logger.info("Collecting perf.data from %s...", tm_container)
+        _collect_binary_from_container(
+            executor,
+            tm_container,
+            "/tmp/perf-udf.data",
+            perf_data_local,
+        )
     else:
-        logger.warning("Failed to collect perf.data: %s", result.stderr)
+        logger.info("perf.data already exists (%d bytes), skipping collection",
+                     perf_data_local.stat().st_size)
+
+    # Run python-performance-kits pipeline on remote host (same architecture as perf.data).
+    _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform)
 
     # Collect objdump from JM.
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
@@ -402,8 +622,212 @@ def _run_collect(
         if result.returncode == 0 and result.stdout:
             (asm_dir / f"{sym}.s").write_text(result.stdout, encoding="utf-8")
 
-    # TM logs already collected in benchmark step, just verify.
     logger.info("Collection complete for %s", platform)
+
+
+def _run_perf_kits_on_remote(
+    executor: "SshExecutor",
+    perf_data_local: Path,
+    perf_dir: Path,
+    platform: str,
+) -> None:
+    """Run python-performance-kits pipeline inside the TM container.
+
+    Running inside the container gives perf report access to the exact
+    binaries (libpython3.14.so, etc.) so symbols resolve correctly.
+    """
+    kits_local = Path(__file__).resolve().parents[2] / "vendor" / "python-performance-kits"
+    scripts_dir = kits_local / "scripts" / "perf_insights"
+    if not scripts_dir.exists():
+        logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
+        return
+
+    container_kits = "/opt/flink/perf-kits-scripts"
+    container_output = "/opt/flink/perf-kits-output"
+    perf_data_container = "/tmp/perf-udf.data"
+    python_bin = "/opt/flink/.pyenv/versions/3.14.3/bin/python3"
+    perf_bin = _find_container_perf(executor)
+
+    # Deploy scripts into container via host staging.
+    host_staging = "/tmp/pyframework-perf-kits-scripts"
+    executor.run(f"rm -rf {host_staging} && mkdir -p {host_staging}", timeout=15)
+    for script_name in [
+        "run_single_platform_pipeline.py",
+        "perf_data_to_csv.py",
+        "perf_script_to_csv.py",
+        "normalize_perf_records.py",
+        "summarize_platform_perf.py",
+        "annotate_perf_hotspots.py",
+        "perf_analysis_common.py",
+        "render_platform_report.py",
+        "render_platform_visuals.py",
+        "render_platform_machine_code_report.py",
+        "show_symbol_machine_code.py",
+        "cpython_category_rules.json",
+    ]:
+        src = scripts_dir / script_name
+        if src.exists():
+            executor.push_file(src, f"{host_staging}/{script_name}")
+
+    # Copy scripts into container.
+    executor.run(
+        f"docker exec flink-tm1 rm -rf {container_kits}",
+        timeout=10,
+    )
+    executor.run(
+        f"docker cp {host_staging}/. flink-tm1:{container_kits}",
+        timeout=30,
+    )
+    executor.run(f"rm -rf {host_staging}", timeout=15)
+
+    # Run the pipeline inside the container.
+    logger.info("Running python-performance-kits pipeline inside TM container (%s)...", platform)
+    result = executor.run(
+        f"docker exec flink-tm1 {python_bin} "
+        f"{container_kits}/run_single_platform_pipeline.py "
+        f"{perf_data_container} -o {container_output} "
+        f"--benchmark tpch --platform {platform} "
+        f"--perf-bin {perf_bin} "
+        f"--skip-annotate --no-print-report 2>&1 | tail -10",
+        timeout=600,
+    )
+    if result.returncode != 0:
+        logger.warning("Container perf-kits pipeline failed: %s", result.stderr[:500])
+        logger.warning("stdout: %s", result.stdout[:500])
+        return
+
+    # Collect outputs from container via host staging.
+    host_output = "/tmp/pyframework-perf-kits-output"
+    executor.run(f"rm -rf {host_output}", timeout=10)
+    executor.run(
+        f"docker cp flink-tm1:{container_output}/ {host_output}",
+        timeout=60,
+    )
+
+    for remote_rel in [
+        "data/perf_records.csv",
+        "tables/category_summary.csv",
+        "tables/shared_object_summary.csv",
+        "tables/symbol_hotspots.csv",
+    ]:
+        remote_path = f"{host_output}/{remote_rel}"
+        local_path = perf_dir.parent / remote_rel  # perf_dir is perf/data/
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        executor.fetch_file(remote_path, local_path)
+        logger.info("Collected %s", remote_rel)
+
+    # Cleanup.
+    executor.run(f"docker exec flink-tm1 rm -rf {container_kits} {container_output}", timeout=15)
+    executor.run(f"rm -rf {host_output}", timeout=15)
+
+
+def _find_task_tm(executor: "SshExecutor") -> str | None:
+    """Query JM REST API to find which TM container is running the task."""
+    import json as _json
+
+    # Get running jobs.
+    result = executor.run(
+        "docker exec flink-jm curl -sf http://localhost:8081/jobs",
+        timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout:
+        return None
+
+    try:
+        jobs = _json.loads(result.stdout)
+    except _json.JSONDecodeError:
+        return None
+
+    jobs_data = jobs.get("jobs", [])
+    # Flink REST API returns {"jobs": []} when no jobs exist, or
+    # {"jobs": {"running": [...], "finished": [...]}} with running jobs.
+    if isinstance(jobs_data, list):
+        # All jobs listed directly (v2 API) — find recent finished job
+        running = []
+        finished = jobs_data
+    else:
+        running = jobs_data.get("running", [])
+        finished = jobs_data.get("finished", [])
+
+    job_id = None
+    if running:
+        job_id = running[0]
+    elif finished:
+        job_id = finished[-1]  # most recent finished job
+
+    # Get job vertices to find task location.
+    result = executor.run(
+        f"docker exec flink-jm curl -sf http://localhost:8081/jobs/{job_id}",
+        timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout:
+        return None
+
+    try:
+        job_detail = _json.loads(result.stdout)
+    except _json.JSONDecodeError:
+        return None
+
+    vertices = job_detail.get("vertices", [])
+    if not vertices:
+        return None
+
+    # Look for the vertex containing Python UDF (usually has "Python" or "CHAIN" in name).
+    for vertex in vertices:
+        subtasks = vertex.get("subtasks", [])
+        if subtasks:
+            host = subtasks[0].get("host", "")
+            # The host is the container ID or hostname; map back to container name.
+            # In Docker network mode, host is the container hostname (e.g., container ID).
+            # Fallback: try to match by checking which TM has this host.
+            for i in range(1, 10):
+                r = executor.run(
+                    f"docker exec flink-tm{i} hostname",
+                    timeout=5,
+                )
+                if r.returncode == 0 and r.stdout.strip() == host:
+                    return f"flink-tm{i}"
+
+    return None
+
+
+def _collect_binary_from_container(
+    executor: "SshExecutor",
+    container: str,
+    remote_path: str,
+    local_path: Path,
+) -> bool:
+    """Collect a binary file from a container via docker cp + scp."""
+    staging = f"/opt/flink/_collect_{local_path.name}"
+    host_tmp = f"/tmp/pyframework-collect-{container}-{local_path.name}"
+
+    # Copy inside container to a path accessible by docker cp.
+    executor.run(
+        f"docker exec -u root {container} cp {remote_path} {staging} 2>/dev/null",
+        timeout=30,
+    )
+    executor.run(
+        f"docker exec -u root {container} chmod 644 {staging} 2>/dev/null",
+        timeout=10,
+    )
+
+    # docker cp from container to host filesystem.
+    cp_result = executor.run(
+        f"docker cp {container}:{staging} {host_tmp}",
+        timeout=60,
+    )
+    if cp_result.returncode != 0:
+        logger.warning("docker cp failed for %s:%s: %s", container, staging, cp_result.stderr)
+        return False
+
+    # scp from host to local (binary-safe).
+    ok = executor.fetch_file(host_tmp, local_path)
+
+    # Cleanup.
+    executor.run(f"docker exec {container} rm -f {staging}", timeout=15)
+    executor.run(f"rm -f {host_tmp}", timeout=15)
+
+    return ok
 
 
 def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
@@ -421,17 +845,25 @@ def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
         timing_result = collect_timing(plat_dir, plat, stdout_files or None)
         logger.info("Timing %s: %d cases", plat, len(timing_result.get("cases", [])))
 
-        perf_data = plat_dir / "perf" / "data" / "perf.data"
+        # Discover perf data files (perf-{platform}.data or perf-tm*.data).
+        perf_data_dir = plat_dir / "perf" / "data"
+        perf_data_files = sorted(perf_data_dir.glob("perf-*.data"))
+        if not perf_data_files:
+            legacy = perf_data_dir / "perf.data"
+            if legacy.exists():
+                perf_data_files = [legacy]
+        primary_perf = perf_data_files[0] if perf_data_files else None
+
         perf_result = collect_perf(
             plat_dir, plat,
-            perf_data if perf_data.exists() else None,
+            primary_perf,
             None,
         )
         logger.info("Perf %s: %s", plat, perf_result.get("status", "unknown"))
 
         asm_result = collect_asm(
             plat_dir, plat,
-            perf_data if perf_data.exists() else None,
+            primary_perf,
             None,
             [],
         )
@@ -466,6 +898,8 @@ def _run_bridge_publish(project_path: Path) -> None:
         repo=bridge_config["repo"],
         platform=bridge_config["platform"],
         token=bridge_config["token"],
+        bridge_type=bridge_config.get("type", "discussion"),
+        discussion_category=bridge_config.get("category", "General"),
     )
     if result.get("errors", 0) > 0:
         raise StepError(f"Bridge publish had {result['errors']} errors")

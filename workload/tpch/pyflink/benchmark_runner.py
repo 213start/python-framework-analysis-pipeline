@@ -14,8 +14,10 @@ Usage:
 
 import argparse
 import importlib
+import json
 import os
 import sys
+import tempfile
 import time
 
 # ---------------------------------------------------------------------------
@@ -127,18 +129,41 @@ def make_timed_udtf(udf_func, n_result_fields):
 
     The returned function has signature: (java_start_time, *udf_args)
     and yields: (*result_fields, java_start_time, py_duration_ns)
+
+    Writes per-invocation timing to /tmp/_pyflink_timing_stats.json on the TM.
     """
+
     def _timed_eval(java_start_time, *udf_args):
         t0 = time.perf_counter_ns()
         result = udf_func(*udf_args)
         t1 = time.perf_counter_ns()
         py_duration = t1 - t0
+        # Inline stats accumulation — no external references needed.
+        _sf = "/tmp/_pyflink_timing_stats.json"
+        _s = {"count": 0, "total_ns": 0, "min_ns": 0, "max_ns": 0}
+        try:
+            with open(_sf, "r") as _f:
+                _s = json.load(_f)
+        except Exception:
+            pass
+        _s["count"] = _s.get("count", 0) + 1
+        _s["total_ns"] = _s.get("total_ns", 0) + py_duration
+        _mn = _s.get("min_ns") or py_duration
+        _mx = _s.get("max_ns") or py_duration
+        _s["min_ns"] = _mn if _mn < py_duration else py_duration
+        _s["max_ns"] = _mx if _mx > py_duration else py_duration
+        try:
+            with open(_sf, "w") as _f:
+                json.dump(_s, _f)
+        except Exception:
+            pass
         if result is None:
             yield (None,) * n_result_fields + (java_start_time, py_duration)
         elif n_result_fields == 1:
             yield (result, java_start_time, py_duration)
         else:
             yield (*result, java_start_time, py_duration)
+
     return _timed_eval
 
 
@@ -420,6 +445,17 @@ def main():
     elapsed = time.time() - start
     print(f"  Total time: {elapsed:.2f}s")
     print(f"  Throughput: {num_rows / elapsed:.0f} rows/s")
+
+    # Structured output for pipeline consumption.
+    result_data = {
+        "type": "BENCHMARK_RESULT",
+        "queryId": query_id,
+        "rows": num_rows,
+        "wallClockSeconds": round(elapsed, 3),
+        "throughputRowsPerSec": round(num_rows / elapsed, 1),
+    }
+
+    print(json.dumps(result_data))
 
 
 if __name__ == "__main__":

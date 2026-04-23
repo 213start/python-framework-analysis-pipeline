@@ -9,6 +9,7 @@ from unittest.mock import patch
 from pyframework_pipeline.bridge.comment_parser import (
     ParsedAnalysis,
     find_approved_analysis_comment,
+    find_approved_discussion_analysis,
     find_analysis_comment,
     parse_comment_body,
 )
@@ -252,8 +253,7 @@ class TestParseCommentBody(unittest.TestCase):
             {"body": _SAMPLE_DUAL_COMMENT},
             {
                 "body": (
-                    "Approve with minor revisions? no, needs revision "
-                    "before backfill."
+                    "## Review\n\nNeeds revision before backfill."
                 ),
             },
         ]
@@ -271,6 +271,96 @@ class TestParseCommentBody(unittest.TestCase):
 
         result = find_approved_analysis_comment(comments)
 
+        self.assertIsNone(result)
+
+
+class TestDiscussionAnalysis(unittest.TestCase):
+    """Tests for find_approved_discussion_analysis (nested replies)."""
+
+    def test_approved_review_in_replies(self):
+        comments = [
+            {
+                "body": _SAMPLE_DUAL_COMMENT,
+                "replies": [
+                    {"body": "Approved"},
+                ],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "approved")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.symbol, "_PyObject_Malloc")
+
+    def test_blocked_review_in_replies(self):
+        comments = [
+            {
+                "body": _SAMPLE_DUAL_COMMENT,
+                "replies": [
+                    {"body": "需要修改根因汇总。"},
+                ],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "review-pending")
+        self.assertIsNone(result)
+
+    def test_no_replies_analysis_only(self):
+        comments = [
+            {
+                "body": _SAMPLE_DUAL_COMMENT,
+                "replies": [],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "analysis-only")
+        self.assertIsNotNone(result)
+
+    def test_multi_round_takes_last_analysis(self):
+        """Multi-round: two analysis comments, each with a reply."""
+        comments = [
+            {
+                "body": "## 跨平台机器码差异分析：v1\n\n### 总览\n\n| a | b |\n|---|---|\n| 1 | 2 |\n",
+                "replies": [
+                    {"body": "需要修改。"},
+                ],
+            },
+            {
+                "body": _SAMPLE_DUAL_COMMENT,
+                "replies": [
+                    {"body": "**Approved** — 结论可接受。"},
+                ],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "approved")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.symbol, "_PyObject_Malloc")
+
+    def test_last_reply_not_approved(self):
+        """Last analysis has reply, but reply is not an approval."""
+        comments = [
+            {
+                "body": _SAMPLE_DUAL_COMMENT,
+                "replies": [
+                    {"body": "Some discussion about the approach."},
+                ],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "review-pending")
+        self.assertIsNone(result)
+
+    def test_no_analysis_comments(self):
+        comments = [
+            {
+                "body": "Just a general comment.",
+                "replies": [],
+            },
+        ]
+        result, status = find_approved_discussion_analysis(comments)
+        self.assertEqual(status, "no-analysis")
         self.assertIsNone(result)
 
 
@@ -486,7 +576,7 @@ class TestAnalysisFetchReviewGate(unittest.TestCase):
 
             comments = [
                 {"body": _SAMPLE_DUAL_COMMENT},
-                {"body": "Approve With Minor Revisions"},
+                {"body": "Approved"},
             ]
             with patch.object(
                 analysis,
@@ -495,6 +585,7 @@ class TestAnalysisFetchReviewGate(unittest.TestCase):
             ):
                 result = fetch(
                     yaml_path, repo="o/r", platform="gitcode", token="fake",
+                    bridge_type="issue",
                 )
 
             dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
@@ -525,6 +616,7 @@ class TestAnalysisFetchReviewGate(unittest.TestCase):
             ):
                 result = fetch(
                     yaml_path, repo="o/r", platform="gitcode", token="fake",
+                    bridge_type="issue",
                 )
 
             dataset = json.loads(dataset_path.read_text(encoding="utf-8"))

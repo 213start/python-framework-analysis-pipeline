@@ -48,20 +48,22 @@ _RE_SINGLE = re.compile(
 _RE_HEADING = re.compile(r"^(#{2,4})\s+(.+)", re.MULTILINE)
 
 _RE_REVIEW_BLOCKED = re.compile(
-    r"\b("
+    r"(?:^|\n)\s*#{0,4}\s*\*{0,2}\s*"
+    r"(?:"
     r"not\s+approved|cannot\s+approve|can't\s+approve|do\s+not\s+approve|"
     r"needs?\s+revisions?|needs?\s+changes?|request\s+changes?|"
     r"changes?\s+requested|major\s+revisions?|blockers?"
-    r")\b",
-    re.IGNORECASE,
+    r")",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 _RE_REVIEW_APPROVED = re.compile(
-    r"\b("
+    r"(?:^|\n)\s*#{0,4}\s*\*{0,2}\s*"
+    r"(?:"
     r"approved|approve\s+with\s+minor\s+revisions?|"
-    r"approved\s+with\s+minor\s+revisions?|lgtm"
-    r")\b",
-    re.IGNORECASE,
+    r"lgtm|looks\s+good\s+to\s+me"
+    r")",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 _REVIEW_BLOCKED_TERMS = (
@@ -80,21 +82,9 @@ _REVIEW_BLOCKED_TERMS = (
 _REVIEW_APPROVED_TERMS = (
     "审核通过",
     "评审通过",
-    "review通过",
     "结论通过",
-    "可以回填",
-    "可回填",
     "可以接受",
-    "可接受",
-    "结论可接受",
     "同意发布",
-    "同意回填",
-    "允许回填",
-)
-
-_REVIEW_APPROVED_LINE = re.compile(
-    r"^\s*(通过|批准|同意)\s*[。.!！]?\s*$",
-    re.MULTILINE,
 )
 
 
@@ -257,9 +247,59 @@ def _review_state(body: str) -> str | None:
         term in body for term in _REVIEW_APPROVED_TERMS
     ):
         return "approved"
-    if _REVIEW_APPROVED_LINE.search(body):
-        return "approved"
     return None
+
+
+def find_approved_discussion_analysis(
+    comments: list[dict[str, Any]],
+) -> tuple[ParsedAnalysis | None, str]:
+    """Find the latest approved analysis from threaded Discussion comments.
+
+    Parameters
+    ----------
+    comments:
+        Threaded comment list from ``DiscussionClient.get_discussion_comments``.
+        Each item has ``body`` and ``replies`` (list of ``{body}`` dicts).
+
+    Returns
+    -------
+    tuple of (parsed_analysis_or_None, status_str)
+
+    Status values:
+    - ``"approved"`` — last analysis has an approved review reply
+    - ``"review-pending"`` — last analysis has review replies but none approved
+    - ``"analysis-only"`` — last analysis has no review replies
+    - ``"no-analysis"`` — no analysis comments at all
+    """
+    last_analysis_index: int | None = None
+    last_analysis_body: str | None = None
+
+    for idx, comment in enumerate(comments):
+        body = comment.get("body", "")
+        if body and _is_analysis_body(body):
+            last_analysis_index = idx
+            last_analysis_body = body
+
+    if last_analysis_index is None or last_analysis_body is None:
+        return None, "no-analysis"
+
+    # Check replies of the last analysis comment.
+    replies = comments[last_analysis_index].get("replies", [])
+    if not replies:
+        # No reviews yet — backward-compatible: accept as-is.
+        return parse_comment_body(last_analysis_body), "analysis-only"
+
+    # Scan replies for a decisive review state.
+    review_state: str | None = None
+    for reply in replies:
+        state = _review_state(reply.get("body", ""))
+        if state is not None:
+            review_state = state
+
+    if review_state == "approved":
+        return parse_comment_body(last_analysis_body), "approved"
+
+    return None, "review-pending"
 
 
 def _first_contiguous_table(text: str) -> str:

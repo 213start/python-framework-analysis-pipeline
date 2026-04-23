@@ -141,7 +141,7 @@ def validate_pipeline_config(
                 if report.status != "ok":
                     add(
                         "fourLayerRoot",
-                        f"four-layer validation failed with {report.error_count} errors",
+                        f"four-layer validation failed with {len(report.errors)} errors",
                     )
 
     env_path = project_path.parent / "environment.yaml"

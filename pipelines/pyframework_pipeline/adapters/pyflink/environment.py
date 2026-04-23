@@ -114,7 +114,8 @@ class PyFlinkEnvironmentAdapter:
                     image=image,
                     run_args=(
                     f"docker run -d --name flink-tm{i} --network {network} "
-                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm'"
+                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
+                    f"-e PYTHONPERFSUPPORT=1 "
                     f"{tmpfs_flag}{privileged_flag} {image} taskmanager"
                     ),
                 ),
@@ -215,8 +216,8 @@ class PyFlinkEnvironmentAdapter:
                     id="enable-perf-paranoid",
                     kind="prepare",
                     hostRef=host,
-                    command="sudo sysctl -w kernel.perf_event_paranoid=1",
-                    description=f"Set kernel.perf_event_paranoid=1 on {host_alias}",
+                    command="sudo sysctl -w kernel.perf_event_paranoid=0",
+                    description=f"Set kernel.perf_event_paranoid=0 on {host_alias}",
                     requiresPrivilege=True,
                     requiresApproval=True,
                     rollbackHint="sudo sysctl -w kernel.perf_event_paranoid=2",

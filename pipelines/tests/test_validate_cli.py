@@ -44,7 +44,7 @@ class ValidateCliTest(unittest.TestCase):
             source_path = temp_root / "sources" / "pyflink-reference-source.source.json"
             source = json.loads(source_path.read_text())
             source["artifactIndex"] = [
-                artifact for artifact in source["artifactIndex"] if artifact["id"] != "asm_arm_func_001"
+                artifact for artifact in source["artifactIndex"] if artifact["id"] != "asm_arm64_59ad9455"
             ]
             source_path.write_text(json.dumps(source, ensure_ascii=False, indent=2))
 
@@ -54,7 +54,7 @@ class ValidateCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["status"], "error")
         self.assertGreater(payload["errorCount"], 0)
-        self.assertIn("asm_arm_func_001", "\n".join(error["message"] for error in payload["errors"]))
+        self.assertIn("asm_arm64_59ad9455", "\n".join(error["message"] for error in payload["errors"]))
 
     def test_validate_accepts_project_yaml_config(self) -> None:
         project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"

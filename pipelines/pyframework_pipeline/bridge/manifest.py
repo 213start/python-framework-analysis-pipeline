@@ -24,7 +24,7 @@ class BridgeIssueEntry:
     repo: str  # "owner/repo"
     issue_number: int
     issue_url: str
-    status: str  # "created" | "analysed" | "parsed" | "failed"
+    status: str  # "created" | "analysed" | "review-pending" | "parsed" | "failed"
     created_at: str
     parsed_at: str = ""
     parent_issue_number: int | None = None  # for chunks, points to main issue

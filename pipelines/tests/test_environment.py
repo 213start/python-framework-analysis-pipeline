@@ -150,6 +150,26 @@ class EnvironmentPlanTest(unittest.TestCase):
         self.assertTrue(install_step["mutatesHost"])
         self.assertTrue(install_step["requiresApproval"])
 
+    def test_plan_sets_perf_paranoid_to_zero(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
+        )
+        plan = json.loads(result.stdout)
+        paranoid_step = next(
+            s for s in plan["steps"] if s["id"] == "enable-perf-paranoid"
+        )
+        self.assertIn("kernel.perf_event_paranoid=0", paranoid_step["command"])
+
+    def test_plan_tm_containers_have_pythonperf(self) -> None:
+        result = CliInvoker.run(
+            "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
+        )
+        plan = json.loads(result.stdout)
+        tm_step = next(
+            s for s in plan["steps"] if s["id"] == "start-taskmanager-1"
+        )
+        self.assertIn("PYTHONPERFSUPPORT=1", tm_step["command"])
+
     def test_plan_deduplicates_host_probes(self) -> None:
         result = CliInvoker.run(
             "environment", "plan", str(PROJECT_YAML), "--platform", "arm"

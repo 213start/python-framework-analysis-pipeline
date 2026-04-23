@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .comment_parser import ParsedAnalysis, find_approved_analysis_comment
+from .comment_parser import (
+    ParsedAnalysis,
+    find_approved_analysis_comment,
+    find_approved_discussion_analysis,
+)
 from .issue_client import IssueClient, create_client
 from .issue_template import build_asm_diff_issue, check_chunking
 from .manifest import BridgeIssueEntry, BridgeManifest, load_bridge_manifest
@@ -94,11 +98,13 @@ def publish(
     platform: str,
     token: str,
     *,
+    bridge_type: str = "discussion",
+    discussion_category: str = "General",
     dry_run: bool = False,
     max_lines: int = 2000,
     base_url: str | None = None,
 ) -> dict[str, Any]:
-    """Create analysis issues for all hotspot functions.
+    """Create analysis issues or discussions for all hotspot functions.
 
     Parameters
     ----------
@@ -110,6 +116,10 @@ def publish(
         ``"github"`` or ``"gitcode"``.
     token:
         API personal-access token.
+    bridge_type:
+        ``"discussion"`` (default) or ``"issue"``.
+    discussion_category:
+        Discussion category name (only used when bridge_type is discussion).
     dry_run:
         If *True*, build issue bodies but do not create issues.
     max_lines:
@@ -144,14 +154,25 @@ def publish(
     framework_id = dataset.get("frameworkId", "")
     framework_name = _resolve_framework_display(framework_id)
 
-    # Ensure label exists (skip in dry-run).
-    client: IssueClient | None = None
+    # Build the appropriate client.
+    use_discussion = bridge_type == "discussion"
+    issue_client: IssueClient | None = None
+    discussion_client = None
+    repo_id: str | None = None
+
     if not dry_run:
-        client = create_client(platform, token, base_url=base_url)
-        try:
-            client.ensure_label(owner, repo_name, _LABEL_ASM_DIFF, _LABEL_COLOR)
-        except Exception:
-            logger.warning("Failed to create label (may already exist)")
+        if use_discussion:
+            from .discussion_client import DiscussionClient
+            discussion_client = DiscussionClient(token=token, base_url=base_url)
+            repo_id = discussion_client.get_repo_id(owner, repo_name)
+        else:
+            issue_client = create_client(platform, token, base_url=base_url)
+            try:
+                issue_client.ensure_label(
+                    owner, repo_name, _LABEL_ASM_DIFF, _LABEL_COLOR,
+                )
+            except Exception:
+                logger.warning("Failed to create label (may already exist)")
 
     # Track functions already published.
     existing = {
@@ -216,30 +237,55 @@ def publish(
             })
             continue
 
-        assert client is not None
         try:
-            result = client.create_issue(
-                owner=owner,
-                repo=repo_name,
-                title=issue["title"],
-                body=issue["body"],
-                labels=[_LABEL_ASM_DIFF],
-            )
+            if use_discussion:
+                assert discussion_client is not None
+                assert repo_id is not None
+                category_id = discussion_client.get_discussion_category_id(
+                    repo_id, discussion_category,
+                )
+                result = discussion_client.create_discussion(
+                    repo_id=repo_id,
+                    category_id=category_id,
+                    title=issue["title"],
+                    body=issue["body"],
+                )
+                entry = BridgeIssueEntry(
+                    issue_type="asm-diff",
+                    function_id=func_id,
+                    platform=platform,
+                    repo=repo,
+                    issue_number=result.get("number", 0),
+                    issue_url=result.get("url", ""),
+                    status="created",
+                    created_at=_now_iso(),
+                    extra={"bridge_type": "discussion"},
+                )
+            else:
+                assert issue_client is not None
+                result = issue_client.create_issue(
+                    owner=owner,
+                    repo=repo_name,
+                    title=issue["title"],
+                    body=issue["body"],
+                    labels=[_LABEL_ASM_DIFF],
+                )
+                entry = BridgeIssueEntry(
+                    issue_type="asm-diff",
+                    function_id=func_id,
+                    platform=platform,
+                    repo=repo,
+                    issue_number=result.get("number", 0),
+                    issue_url=result.get("html_url", ""),
+                    status="created",
+                    created_at=_now_iso(),
+                    extra={"bridge_type": "issue"},
+                )
         except Exception as exc:
-            logger.error("Failed to create issue for %s: %s", symbol, exc)
+            logger.error("Failed to publish %s: %s", symbol, exc)
             errors += 1
             continue
 
-        entry = BridgeIssueEntry(
-            issue_type="asm-diff",
-            function_id=func_id,
-            platform=platform,
-            repo=repo,
-            issue_number=result.get("number", 0),
-            issue_url=result.get("html_url", ""),
-            status="created",
-            created_at=_now_iso(),
-        )
         manifest.issues.append(entry)
         published.append({
             "symbol": symbol,
@@ -271,6 +317,7 @@ def fetch(
     platform: str,
     token: str,
     *,
+    bridge_type: str = "discussion",
     base_url: str | None = None,
 ) -> dict[str, Any]:
     """Fetch LLM analysis comments and backfill into Dataset.
@@ -285,6 +332,9 @@ def fetch(
         ``"github"`` or ``"gitcode"``.
     token:
         API personal-access token.
+    bridge_type:
+        ``"discussion"`` (default) or ``"issue"``.  Determines whether
+        to use threaded Discussion comments or flat Issue comments.
     base_url:
         Override default API base URL.
 
@@ -307,7 +357,16 @@ def fetch(
         return {"status": "no_issues", "fetched": 0, "parsed": 0, "failed": 0}
 
     owner, repo_name = repo.split("/", 1)
-    client = create_client(platform, token, base_url=base_url)
+
+    use_discussion = bridge_type == "discussion"
+    issue_client: IssueClient | None = None
+    discussion_client = None
+
+    if use_discussion:
+        from .discussion_client import DiscussionClient
+        discussion_client = DiscussionClient(token=token, base_url=base_url)
+    else:
+        issue_client = create_client(platform, token, base_url=base_url)
 
     dataset = _load_json(dataset_path)
     func_map = {f["id"]: f for f in dataset.get("functions", []) if "id" in f}
@@ -315,17 +374,33 @@ def fetch(
     fetched = 0
     parsed = 0
     failed = 0
+    review_pending = 0
     patterns_new: list[dict[str, Any]] = []
     root_causes_new: list[dict[str, Any]] = []
 
     for entry in manifest.issues:
-        if entry.status not in ("created", "analysed"):
+        if entry.status not in ("created", "analysed", "review-pending"):
             continue
 
+        parsed_result: ParsedAnalysis | None = None
+        review_status: str = "no-analysis"
+
         try:
-            comments = client.get_issue_comments(
-                owner, repo_name, entry.issue_number,
-            )
+            if use_discussion:
+                assert discussion_client is not None
+                comments = discussion_client.get_discussion_comments(
+                    owner, repo_name, entry.issue_number,
+                )
+                parsed_result, review_status = (
+                    find_approved_discussion_analysis(comments)
+                )
+            else:
+                assert issue_client is not None
+                comments = issue_client.get_issue_comments(
+                    owner, repo_name, entry.issue_number,
+                )
+                parsed_result = find_approved_analysis_comment(comments)
+                review_status = "approved" if parsed_result else "no-analysis"
         except Exception as exc:
             logger.error(
                 "Failed to fetch comments for #%s: %s",
@@ -334,15 +409,25 @@ def fetch(
             continue
 
         fetched += 1
-        entry.status = "analysed"
 
-        parsed_result = find_approved_analysis_comment(comments)
-        if parsed_result is None:
+        if review_status == "review-pending":
+            entry.status = "review-pending"
+            review_pending += 1
             logger.info(
-                "No approved analysis comment on #%s yet",
+                "#%s: review pending (last analysis not yet approved)",
                 entry.issue_number,
             )
             continue
+
+        if parsed_result is None:
+            logger.info(
+                "No approved analysis on #%s yet (status: %s)",
+                entry.issue_number, review_status,
+            )
+            entry.status = "analysed"
+            continue
+
+        entry.status = "analysed"
 
         func = func_map.get(entry.function_id)
         if func is None:
@@ -405,6 +490,7 @@ def fetch(
         "fetched": fetched,
         "parsed": parsed,
         "failed": failed,
+        "review_pending": review_pending,
         "patterns_added": len(patterns_new),
         "root_causes_added": len(root_causes_new),
     }

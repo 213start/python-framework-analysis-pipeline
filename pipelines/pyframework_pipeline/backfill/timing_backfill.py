@@ -77,14 +77,34 @@ def backfill_timing(
         # Resolve to the dataset case via legacyCaseId or direct id match.
         ds_case = ds_case_by_legacy.get(tid)
         if ds_case is None:
-            warnings.append(f"timing caseId '{tid}' not found in dataset cases")
-            continue
+            ds_case = _create_minimal_case(tid)
+            dataset.setdefault("cases", []).append(ds_case)
+            ds_case_by_legacy[tid] = ds_case
+            ds_case_by_legacy[ds_case["id"]] = ds_case
+            warnings.append(f"auto-created dataset case for timing caseId '{tid}'")
 
         metrics = _build_metrics(arm_case, x86_case)
         ds_case["metrics"] = metrics
         cases_updated += 1
 
     return {"cases_updated": cases_updated, "warnings": warnings}
+
+
+def _create_minimal_case(legacy_case_id: str) -> dict[str, Any]:
+    """Create a minimal dataset case entry from a timing caseId."""
+    return {
+        "id": f"tpch-{legacy_case_id}-pyflink",
+        "legacyCaseId": legacy_case_id,
+        "name": f"TPC-H {legacy_case_id.upper()}",
+        "benchmarkFamily": "TPC-H",
+        "implementationForm": "single-python-udf",
+        "semanticStatus": "auto-generated",
+        "artifactIds": [],
+        "hotspots": [],
+        "patterns": [],
+        "rootCauses": [],
+        "metrics": {},
+    }
 
 
 def _load_timing_json(run_dir: Path) -> dict[str, Any]:
@@ -107,29 +127,46 @@ def _build_metrics(
 ) -> dict[str, Any]:
     """Build the metrics dict for a single dataset case.
 
-    Reads ``frameworkCallTime`` and ``businessOperatorTime`` from each
-    platform's timing case, formats values, and computes delta percentages.
+    Per-invocation metrics: framework (框架调用耗时), operator (业务算子耗时).
+    Total metrics: demo (总耗时), tm (TM端到端耗时).
+    Totals require wall-clock timing from the benchmark runner (not derivable
+    from per_invocation_ns × recordCount, which gives accumulated CPU time).
     """
     metrics: dict[str, Any] = {}
 
+    # Per-invocation metrics (framework, operator)
     for src_key, dst_key in _METRIC_KEY_MAP.items():
         arm_ns = _extract_per_invocation_ns(arm_case, src_key)
         x86_ns = _extract_per_invocation_ns(x86_case, src_key)
-
         metrics[dst_key] = _build_platform_entry(arm_ns, x86_ns)
 
+    # Total metrics (demo, tm): read from dedicated wall-clock fields in timing data.
+    arm_demo = _extract_wallclock_ns(arm_case, "wallClockTime")
+    x86_demo = _extract_wallclock_ns(x86_case, "wallClockTime")
+    arm_tm = _extract_wallclock_ns(arm_case, "tmE2eTime")
+    x86_tm = _extract_wallclock_ns(x86_case, "tmE2eTime")
+
+    metrics["demo"] = _build_platform_entry(arm_demo or arm_tm, x86_demo or x86_tm)
+    metrics["tm"] = _build_platform_entry(arm_tm, x86_tm)
+
     # Delta shorthand keys at the top level of the metrics dict.
-    for dst_key in _METRIC_KEY_MAP.values():
-        entry = metrics[dst_key]
-        if entry.get("delta") is not None:
+    for dst_key in ("framework", "operator", "tm", "demo"):
+        entry = metrics.get(dst_key)
+        if entry and entry.get("delta") is not None:
             metrics[f"{dst_key}Delta"] = entry["delta"]
 
-    # Placeholder nulls for demo/tm when not available from timing data.
-    for placeholder_key in ("demo", "tm"):
-        if placeholder_key not in metrics:
-            metrics[placeholder_key] = None
-
     return metrics
+
+
+def _extract_wallclock_ns(case: dict | None, metric_key: str) -> float | None:
+    """Extract a wall-clock nanosecond value from timing case metrics."""
+    if case is None:
+        return None
+    metric = (case.get("metrics") or {}).get(metric_key)
+    if metric is None:
+        return None
+    val = metric.get("wall_clock_ns") or metric.get("total_ns")
+    return float(val) if val is not None else None
 
 
 def _extract_per_invocation_ns(case: dict | None, metric_key: str) -> float | None:

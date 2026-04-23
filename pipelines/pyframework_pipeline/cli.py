@@ -777,14 +777,22 @@ def _handle_bridge(args) -> int:
 
 def _resolve_bridge_config(args):
     """Get bridge config from project.yaml, with CLI overrides."""
-    from .config import get_bridge_config
+    from .config import load_project_config
 
     project_path = Path(args.project)
     try:
-        config = get_bridge_config(project_path)
-    except ValueError:
-        # Config not available in project.yaml — require CLI args.
-        config = {}
+        full_config = load_project_config(project_path)
+    except (FileNotFoundError, ValueError):
+        full_config = {}
+
+    config: dict[str, Any] = full_config.get("bridge", {})
+
+    # Resolve token from env var (don't fail — caller decides if required).
+    env_var = config.get("tokenEnvVar", "PYFRAMEWORK_BRIDGE_TOKEN")
+    import os
+    token = os.environ.get(env_var, "")
+    if token:
+        config["token"] = token
 
     # CLI overrides.
     if hasattr(args, "repo") and args.repo:
@@ -794,12 +802,14 @@ def _resolve_bridge_config(args):
     if hasattr(args, "token") and args.token:
         config["token"] = args.token
 
+    is_dry_run = getattr(args, "dry_run", False)
+
     missing = []
     if not config.get("repo"):
         missing.append("bridge.repo (project.yaml or --repo)")
     if not config.get("platform"):
         missing.append("bridge.platform (project.yaml or --platform)")
-    if not config.get("token"):
+    if not config.get("token") and not is_dry_run:
         missing.append("token (env var PYFRAMEWORK_BRIDGE_TOKEN or --token)")
 
     if missing:
@@ -826,7 +836,9 @@ def _cmd_bridge_publish(args) -> int:
             project_path,
             repo=config["repo"],
             platform=config["platform"],
-            token=config["token"],
+            token=config.get("token", ""),
+            bridge_type=config.get("type", "discussion"),
+            discussion_category=config.get("category", "General"),
             dry_run=args.dry_run,
             max_lines=args.max_lines,
             base_url=args.base_url,
@@ -857,6 +869,7 @@ def _cmd_bridge_fetch(args) -> int:
             repo=config["repo"],
             platform=config["platform"],
             token=config["token"],
+            bridge_type=config.get("type", "discussion"),
             base_url=args.base_url,
         )
     except (FileNotFoundError, ValueError) as exc:

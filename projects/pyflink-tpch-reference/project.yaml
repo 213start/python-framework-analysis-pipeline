@@ -5,6 +5,7 @@ fourLayerRoot: ../../examples/four-layer/pyflink-reference
 workload:
   localDir: ../../workload/tpch/pyflink
   build: prebuilt
+  rows: 1000000
   queries:
     - q01
     - q03
@@ -18,6 +19,8 @@ workload:
 bridge:
   repo: sisibeloved/spark
   platform: github
+  type: discussion
+  category: General
   tokenEnvVar: PYFRAMEWORK_BRIDGE_TOKEN
 
 run:

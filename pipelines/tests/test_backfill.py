@@ -12,8 +12,8 @@ from pyframework_pipeline.backfill.timing_backfill import (
     backfill_timing,
 )
 from pyframework_pipeline.backfill.perf_backfill import (
-    CATEGORY_MAP,
-    COMPONENT_MAP,
+    _CATEGORY_TO_L1,
+    _COMPONENT_MAP,
     _resolve_component,
     _generate_func_id,
     backfill_perf,
@@ -115,6 +115,51 @@ class TestBackfillTiming(unittest.TestCase):
             result = backfill_timing(arm_dir, x86_dir, dataset)
             self.assertEqual(result["cases_updated"], 0)
 
+    def test_auto_creates_missing_cases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            arm_dir = tmp / "arm"
+            x86_dir = tmp / "x86"
+            arm_dir.mkdir()
+            x86_dir.mkdir()
+
+            for d in (arm_dir, x86_dir):
+                td = d / "timing"
+                td.mkdir()
+                timing = {
+                    "cases": [
+                        {
+                            "caseId": "q01",
+                            "metrics": {
+                                "frameworkCallTime": {"per_invocation_ns": 500_000},
+                                "businessOperatorTime": {"per_invocation_ns": 200_000},
+                            },
+                        },
+                        {
+                            "caseId": "q03",
+                            "metrics": {
+                                "frameworkCallTime": {"per_invocation_ns": 600_000},
+                                "businessOperatorTime": {"per_invocation_ns": 300_000},
+                            },
+                        },
+                    ],
+                }
+                (td / "timing-normalized.json").write_text(
+                    json.dumps(timing), encoding="utf-8",
+                )
+
+            dataset = {"cases": [{"id": "tpch-q01-pyflink", "legacyCaseId": "q01", "name": "Q1"}]}
+            result = backfill_timing(arm_dir, x86_dir, dataset)
+
+            self.assertEqual(result["cases_updated"], 2)
+            self.assertEqual(len(dataset["cases"]), 2)
+            case_ids = [c["legacyCaseId"] for c in dataset["cases"]]
+            self.assertIn("q03", case_ids)
+            q03 = next(c for c in dataset["cases"] if c["legacyCaseId"] == "q03")
+            self.assertEqual(q03["id"], "tpch-q03-pyflink")
+            self.assertEqual(q03["semanticStatus"], "auto-generated")
+            self.assertIn("framework", q03["metrics"])
+
 
 # ---------------------------------------------------------------------------
 # perf_backfill
@@ -190,6 +235,64 @@ class TestBackfillPerf(unittest.TestCase):
             self.assertGreater(result["functions"], 0)
             self.assertIn("stackOverview", dataset)
             self.assertIn("functions", dataset)
+
+    def test_delta_contribution_signed(self):
+        """deltaContribution preserves sign and uses net delta denominator."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            arm_perf_dir = tmp / "arm" / "perf" / "data"
+            arm_perf_dir.mkdir(parents=True)
+            x86_perf_dir = tmp / "x86" / "perf" / "data"
+            x86_perf_dir.mkdir(parents=True)
+
+            fieldnames = [
+                "symbol", "self", "children", "period", "sample_count",
+                "category_top", "category_sub", "shared_object",
+            ]
+            # ARM: two symbols in different categories
+            with (arm_perf_dir / "perf_records.csv").open("w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fieldnames)
+                w.writeheader()
+                w.writerow({"symbol": "func_a", "self": "50.0", "children": "60.0",
+                            "period": "1000", "sample_count": "500",
+                            "category_top": "CPython.Interpreter", "category_sub": "",
+                            "shared_object": "libpython3.14.so"})
+                w.writerow({"symbol": "func_b", "self": "10.0", "children": "15.0",
+                            "period": "500", "sample_count": "250",
+                            "category_top": "glibc", "category_sub": "",
+                            "shared_object": "libc.so.6"})
+
+            # x86: func_a much less, func_b slightly more → mixed signs
+            with (x86_perf_dir / "perf_records.csv").open("w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fieldnames)
+                w.writeheader()
+                w.writerow({"symbol": "func_a", "self": "20.0", "children": "30.0",
+                            "period": "800", "sample_count": "400",
+                            "category_top": "CPython.Interpreter", "category_sub": "",
+                            "shared_object": "libpython3.14.so"})
+                w.writerow({"symbol": "func_b", "self": "15.0", "children": "20.0",
+                            "period": "600", "sample_count": "300",
+                            "category_top": "glibc", "category_sub": "",
+                            "shared_object": "libc.so.6"})
+
+            dataset = {"cases": [], "functions": []}
+            backfill_perf(tmp / "arm", tmp / "x86", dataset)
+
+            # Extract component-level deltaContributions
+            components = dataset["stackOverview"]["components"]
+            contribs = [c["deltaContribution"] for c in components]
+            # Net sum of parsed values must be ~100%
+            total = sum(float(c.rstrip("%").lstrip("+")) for c in contribs)
+            self.assertAlmostEqual(total, 100.0, places=5)
+
+            # At least one positive and one negative contribution
+            values = [float(c.rstrip("%").lstrip("+")) for c in contribs]
+            self.assertTrue(any(v > 0 for v in values), f"expected positive contrib, got {values}")
+            # Positive values must have "+" prefix
+            for c in contribs:
+                val = float(c.rstrip("%").lstrip("+"))
+                if val > 0:
+                    self.assertTrue(c.startswith("+"), f"positive contrib {c} missing '+' prefix")
 
 
 # ---------------------------------------------------------------------------
