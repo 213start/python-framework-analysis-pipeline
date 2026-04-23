@@ -441,6 +441,9 @@
       "functionId": "func_a8fe4a73",
       "armArtifactIds": [
         "asm_arm64_a8fe4a73"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_a8fe4a73"
       ]
     },
     {
@@ -523,6 +526,60 @@
     },
     {
       "functionId": "func_0b57e3fd"
+    },
+    {
+      "functionId": "func_5e763cad"
+    },
+    {
+      "functionId": "func_24df0514"
+    },
+    {
+      "functionId": "func_9ac4a17c"
+    },
+    {
+      "functionId": "func_0bdc8f5b"
+    },
+    {
+      "functionId": "func_c62a060a"
+    },
+    {
+      "functionId": "func_adfa4096"
+    },
+    {
+      "functionId": "func_2bd1e878"
+    },
+    {
+      "functionId": "func_a6d1f44f"
+    },
+    {
+      "functionId": "func_0c043331"
+    },
+    {
+      "functionId": "func_fee33d22"
+    },
+    {
+      "functionId": "func_e2ccac01"
+    },
+    {
+      "functionId": "func_81c8a3aa"
+    },
+    {
+      "functionId": "func_8ea28335"
+    },
+    {
+      "functionId": "func_c2cf3dbb"
+    },
+    {
+      "functionId": "func_c3d01499"
+    },
+    {
+      "functionId": "func_3b443f57"
+    },
+    {
+      "functionId": "func_4677e1cd"
+    },
+    {
+      "functionId": "func_df28af31"
     }
   ],
   "patternBindings": [],

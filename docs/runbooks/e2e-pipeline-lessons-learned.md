@@ -255,6 +255,38 @@ docker cp host_dir/. container:/path/
 
 **修复**: 启动 TM 时加 `--tmpfs /tmp:rw,exec` 标志。已更新在 environment adapter 和 environment.yaml 中。
 
+### 5.3 TM 日志文件名不是 taskexecutor.log
+
+**现象**: `_collect_operator_timing` grep `taskexecutor.log` 找不到文件。x86 TM 实际日志名为 `flink--taskexecutor-0-9fe55a708e12.log`。
+
+**根因**: Flink 日志文件名包含容器 hostname（如 `flink--taskexecutor-0-{hostname}.log`），不同容器实例名称不同。
+
+**修复**: 使用通配符 `flink--taskexecutor-*.log` 匹配。
+
+### 5.4 PostUDF System.out 不写入 Flink log4j 日志
+
+**现象**: PostUDF 的 `System.out.printf("[BENCHMARK_SUMMARY] ...")` 不出现在 TM 的 Flink 日志文件中。
+
+**根因**: Flink 的 log4j 日志只捕获 Logger（SLF4J）输出。`System.out.printf` 写入 JVM 进程的 stdout，被 Docker 的 logging driver 捕获为 `docker logs` 输出。
+
+**修复**: `_collect_operator_timing` 先尝试 grep Flink 日志文件，再 fallback 到 `docker logs --tail 500`。
+
+**长期方案**: 让 PostUDF 改用 SLF4J Logger 输出 BENCHMARK_SUMMARY，或写文件到 `/tmp/`。
+
+---
+
+## 六、流水线编排
+
+### 6.1 zen5 (x86) SSH 延迟导致短超时命令频繁失败
+
+**现象**: zen5 SSH 连接延迟 ~3.4s（vs kunpeng ~0.3s）。所有 `timeout=10` 的远程命令在 zen5 上超时。
+
+**根因**: zen5 通过代理连接，SSH 握手开销大。每次 `executor.run()` 建立新 SSH 连接。
+
+**修复**: 所有远程命令 timeout 从 10s/15s 提升到 30s。`_collect_operator_timing` timeout 60s。`docker_logs` 增加 `--tail N` 避免传输全量日志。
+
+**优化方向**: 使用 SSH ControlMaster 复用连接，避免每次命令都建立新连接。
+
 ---
 
 ## 六、流水线编排

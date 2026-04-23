@@ -29,16 +29,16 @@
         },
         "demo": {
           "arm": "20.68 s",
-          "x86": "26.91 s",
-          "delta": "-23.2%"
+          "x86": "63.90 s",
+          "delta": "-67.6%"
         },
         "tm": {
           "arm": "20.68 s",
-          "x86": "26.91 s",
-          "delta": "-23.2%"
+          "x86": "63.90 s",
+          "delta": "-67.6%"
         },
-        "tmDelta": "-23.2%",
-        "demoDelta": "-23.2%"
+        "tmDelta": "-67.6%",
+        "demoDelta": "-67.6%"
       }
     },
     {
@@ -65,16 +65,16 @@
         },
         "demo": {
           "arm": "15.69 s",
-          "x86": "22.93 s",
-          "delta": "-31.6%"
+          "x86": "57.65 s",
+          "delta": "-72.8%"
         },
         "tm": {
           "arm": "15.69 s",
-          "x86": "22.93 s",
-          "delta": "-31.6%"
+          "x86": "57.65 s",
+          "delta": "-72.8%"
         },
-        "tmDelta": "-31.6%",
-        "demoDelta": "-31.6%"
+        "tmDelta": "-72.8%",
+        "demoDelta": "-72.8%"
       }
     },
     {
@@ -101,16 +101,16 @@
         },
         "demo": {
           "arm": "14.68 s",
-          "x86": "22.15 s",
-          "delta": "-33.8%"
+          "x86": "53.92 s",
+          "delta": "-72.8%"
         },
         "tm": {
           "arm": "14.68 s",
-          "x86": "22.15 s",
-          "delta": "-33.8%"
+          "x86": "53.92 s",
+          "delta": "-72.8%"
         },
-        "tmDelta": "-33.8%",
-        "demoDelta": "-33.8%"
+        "tmDelta": "-72.8%",
+        "demoDelta": "-72.8%"
       }
     },
     {
@@ -137,16 +137,16 @@
         },
         "demo": {
           "arm": "14.28 s",
-          "x86": "20.23 s",
-          "delta": "-29.4%"
+          "x86": "51.74 s",
+          "delta": "-72.4%"
         },
         "tm": {
           "arm": "14.28 s",
-          "x86": "20.23 s",
-          "delta": "-29.4%"
+          "x86": "51.74 s",
+          "delta": "-72.4%"
         },
-        "tmDelta": "-29.4%",
-        "demoDelta": "-29.4%"
+        "tmDelta": "-72.4%",
+        "demoDelta": "-72.4%"
       }
     },
     {
@@ -173,16 +173,16 @@
         },
         "demo": {
           "arm": "14.96 s",
-          "x86": "22.98 s",
-          "delta": "-34.9%"
+          "x86": "51.75 s",
+          "delta": "-71.1%"
         },
         "tm": {
           "arm": "14.96 s",
-          "x86": "22.98 s",
-          "delta": "-34.9%"
+          "x86": "51.75 s",
+          "delta": "-71.1%"
         },
-        "tmDelta": "-34.9%",
-        "demoDelta": "-34.9%"
+        "tmDelta": "-71.1%",
+        "demoDelta": "-71.1%"
       }
     },
     {
@@ -209,16 +209,16 @@
         },
         "demo": {
           "arm": "13.37 s",
-          "x86": "19.89 s",
-          "delta": "-32.8%"
+          "x86": "49.08 s",
+          "delta": "-72.8%"
         },
         "tm": {
           "arm": "13.37 s",
-          "x86": "19.89 s",
-          "delta": "-32.8%"
+          "x86": "49.08 s",
+          "delta": "-72.8%"
         },
-        "tmDelta": "-32.8%",
-        "demoDelta": "-32.8%"
+        "tmDelta": "-72.8%",
+        "demoDelta": "-72.8%"
       }
     },
     {
@@ -245,16 +245,16 @@
         },
         "demo": {
           "arm": "15.08 s",
-          "x86": "21.41 s",
-          "delta": "-29.5%"
+          "x86": "55.60 s",
+          "delta": "-72.9%"
         },
         "tm": {
           "arm": "15.08 s",
-          "x86": "21.41 s",
-          "delta": "-29.5%"
+          "x86": "55.60 s",
+          "delta": "-72.9%"
         },
-        "tmDelta": "-29.5%",
-        "demoDelta": "-29.5%"
+        "tmDelta": "-72.9%",
+        "demoDelta": "-72.9%"
       }
     },
     {
@@ -281,16 +281,16 @@
         },
         "demo": {
           "arm": "17.85 s",
-          "x86": "24.80 s",
-          "delta": "-28.0%"
+          "x86": "65.36 s",
+          "delta": "-72.7%"
         },
         "tm": {
           "arm": "17.85 s",
-          "x86": "24.80 s",
-          "delta": "-28.0%"
+          "x86": "65.36 s",
+          "delta": "-72.7%"
         },
-        "tmDelta": "-28.0%",
-        "demoDelta": "-28.0%"
+        "tmDelta": "-72.7%",
+        "demoDelta": "-72.7%"
       }
     }
   ],
@@ -302,19 +302,32 @@
       "categoryL1": "interpreter",
       "categoryL2": "",
       "metrics": {
-        "selfArm": "113.6 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "606.0 ms",
-        "totalX86": "0.0 ms",
+        "selfArm": "76.0 ms",
+        "selfX86": "42475.4 ms",
+        "totalArm": "405.1 ms",
+        "totalX86": "107131.4 ms",
         "armShare": "50.0%",
-        "x86Share": "0.0%",
-        "delta": "+113.6 ms",
-        "deltaContribution": "+50.0%"
+        "x86Share": "39.3%",
+        "delta": "-42399.4 ms",
+        "deltaContribution": "+39.3%"
       },
       "callPath": [],
       "caseIds": [],
       "patternIds": [],
-      "artifactIds": []
+      "artifactIds": [
+        "asm_arm64_a8fe4a73",
+        "asm_x86_64_a8fe4a73"
+      ],
+      "diffView": {
+        "sourceAnchors": [],
+        "analysisBlocks": [],
+        "armRegions": [],
+        "x86Regions": [],
+        "mappings": [],
+        "diffSignals": [],
+        "alignmentNote": "",
+        "performanceNote": ""
+      }
     },
     {
       "id": "func_647db2f0",
@@ -323,14 +336,14 @@
       "categoryL1": "lookup",
       "categoryL2": "attribute",
       "metrics": {
-        "selfArm": "75.7 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "75.7 ms",
-        "totalX86": "0.0 ms",
+        "selfArm": "50.6 ms",
+        "selfX86": "12572.0 ms",
+        "totalArm": "50.6 ms",
+        "totalX86": "12572.0 ms",
         "armShare": "33.3%",
-        "x86Share": "0.0%",
-        "delta": "+75.7 ms",
-        "deltaContribution": "+33.3%"
+        "x86Share": "11.6%",
+        "delta": "-12521.4 ms",
+        "deltaContribution": "+11.6%"
       },
       "callPath": [],
       "caseIds": [],
@@ -338,20 +351,20 @@
       "artifactIds": []
     },
     {
-      "id": "func_636ba82a",
-      "symbol": "_PyCode_New",
+      "id": "func_5e763cad",
+      "symbol": "PyUnicode_Contains",
       "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
+      "categoryL1": "object_model",
+      "categoryL2": "str",
       "metrics": {
-        "selfArm": "37.9 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "37.9 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "16.7%",
-        "x86Share": "0.0%",
-        "delta": "+37.9 ms",
-        "deltaContribution": "+16.7%"
+        "selfArm": "0.0 ms",
+        "selfX86": "7992.2 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "7992.2 ms",
+        "armShare": "0.0%",
+        "x86Share": "7.4%",
+        "delta": "-7992.2 ms",
+        "deltaContribution": "+7.4%"
       },
       "callPath": [],
       "caseIds": [],
@@ -359,20 +372,20 @@
       "artifactIds": []
     },
     {
-      "id": "func_13f5e543",
-      "symbol": "subtype_traverse",
+      "id": "func_24df0514",
+      "symbol": "_PyEval_LoadName",
       "component": "cpython",
-      "categoryL1": "runtime",
+      "categoryL1": "interpreter",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "6286.0 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "15984.4 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "5.8%",
+        "delta": "-6286.0 ms",
+        "deltaContribution": "+5.8%"
       },
       "callPath": [],
       "caseIds": [],
@@ -380,188 +393,20 @@
       "artifactIds": []
     },
     {
-      "id": "func_49c9f806",
-      "symbol": "_start",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "606.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_93ad4baa",
-      "symbol": "untrack_tuples",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_22f8c9ca",
-      "symbol": "PyObject_Hash",
-      "component": "cpython",
-      "categoryL1": "memory",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_35bccf2e",
-      "symbol": "setup_arg_pages",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_8fec76b7",
-      "symbol": "__arm64_sys_mprotect",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_bef6bdcb",
-      "symbol": "__put_unused_fd",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_755bed46",
-      "symbol": "begin_new_exec",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_ec948d42",
-      "symbol": "default_rule",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_59457027",
-      "symbol": "dlopen@@GLIBC_2.34",
+      "id": "func_9ac4a17c",
+      "symbol": "__tls_get_addr",
       "component": "glibc",
       "categoryL1": "glibc",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "4220.6 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "4220.6 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "3.9%",
+        "delta": "-4220.6 ms",
+        "deltaContribution": "+3.9%"
       },
       "callPath": [],
       "caseIds": [],
@@ -569,20 +414,62 @@
       "artifactIds": []
     },
     {
-      "id": "func_4eb3849b",
-      "symbol": "_PyPegen_new_identifier",
+      "id": "func_0bdc8f5b",
+      "symbol": "_Py_Dealloc",
+      "component": "cpython",
+      "categoryL1": "memory",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "2155.2 ms",
+        "totalArm": "25.3 ms",
+        "totalX86": "12302.6 ms",
+        "armShare": "0.0%",
+        "x86Share": "2.0%",
+        "delta": "-2155.2 ms",
+        "deltaContribution": "+2.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_c62a060a",
+      "symbol": "PyObject_GC_Del",
+      "component": "cpython",
+      "categoryL1": "memory",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "2065.4 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "2065.4 ms",
+        "armShare": "0.0%",
+        "x86Share": "1.9%",
+        "delta": "-2065.4 ms",
+        "deltaContribution": "+1.9%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_adfa4096",
+      "symbol": "PyFunction_NewWithQualName",
       "component": "cpython",
       "categoryL1": "runtime",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "1975.6 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "2604.2 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "1.8%",
+        "delta": "-1975.6 ms",
+        "deltaContribution": "+1.8%"
       },
       "callPath": [],
       "caseIds": [],
@@ -590,20 +477,41 @@
       "artifactIds": []
     },
     {
-      "id": "func_2322ce5d",
-      "symbol": "_Py_read",
+      "id": "func_2bd1e878",
+      "symbol": "list_dealloc",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "list",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "1436.8 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "1706.2 ms",
+        "armShare": "0.0%",
+        "x86Share": "1.3%",
+        "delta": "-1436.8 ms",
+        "deltaContribution": "+1.3%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_a6d1f44f",
+      "symbol": "_Py_MakeCoro",
       "component": "cpython",
       "categoryL1": "runtime",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "1257.2 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "1257.2 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "1.2%",
+        "delta": "-1257.2 ms",
+        "deltaContribution": "+1.2%"
       },
       "callPath": [],
       "caseIds": [],
@@ -611,20 +519,20 @@
       "artifactIds": []
     },
     {
-      "id": "func_65177e5c",
-      "symbol": "_imp_exec_builtin",
+      "id": "func_0c043331",
+      "symbol": "insertdict",
       "component": "cpython",
       "categoryL1": "runtime",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "1257.2 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "4220.6 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "1.2%",
+        "delta": "-1257.2 ms",
+        "deltaContribution": "+1.2%"
       },
       "callPath": [],
       "caseIds": [],
@@ -632,62 +540,20 @@
       "artifactIds": []
     },
     {
-      "id": "func_907e8dfd",
-      "symbol": "PyImport_ImportFrozenModule",
-      "component": "cpython",
-      "categoryL1": "import_loading",
-      "categoryL2": "module_loading",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_7cca434f",
-      "symbol": "el1_abort",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_390e567e",
-      "symbol": "PyErr_Occurred",
+      "id": "func_fee33d22",
+      "symbol": "gen_dealloc",
       "component": "cpython",
       "categoryL1": "runtime",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
+        "selfX86": "1167.4 ms",
         "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "totalX86": "5028.8 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "1.1%",
+        "delta": "-1167.4 ms",
+        "deltaContribution": "+1.1%"
       },
       "callPath": [],
       "caseIds": [],
@@ -695,52 +561,225 @@
       "artifactIds": []
     },
     {
-      "id": "func_b123fdd5",
-      "symbol": "pycore_init_types",
+      "id": "func_e2ccac01",
+      "symbol": "_PyEval_FrameClearAndPop",
       "component": "cpython",
-      "categoryL1": "runtime",
+      "categoryL1": "interpreter",
       "categoryL2": "",
       "metrics": {
         "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
+        "selfX86": "898.0 ms",
+        "totalArm": "25.3 ms",
+        "totalX86": "2783.8 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "0.8%",
+        "delta": "-898.0 ms",
+        "deltaContribution": "+0.8%"
       },
       "callPath": [],
       "caseIds": [],
       "patternIds": [],
       "artifactIds": []
+    },
+    {
+      "id": "func_81c8a3aa",
+      "symbol": "tuple_dealloc",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "tuple",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "808.2 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "987.8 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.7%",
+        "delta": "-808.2 ms",
+        "deltaContribution": "+0.7%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_8ea28335",
+      "symbol": "PyMapping_GetOptionalItem",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "808.2 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "1616.4 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.7%",
+        "delta": "-808.2 ms",
+        "deltaContribution": "+0.7%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_c2cf3dbb",
+      "symbol": "func_dealloc",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "808.2 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "808.2 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.7%",
+        "delta": "-808.2 ms",
+        "deltaContribution": "+0.7%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_c3d01499",
+      "symbol": "_random_Random_random",
+      "component": "unknown",
+      "categoryL1": "library",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "718.4 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "718.4 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.7%",
+        "delta": "-718.4 ms",
+        "deltaContribution": "+0.7%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_3b443f57",
+      "symbol": "PyDict_SetItem",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "dict",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "718.4 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "718.4 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.7%",
+        "delta": "-718.4 ms",
+        "deltaContribution": "+0.7%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_4677e1cd",
+      "symbol": "_list_extend",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "list",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "628.6 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "628.6 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.6%",
+        "delta": "-628.6 ms",
+        "deltaContribution": "+0.6%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_df28af31",
+      "symbol": "compactlong_float_add",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "float",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "628.6 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "628.6 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.6%",
+        "delta": "-628.6 ms",
+        "deltaContribution": "+0.6%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "symbol": "PyDict_GetItem",
+      "diffView": {
+        "sourceAnchors": [],
+        "analysisBlocks": [],
+        "armRegions": [],
+        "x86Regions": [],
+        "mappings": [],
+        "diffSignals": [],
+        "alignmentNote": "",
+        "performanceNote": ""
+      }
+    },
+    {
+      "symbol": "_PyObject_Malloc",
+      "diffView": {
+        "sourceAnchors": [],
+        "analysisBlocks": [],
+        "armRegions": [],
+        "x86Regions": [],
+        "mappings": [],
+        "diffSignals": [],
+        "alignmentNote": "",
+        "performanceNote": ""
+      }
     }
   ],
   "stackOverview": {
     "platformTotals": {
-      "arm": "227.2 ms",
-      "x86": "0.0 ms"
+      "arm": "151.9 ms",
+      "x86": "108119.2 ms"
     },
     "components": [
       {
         "id": "cpython",
         "name": "CPython",
-        "armTime": "227.2 ms",
-        "x86Time": "0.0 ms",
+        "armTime": "151.9 ms",
+        "x86Time": "101743.4 ms",
         "armShare": "100.0%",
-        "x86Share": "0.0%",
-        "delta": "+227.2 ms",
-        "deltaContribution": "+100.0%"
+        "x86Share": "94.1%",
+        "delta": "-101591.5 ms",
+        "deltaContribution": "+94.1%"
       },
       {
         "id": "glibc",
         "name": "glibc",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "5118.6 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "4.7%",
+        "delta": "-5118.6 ms",
+        "deltaContribution": "+4.7%"
       },
       {
         "id": "kernel",
@@ -756,11 +795,11 @@
         "id": "unknown",
         "name": "Unknown",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "1257.2 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
+        "x86Share": "1.2%",
+        "delta": "-1257.2 ms",
+        "deltaContribution": "+1.2%"
       }
     ],
     "categories": [
@@ -768,48 +807,48 @@
         "id": "interpreter",
         "name": "Interpreter",
         "level": "L1",
-        "armTime": "113.6 ms",
-        "x86Time": "0.0 ms",
+        "armTime": "76.0 ms",
+        "x86Time": "49659.4 ms",
         "armShare": "50.0%",
-        "x86Share": "0.0%",
-        "delta": "+113.6 ms",
-        "deltaContribution": "+50.0%",
+        "x86Share": "45.9%",
+        "delta": "-49583.4 ms",
+        "deltaContribution": "+45.9%",
         "topFunctionId": "func_a8fe4a73"
       },
       {
         "id": "lookup",
         "name": "Lookup",
         "level": "L1",
-        "armTime": "75.7 ms",
-        "x86Time": "0.0 ms",
+        "armTime": "50.6 ms",
+        "x86Time": "12572.0 ms",
         "armShare": "33.3%",
-        "x86Share": "0.0%",
-        "delta": "+75.7 ms",
-        "deltaContribution": "+33.3%",
+        "x86Share": "11.6%",
+        "delta": "-12521.4 ms",
+        "deltaContribution": "+11.6%",
         "topFunctionId": "func_647db2f0"
       },
       {
         "id": "runtime",
         "name": "Runtime",
         "level": "L1",
-        "armTime": "37.9 ms",
-        "x86Time": "0.0 ms",
+        "armTime": "25.3 ms",
+        "x86Time": "11584.2 ms",
         "armShare": "16.7%",
-        "x86Share": "0.0%",
-        "delta": "+37.9 ms",
-        "deltaContribution": "+16.7%",
-        "topFunctionId": "func_636ba82a"
+        "x86Share": "10.7%",
+        "delta": "-11558.9 ms",
+        "deltaContribution": "+10.7%",
+        "topFunctionId": null
       },
       {
         "id": "glibc",
         "name": "glibc",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "5118.6 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "4.7%",
+        "delta": "-5118.6 ms",
+        "deltaContribution": "+4.7%",
         "topFunctionId": null
       },
       {
@@ -817,11 +856,11 @@
         "name": "Calls / Dispatch",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "898.0 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "0.8%",
+        "delta": "-898.0 ms",
+        "deltaContribution": "+0.8%",
         "topFunctionId": null
       },
       {
@@ -829,11 +868,11 @@
         "name": "Import",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "269.4 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "0.2%",
+        "delta": "-269.4 ms",
+        "deltaContribution": "+0.2%",
         "topFunctionId": null
       },
       {
@@ -841,11 +880,11 @@
         "name": "Memory",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "7273.8 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "6.7%",
+        "delta": "-7273.8 ms",
+        "deltaContribution": "+6.7%",
         "topFunctionId": null
       },
       {
@@ -877,11 +916,11 @@
         "name": "Object Model",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "19217.2 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "17.8%",
+        "delta": "-19217.2 ms",
+        "deltaContribution": "+17.8%",
         "topFunctionId": null
       },
       {
@@ -901,11 +940,11 @@
         "name": "Library",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "1257.2 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "1.2%",
+        "delta": "-1257.2 ms",
+        "deltaContribution": "+1.2%",
         "topFunctionId": null
       },
       {
@@ -925,11 +964,11 @@
         "name": "Exceptions",
         "level": "L1",
         "armTime": "0.0 ms",
-        "x86Time": "0.0 ms",
+        "x86Time": "269.4 ms",
         "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%",
+        "x86Share": "0.2%",
+        "delta": "-269.4 ms",
+        "deltaContribution": "+0.2%",
         "topFunctionId": null
       }
     ]
@@ -938,42 +977,42 @@
     {
       "id": "cpython",
       "name": "CPython",
-      "armTime": "227.2 ms",
-      "x86Time": "0.0 ms",
+      "armTime": "151.9 ms",
+      "x86Time": "101743.4 ms",
       "armShare": "100.0%",
-      "x86Share": "0.0%",
-      "delta": "+227.2 ms",
-      "deltaContribution": "+100.0%",
+      "x86Share": "94.1%",
+      "delta": "-101591.5 ms",
+      "deltaContribution": "+94.1%",
       "categories": [
         {
           "id": "interpreter",
           "name": "Interpreter",
-          "delta": "+113.6 ms"
+          "delta": "-49583.4 ms"
         },
         {
           "id": "lookup",
           "name": "Lookup",
-          "delta": "+75.7 ms"
+          "delta": "-12521.4 ms"
         },
         {
           "id": "runtime",
           "name": "Runtime",
-          "delta": "+37.9 ms"
+          "delta": "-11558.9 ms"
         },
         {
           "id": "calls_dispatch",
           "name": "Calls / Dispatch",
-          "delta": "+0.0 ms"
+          "delta": "-898.0 ms"
         },
         {
           "id": "import_loading",
           "name": "Import",
-          "delta": "+0.0 ms"
+          "delta": "-269.4 ms"
         },
         {
           "id": "memory",
           "name": "Memory",
-          "delta": "+0.0 ms"
+          "delta": "-7273.8 ms"
         },
         {
           "id": "gc",
@@ -983,7 +1022,7 @@
         {
           "id": "object_model",
           "name": "Object Model",
-          "delta": "+0.0 ms"
+          "delta": "-19217.2 ms"
         },
         {
           "id": "compiler",
@@ -998,35 +1037,35 @@
         {
           "id": "exceptions",
           "name": "Exceptions",
-          "delta": "+0.0 ms"
+          "delta": "-269.4 ms"
         }
       ],
       "hotspotIds": [
         "func_a8fe4a73",
         "func_647db2f0",
-        "func_636ba82a",
-        "func_13f5e543",
-        "func_49c9f806"
+        "func_5e763cad",
+        "func_24df0514",
+        "func_0bdc8f5b"
       ]
     },
     {
       "id": "glibc",
       "name": "glibc",
       "armTime": "0.0 ms",
-      "x86Time": "0.0 ms",
+      "x86Time": "5118.6 ms",
       "armShare": "0.0%",
-      "x86Share": "0.0%",
-      "delta": "+0.0 ms",
-      "deltaContribution": "0.0%",
+      "x86Share": "4.7%",
+      "delta": "-5118.6 ms",
+      "deltaContribution": "+4.7%",
       "categories": [
         {
           "id": "glibc",
           "name": "glibc",
-          "delta": "+0.0 ms"
+          "delta": "-5118.6 ms"
         }
       ],
       "hotspotIds": [
-        "func_59457027"
+        "func_9ac4a17c"
       ]
     },
     {
@@ -1045,31 +1084,27 @@
           "delta": "+0.0 ms"
         }
       ],
-      "hotspotIds": [
-        "func_35bccf2e",
-        "func_8fec76b7",
-        "func_bef6bdcb",
-        "func_755bed46",
-        "func_7cca434f"
-      ]
+      "hotspotIds": []
     },
     {
       "id": "unknown",
       "name": "Unknown",
       "armTime": "0.0 ms",
-      "x86Time": "0.0 ms",
+      "x86Time": "1257.2 ms",
       "armShare": "0.0%",
-      "x86Share": "0.0%",
-      "delta": "+0.0 ms",
-      "deltaContribution": "0.0%",
+      "x86Share": "1.2%",
+      "delta": "-1257.2 ms",
+      "deltaContribution": "+1.2%",
       "categories": [
         {
           "id": "library",
           "name": "Library",
-          "delta": "+0.0 ms"
+          "delta": "-1257.2 ms"
         }
       ],
-      "hotspotIds": []
+      "hotspotIds": [
+        "func_c3d01499"
+      ]
     }
   ]
 }

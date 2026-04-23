@@ -413,17 +413,29 @@ def _collect_operator_timing(
 
     PostUDF (CalcOverhead) accumulates per-record py_duration and framework
     overhead in AtomicLongs, then prints a JSON summary to stdout on close().
-    Flink redirects System.out to the TM log file, so we read from there.
+
+    System.out goes to the JVM process stdout, which Docker captures as
+    container logs (not Flink's log4j files). We grep the actual TM log
+    files (flink--taskexecutor-*.log) as a first attempt, then fall back
+    to docker logs --tail if needed.
     """
     import json as _json
 
     for i in range(1, tm_count + 1):
-        # Read the last BENCHMARK_SUMMARY from TM's Flink log file.
+        # Try Flink log4j log files (wildcard to match container-specific names).
         result = executor.run(
             f"docker exec flink-tm{i} bash -c "
-            f"'grep BENCHMARK_SUMMARY /opt/flink/log/taskexecutor.log 2>/dev/null | tail -1'",
+            f"'grep BENCHMARK_SUMMARY /opt/flink/log/flink--taskexecutor-*.log "
+            f"2>/dev/null | tail -1'",
             timeout=60,
         )
+        # Fallback: grep docker container logs (System.out destination).
+        if result.returncode != 0 or "BENCHMARK_SUMMARY" not in (result.stdout or ""):
+            result = executor.run(
+                f"docker logs flink-tm{i} --tail 500 2>&1 | "
+                f"grep BENCHMARK_SUMMARY | tail -1",
+                timeout=60,
+            )
         if result.returncode == 0 and "BENCHMARK_SUMMARY" in (result.stdout or ""):
             try:
                 # Extract JSON after [BENCHMARK_SUMMARY] marker
