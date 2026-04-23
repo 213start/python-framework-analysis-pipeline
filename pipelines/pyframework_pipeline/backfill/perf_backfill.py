@@ -272,6 +272,16 @@ _PYTHON_CATEGORIES = frozenset({
 # Shared objects that are Python runtime dependencies.
 _PYTHON_SO_KEYWORDS = ("python", "libpython")
 
+# Kernel idle/scheduler symbols that pollute Python analysis.
+# perf record -a misattributes CPU idle samples to container processes due to
+# PID namespace isolation. These symbols provide zero insight into Python perf.
+_KERNEL_IDLE_SYMBOLS = frozenset({
+    "default_idle_call", "cpu_startup_entry", "do_idle",
+    "cpuidle_idle_call", "schedule_idle", "arch_call_rest_init",
+    "rest_init", "start_kernel", "secondary_start_kernel",
+    "__primary_switched", "__secondary_switched",
+})
+
 
 def _filter_python_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     """Keep only rows from Python worker processes with resolved symbols.
@@ -280,13 +290,17 @@ def _filter_python_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     When pid_command is available, filter to Python workers (python3, pyflink-udf-run).
     When pid_command is absent, fall back to category/SO-based filtering.
 
-    Also drops unresolved hex-address symbols (0x...) which provide no insight.
+    Also drops:
+    - Unresolved hex-address symbols (0x...) which provide no insight.
+    - Kernel idle symbols misattributed to container processes by perf -a.
     """
     has_pid = any("pid_command" in (r or {}) for r in rows[:100]) if rows else False
     filtered = []
     for row in rows:
         sym = (row.get("symbol") or "").strip()
         if sym.startswith("0x") or sym == "[unknown]":
+            continue
+        if sym in _KERNEL_IDLE_SYMBOLS:
             continue
 
         if has_pid:
@@ -860,10 +874,11 @@ def backfill_perf(
 
     # Estimate operator/framework timing from perf data when per-invocation
     # stats are unavailable (PyFlink process mode cannot write timing files).
-    # CPython share = fraction of Python worker CPU time in CPython code.
-    arm_cpython_share = _compute_cpython_share(arm_agg)
-    x86_cpython_share = _compute_cpython_share(x86_agg)
-    _estimate_case_operator_framework(dataset, arm_cpython_share, x86_cpython_share)
+    # Use sample count to estimate Python worker CPU utilization, then derive
+    # operator = wall_clock × cpu_util, framework = wall_clock - operator.
+    arm_cpu_util = _compute_cpu_utilization(arm_rows)
+    x86_cpu_util = _compute_cpu_utilization(x86_rows)
+    _estimate_case_operator_framework(dataset, arm_cpu_util, x86_cpu_util)
 
     summary = {
         "components": len(components),
@@ -881,29 +896,50 @@ def backfill_perf(
     return summary
 
 
-def _compute_cpython_share(agg: dict[str, dict[str, Any]]) -> float:
-    """Compute the fraction (0-1) of self CPU time in CPython components."""
-    cpython_self = 0.0
-    total_self = 0.0
-    for symbol, data in agg.items():
-        self_share = data.get("self_share", 0.0)
-        total_self += self_share
-        if data.get("component") == "cpython":
-            cpython_self += self_share
-    return cpython_self / total_self if total_self > 0 else 0.0
+def _compute_cpu_utilization(rows: list[dict[str, str]],
+                             sample_rate_hz: int = 999) -> float:
+    """Estimate Python worker CPU utilization from perf sample count.
+
+    Returns the fraction of wall-clock time spent on CPU by Python workers.
+    Uses sample count / rate to estimate total CPU time, then divides by
+    the sum of all case wall-clock times from the dataset.
+
+    perf -a captures everything; we already filtered to Python worker rows.
+    At 999 Hz, N samples ≈ N/999 seconds of CPU time.
+    """
+    if not rows:
+        return 0.0
+    total_samples = sum(_parse_int(r.get("sample_count", "1")) for r in rows)
+    cpu_time_s = total_samples / sample_rate_hz
+    return cpu_time_s
 
 
 def _estimate_case_operator_framework(
     dataset: dict,
-    arm_cpython_share: float,
-    x86_cpython_share: float,
+    arm_cpu_s: float,
+    x86_cpu_s: float,
 ) -> None:
-    """Estimate operator/framework timing from perf CPython share when missing.
+    """Estimate operator/framework timing from perf CPU utilization when missing.
 
-    For each case, if operator or framework metrics are None:
-    - operator = demo_time * cpython_share (actual Python execution)
-    - framework = demo_time - operator (overhead: serialization, gRPC, idle)
+    The perf data covers ALL queries. We distribute CPU time proportionally
+    to each case's wall-clock time:
+    - operator = case_wallclock × (total_cpu / total_wallclock)
+    - framework = case_wallclock - operator
     """
+    # Sum all case wall-clock times to compute ratio.
+    total_arm_ms = sum(
+        _parse_time_to_ms((c.get("metrics", {}).get("demo") or {}).get("arm", ""))
+        for c in dataset.get("cases", [])
+    )
+    total_x86_ms = sum(
+        _parse_time_to_ms((c.get("metrics", {}).get("demo") or {}).get("x86", ""))
+        for c in dataset.get("cases", [])
+    )
+    arm_cpu_ms = arm_cpu_s * 1000.0
+    x86_cpu_ms = x86_cpu_s * 1000.0
+    arm_ratio = arm_cpu_ms / total_arm_ms if total_arm_ms > 0 else 0.0
+    x86_ratio = x86_cpu_ms / total_x86_ms if total_x86_ms > 0 else 0.0
+
     for case in dataset.get("cases", []):
         metrics = case.get("metrics", {})
         op = metrics.get("operator")
@@ -917,8 +953,8 @@ def _estimate_case_operator_framework(
         arm_demo_ms = _parse_time_to_ms(demo.get("arm", ""))
         x86_demo_ms = _parse_time_to_ms(demo.get("x86", ""))
 
-        arm_op_ms = arm_demo_ms * arm_cpython_share
-        x86_op_ms = x86_demo_ms * x86_cpython_share
+        arm_op_ms = arm_demo_ms * arm_ratio
+        x86_op_ms = x86_demo_ms * x86_ratio
         arm_fw_ms = arm_demo_ms - arm_op_ms
         x86_fw_ms = x86_demo_ms - x86_op_ms
 
@@ -945,8 +981,8 @@ def _estimate_case_operator_framework(
         metrics["operator"] = op_entry
         metrics["framework"] = fw_entry
 
-    logger.info("Estimated operator/framework from perf: arm_cpython=%.1f%%, x86_cpython=%.1f%%",
-                arm_cpython_share * 100, x86_cpython_share * 100)
+    logger.info("Estimated operator/framework from perf: arm_cpu=%.2fs (%.1f%%), x86_cpu=%.2fs (%.1f%%)",
+                arm_cpu_s, arm_ratio * 100, x86_cpu_s, x86_ratio * 100)
 
 
 def _estimate_total_ms(

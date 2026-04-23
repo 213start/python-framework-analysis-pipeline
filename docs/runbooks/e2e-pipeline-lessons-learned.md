@@ -78,6 +78,27 @@ if "python" in cmd or "pyflink" in cmd:
 - Kernel: 333 行（0.49% self share，主要是 `default_idle_call`）
 - glibc: 113 行
 
+### 1.4 Kernel idle 符号误归属（perf -a PID namespace 混淆）
+
+**现象**: 即使按 `pid_command=python3` 过滤后，kernel 组件仍占 89.1%（`default_idle_call` 占全部 self%）。
+
+**根因**: `perf record -a` 在容器内以系统级采集。当 CPU 空闲时，perf 采样到 `default_idle_call`（CPU idle loop），但由于 PID namespace 隔离，perf 将 idle 采样错误地归属给容器内的 `python3` 进程。一条 `default_idle_call` 行就占了 0.49 self%，等于 Python worker 全部 CPU 时间的 89%。
+
+**修复**: 在 `_filter_python_rows` 中排除已知 idle 相关 kernel 符号：
+
+```python
+_KERNEL_IDLE_SYMBOLS = frozenset({
+    "default_idle_call", "cpu_startup_entry", "do_idle",
+    "cpuidle_idle_call", "schedule_idle", ...
+})
+if sym in _KERNEL_IDLE_SYMBOLS:
+    continue
+```
+
+过滤后 kernel 从 89.1% 降到 0%（kernel 的非 idle 符号 self% 本身就是 0）。CPython 占 100%。
+
+**长期方案**: 将 `perf record -a` 改为 `perf record -p <python_worker_pid>`，从采集端就避免问题。
+
 ### 1.4 未解析符号（0x 地址）污染函数列表
 
 **现象**: 函数列表中出现 `0x0000ffffb015595c` 等十六进制地址，component 为 unknown，self time 为 0。
@@ -280,15 +301,16 @@ host staging dir → docker cp → container /opt/flink/perf-kits-scripts/
 
 ### 7.2 从 perf 数据估算 operator/framework 时间
 
-**现状**: 由于 7.1 的限制，per-invocation 计时不可用。采用 perf 数据估算：
+**现状**: 由于 7.1 的限制，per-invocation 计时不可用。采用 perf 采样数估算：
 
 ```
-CPython share = CPython 组件 self_share / 总 self_share
-operator time = 总耗时 × CPython share
-framework time = 总耗时 - operator time
+Python worker CPU time = total_samples / sample_rate (999 Hz)
+CPU utilization ratio = CPU time / sum(all case wall-clock times)
+Per case: operator = case_wallclock × ratio
+          framework = case_wallclock - operator
 ```
 
-ARM 实测数据（CPython share = 10.9%）:
+ARM 实测数据（CPU time = 1.04s, wall-clock total = 126.6s, ratio = 0.8%）:
 
 | Case | 总耗时 | Operator (Python执行) | Framework (框架开销) |
 |------|--------|----------------------|---------------------|
@@ -296,7 +318,11 @@ ARM 实测数据（CPython share = 10.9%）:
 | q06 | 14.28 s | 1557.8 ms (10.9%) | 12722.2 ms (89.1%) |
 | q19 | 17.85 s | 1947.3 ms (10.9%) | 15902.7 ms (89.1%) |
 
-**局限**: CPython share 是所有 case 共享的（来自同一次 perf 采集），不反映不同查询间的差异。当有真实的 per-invocation 数据时应替换此估算。
+**注意**: 这里的比例是 CPU time / wall-clock 比例按各 case wall-clock 等比分配，所有 case 的 operator/framework 百分比相同。当有真实的 per-invocation 数据时应替换此估算。
+
+**演进历史**:
+1. 最初用 CPython share（CPython self% / 总 self%）估算，但过滤 idle 后 CPython = 100%
+2. 改用 CPU utilization（采样数 / 采样率 / 总 wall-clock），更准确反映实际 CPU 占比
 
 ### 7.3 frameworkCallTime 从未生成
 

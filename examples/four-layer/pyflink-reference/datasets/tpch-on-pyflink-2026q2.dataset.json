@@ -296,27 +296,6 @@
   ],
   "functions": [
     {
-      "id": "func_b308163e",
-      "symbol": "default_idle_call",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "1793.2 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "1793.2 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "89.1%",
-        "x86Share": "0.0%",
-        "delta": "+1793.2 ms",
-        "deltaContribution": "+89.1%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
       "id": "func_a8fe4a73",
       "symbol": "_PyEval_EvalFrameDefault",
       "component": "cpython",
@@ -327,10 +306,10 @@
         "selfX86": "0.0 ms",
         "totalArm": "585.5 ms",
         "totalX86": "0.0 ms",
-        "armShare": "5.5%",
+        "armShare": "50.0%",
         "x86Share": "0.0%",
         "delta": "+109.8 ms",
-        "deltaContribution": "+5.5%"
+        "deltaContribution": "+50.0%"
       },
       "callPath": [],
       "caseIds": [],
@@ -348,10 +327,10 @@
         "selfX86": "0.0 ms",
         "totalArm": "73.2 ms",
         "totalX86": "0.0 ms",
-        "armShare": "3.6%",
+        "armShare": "33.3%",
         "x86Share": "0.0%",
         "delta": "+73.2 ms",
-        "deltaContribution": "+3.6%"
+        "deltaContribution": "+33.3%"
       },
       "callPath": [],
       "caseIds": [],
@@ -369,10 +348,10 @@
         "selfX86": "0.0 ms",
         "totalArm": "36.6 ms",
         "totalX86": "0.0 ms",
-        "armShare": "1.8%",
+        "armShare": "16.7%",
         "x86Share": "0.0%",
         "delta": "+36.6 ms",
-        "deltaContribution": "+1.8%"
+        "deltaContribution": "+16.7%"
       },
       "callPath": [],
       "caseIds": [],
@@ -380,302 +359,8 @@
       "artifactIds": []
     },
     {
-      "id": "func_767232bd",
-      "symbol": "PyEval_SaveThread",
-      "component": "cpython",
-      "categoryL1": "interpreter",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_30b7301e",
-      "symbol": "PyUnicode_RPartition",
-      "component": "cpython",
-      "categoryL1": "object_model",
-      "categoryL2": "str",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_f76d24cb",
-      "symbol": "builtin_next",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_a470ebbe",
-      "symbol": "builtin_getattr",
-      "component": "cpython",
-      "categoryL1": "lookup",
-      "categoryL2": "attribute",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_7b6e04db",
-      "symbol": "new_sync_read",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_698b197c",
-      "symbol": "_Py_UniversalNewlineFgetsWithSize",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_73e88c2c",
-      "symbol": "__d_lookup_rcu",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_3d03a07a",
-      "symbol": "_PyUnicode_JoinArray",
-      "component": "cpython",
-      "categoryL1": "object_model",
-      "categoryL2": "str",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_faa6b5e4",
-      "symbol": "collections_exec",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_6f4d73ff",
-      "symbol": "_int_malloc",
-      "component": "glibc",
-      "categoryL1": "glibc",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_b81b1b75",
-      "symbol": "el0_svc_common",
-      "component": "kernel",
-      "categoryL1": "kernel",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "73.2 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_2f4a2dc8",
-      "symbol": "_dl_map_object",
-      "component": "glibc",
-      "categoryL1": "glibc",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_44b5dedb",
-      "symbol": "mro_internal_unlocked",
-      "component": "cpython",
-      "categoryL1": "runtime",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_1fb73148",
-      "symbol": "_PyErr_SetKeyError",
-      "component": "cpython",
-      "categoryL1": "exceptions",
-      "categoryL2": "",
-      "metrics": {
-        "selfArm": "0.0 ms",
-        "selfX86": "0.0 ms",
-        "totalArm": "0.0 ms",
-        "totalX86": "0.0 ms",
-        "armShare": "0.0%",
-        "x86Share": "0.0%",
-        "delta": "+0.0 ms",
-        "deltaContribution": "0.0%"
-      },
-      "callPath": [],
-      "caseIds": [],
-      "patternIds": [],
-      "artifactIds": []
-    },
-    {
-      "id": "func_acd06106",
-      "symbol": "PyTuple_GetItem",
+      "id": "func_61c697d6",
+      "symbol": "PyTuple_New",
       "component": "cpython",
       "categoryL1": "object_model",
       "categoryL2": "tuple",
@@ -695,11 +380,326 @@
       "artifactIds": []
     },
     {
-      "id": "func_4d566f26",
-      "symbol": "__sbrk",
+      "id": "func_7a320191",
+      "symbol": "descr_new",
+      "component": "cpython",
+      "categoryL1": "runtime",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_4dc88401",
+      "symbol": "update_cur_sifted_state",
       "component": "glibc",
       "categoryL1": "glibc",
       "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_c26bca41",
+      "symbol": "mas_find",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_5972e362",
+      "symbol": "process_one_work",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_f81959de",
+      "symbol": "socket_exec",
+      "component": "unknown",
+      "categoryL1": "library",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_792550a7",
+      "symbol": "__legitimize_mnt",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_755bed46",
+      "symbol": "begin_new_exec",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_9672dab3",
+      "symbol": "subprocess_fork_exec_impl",
+      "component": "unknown",
+      "categoryL1": "library",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_ea6926eb",
+      "symbol": "el1h_64_sync",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_b0c3ee05",
+      "symbol": "vma_alloc_folio",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_7ee2f4b6",
+      "symbol": "vfs_open",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_5e968e02",
+      "symbol": "close_fd_get_file",
+      "component": "kernel",
+      "categoryL1": "kernel",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_13e1ae46",
+      "symbol": "_dl_catch_error",
+      "component": "glibc",
+      "categoryL1": "glibc",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_ee03886f",
+      "symbol": "call_init",
+      "component": "glibc",
+      "categoryL1": "glibc",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_19b6d829",
+      "symbol": "AttributeError_dealloc",
+      "component": "cpython",
+      "categoryL1": "exceptions",
+      "categoryL2": "",
+      "metrics": {
+        "selfArm": "0.0 ms",
+        "selfX86": "0.0 ms",
+        "totalArm": "0.0 ms",
+        "totalX86": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      "callPath": [],
+      "caseIds": [],
+      "patternIds": [],
+      "artifactIds": []
+    },
+    {
+      "id": "func_dd1c6650",
+      "symbol": "PyUnicode_FromFormat",
+      "component": "cpython",
+      "categoryL1": "object_model",
+      "categoryL2": "str",
       "metrics": {
         "selfArm": "0.0 ms",
         "selfX86": "0.0 ms",
@@ -718,33 +718,33 @@
   ],
   "stackOverview": {
     "platformTotals": {
-      "arm": "2012.8 ms",
+      "arm": "219.6 ms",
       "x86": "0.0 ms"
     },
     "components": [
-      {
-        "id": "kernel",
-        "name": "Kernel",
-        "armTime": "1793.2 ms",
-        "x86Time": "0.0 ms",
-        "armShare": "89.1%",
-        "x86Share": "0.0%",
-        "delta": "+1793.2 ms",
-        "deltaContribution": "+89.1%"
-      },
       {
         "id": "cpython",
         "name": "CPython",
         "armTime": "219.6 ms",
         "x86Time": "0.0 ms",
-        "armShare": "10.9%",
+        "armShare": "100.0%",
         "x86Share": "0.0%",
         "delta": "+219.6 ms",
-        "deltaContribution": "+10.9%"
+        "deltaContribution": "+100.0%"
       },
       {
         "id": "glibc",
         "name": "glibc",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%"
+      },
+      {
+        "id": "kernel",
+        "name": "Kernel",
         "armTime": "0.0 ms",
         "x86Time": "0.0 ms",
         "armShare": "0.0%",
@@ -765,27 +765,15 @@
     ],
     "categories": [
       {
-        "id": "kernel",
-        "name": "Kernel",
-        "level": "L1",
-        "armTime": "1793.2 ms",
-        "x86Time": "0.0 ms",
-        "armShare": "89.1%",
-        "x86Share": "0.0%",
-        "delta": "+1793.2 ms",
-        "deltaContribution": "+89.1%",
-        "topFunctionId": "func_b308163e"
-      },
-      {
         "id": "interpreter",
         "name": "Interpreter",
         "level": "L1",
         "armTime": "109.8 ms",
         "x86Time": "0.0 ms",
-        "armShare": "5.5%",
+        "armShare": "50.0%",
         "x86Share": "0.0%",
         "delta": "+109.8 ms",
-        "deltaContribution": "+5.5%",
+        "deltaContribution": "+50.0%",
         "topFunctionId": "func_a8fe4a73"
       },
       {
@@ -794,10 +782,10 @@
         "level": "L1",
         "armTime": "73.2 ms",
         "x86Time": "0.0 ms",
-        "armShare": "3.6%",
+        "armShare": "33.3%",
         "x86Share": "0.0%",
         "delta": "+73.2 ms",
-        "deltaContribution": "+3.6%",
+        "deltaContribution": "+33.3%",
         "topFunctionId": "func_647db2f0"
       },
       {
@@ -806,10 +794,10 @@
         "level": "L1",
         "armTime": "36.6 ms",
         "x86Time": "0.0 ms",
-        "armShare": "1.8%",
+        "armShare": "16.7%",
         "x86Share": "0.0%",
         "delta": "+36.6 ms",
-        "deltaContribution": "+1.8%",
+        "deltaContribution": "+16.7%",
         "topFunctionId": "func_636ba82a"
       },
       {
@@ -851,6 +839,18 @@
       {
         "id": "memory",
         "name": "Memory",
+        "level": "L1",
+        "armTime": "0.0 ms",
+        "x86Time": "0.0 ms",
+        "armShare": "0.0%",
+        "x86Share": "0.0%",
+        "delta": "+0.0 ms",
+        "deltaContribution": "0.0%",
+        "topFunctionId": null
+      },
+      {
+        "id": "kernel",
+        "name": "Kernel",
         "level": "L1",
         "armTime": "0.0 ms",
         "x86Time": "0.0 ms",
@@ -936,37 +936,14 @@
   },
   "componentDetails": [
     {
-      "id": "kernel",
-      "name": "Kernel",
-      "armTime": "1793.2 ms",
-      "x86Time": "0.0 ms",
-      "armShare": "89.1%",
-      "x86Share": "0.0%",
-      "delta": "+1793.2 ms",
-      "deltaContribution": "+89.1%",
-      "categories": [
-        {
-          "id": "kernel",
-          "name": "Kernel",
-          "delta": "+1793.2 ms"
-        }
-      ],
-      "hotspotIds": [
-        "func_b308163e",
-        "func_7b6e04db",
-        "func_73e88c2c",
-        "func_b81b1b75"
-      ]
-    },
-    {
       "id": "cpython",
       "name": "CPython",
       "armTime": "219.6 ms",
       "x86Time": "0.0 ms",
-      "armShare": "10.9%",
+      "armShare": "100.0%",
       "x86Share": "0.0%",
       "delta": "+219.6 ms",
-      "deltaContribution": "+10.9%",
+      "deltaContribution": "+100.0%",
       "categories": [
         {
           "id": "interpreter",
@@ -1028,8 +1005,8 @@
         "func_a8fe4a73",
         "func_647db2f0",
         "func_636ba82a",
-        "func_767232bd",
-        "func_30b7301e"
+        "func_61c697d6",
+        "func_7a320191"
       ]
     },
     {
@@ -1049,9 +1026,33 @@
         }
       ],
       "hotspotIds": [
-        "func_6f4d73ff",
-        "func_2f4a2dc8",
-        "func_4d566f26"
+        "func_4dc88401",
+        "func_13e1ae46",
+        "func_ee03886f"
+      ]
+    },
+    {
+      "id": "kernel",
+      "name": "Kernel",
+      "armTime": "0.0 ms",
+      "x86Time": "0.0 ms",
+      "armShare": "0.0%",
+      "x86Share": "0.0%",
+      "delta": "+0.0 ms",
+      "deltaContribution": "0.0%",
+      "categories": [
+        {
+          "id": "kernel",
+          "name": "Kernel",
+          "delta": "+0.0 ms"
+        }
+      ],
+      "hotspotIds": [
+        "func_c26bca41",
+        "func_5972e362",
+        "func_792550a7",
+        "func_755bed46",
+        "func_ea6926eb"
       ]
     },
     {
@@ -1070,7 +1071,10 @@
           "delta": "+0.0 ms"
         }
       ],
-      "hotspotIds": []
+      "hotspotIds": [
+        "func_f81959de",
+        "func_9672dab3"
+      ]
     }
   ]
 }
