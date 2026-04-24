@@ -74,7 +74,7 @@
 
 ## Pipeline 流程总览
 
-Pipeline 按 Step 1→7 串行执行。CLI 子命令均通过 `PYTHONPATH=pipelines python3 -m pyframework_pipeline <subcommand>` 调用，完整参数见 [`pipelines/pyframework_pipeline/README.md`](pipelines/pyframework_pipeline/README.md)。
+Pipeline 按 Step 1→7 串行执行。从仓库根目录执行 `PYTHONPATH=pipelines python3 -m pyframework_pipeline <subcommand>`，要求 Python ≥ 3.10（无第三方依赖）。完整参数和排错见 [`pipelines/pyframework_pipeline/README.md`](pipelines/pyframework_pipeline/README.md)。
 
 ### 流程步骤
 

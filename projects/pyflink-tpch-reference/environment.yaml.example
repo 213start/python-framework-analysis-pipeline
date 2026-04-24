@@ -5,27 +5,30 @@ mode: plan-only
 # 单机 Docker 集群模式：每台物理机运行 1JM + 2TM 容器
 # client/jm/tm 角色在同一台机器上用 Docker network 通信
 # 宿主机只需要 Docker，Java/Python/Flink 全部在容器内
+#
+# 使用方式：复制为 environment.yaml，将 hostRef / alias 替换为实际 SSH 主机名
+#   cp environment.yaml.example environment.yaml
 
 platforms:
   - id: arm
     arch: aarch64
     hosts:
       - role: client
-        hostRef: kunpeng
+        hostRef: arm-host
       - role: jobmanager
-        hostRef: kunpeng
+        hostRef: arm-host
       - role: taskmanager
-        hostRef: kunpeng
+        hostRef: arm-host
 
   - id: x86
     arch: x86_64
     hosts:
       - role: client
-        hostRef: zen5
+        hostRef: x86-host
       - role: jobmanager
-        hostRef: zen5
+        hostRef: x86-host
       - role: taskmanager
-        hostRef: zen5
+        hostRef: x86-host
 
 software:
   flinkImage: flink:2.2.0-java17
@@ -46,9 +49,12 @@ software:
     - readelf   # ELF 信息查看
 
 hostRefs:
-  kunpeng:
+  arm-host:
     connect: ssh
-    alias: kunpeng
+    alias: YOUR_ARM_HOST     # SSH config 中的 Host 别名
+    # user: root             # 可选，默认使用 SSH config
+    # key: ~/.ssh/id_rsa     # 可选，默认使用 SSH config
+    # port: 22               # 可选，默认 22
     capabilities:
       ssh: true
       sudo: true
@@ -57,9 +63,9 @@ hostRefs:
       upload: true
       download: true
 
-  zen5:
+  x86-host:
     connect: ssh
-    alias: zen5
+    alias: YOUR_X86_HOST     # SSH config 中的 Host 别名
     capabilities:
       ssh: true
       sudo: true
