@@ -134,6 +134,9 @@ export type FunctionDetail = {
   component: string;
   categoryL1: string;
   categoryL2: string;
+  sourceFile: string;
+  origin: string;
+  sharedObject: string;
   caseIds: string[];
   artifactIds: string[];
   metrics: {

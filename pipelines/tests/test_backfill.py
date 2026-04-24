@@ -176,7 +176,9 @@ class TestResolveComponent(unittest.TestCase):
         self.assertEqual(_resolve_component("[kernel.kallsyms]"), "kernel")
 
     def test_unknown(self):
-        self.assertEqual(_resolve_component("libmylib.so"), "unknown")
+        self.assertEqual(_resolve_component("libmylib.so"), "third_party")
+        self.assertEqual(_resolve_component(""), "unknown")
+        self.assertEqual(_resolve_component("[unknown]"), "unknown")
 
 
 class TestGenerateFuncId(unittest.TestCase):

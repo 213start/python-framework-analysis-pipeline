@@ -71,6 +71,10 @@ def run_backfill(
         perf_result.get("categories_count", 0),
     )
 
+    # Ensure required top-level arrays exist (schema requires patterns and rootCauses).
+    dataset.setdefault("patterns", [])
+    dataset.setdefault("rootCauses", [])
+
     asm_result = backfill_asm(arm_run_dir, x86_run_dir, source, dataset)
     logger.info(
         "ASM backfill: %d artifacts, %d functions (%d both, %d arm-only, %d x86-only)",
@@ -85,8 +89,9 @@ def run_backfill(
     project_data.setdefault("caseBindings", [])
     project_data.setdefault("functionBindings", [])
 
-    # Merge bindings: update existing by ID, add new.
-    _merge_bindings(project_data, bindings)
+    # Merge bindings: update existing by ID, add new, prune stale.
+    dataset_func_ids = {f["id"] for f in dataset.get("functions", []) if "id" in f}
+    _merge_bindings(project_data, bindings, dataset_func_ids)
 
     # Write updated layers.
     _write_layers(target, dataset, source, project_data, layers)
@@ -122,15 +127,15 @@ def _load_single_json(directory: Path, suffix: str) -> dict | None:
         return None
 
 
-def _merge_bindings(project_data: dict, new_bindings: dict) -> None:
-    """Merge generated bindings into project_data, updating by ID."""
+def _merge_bindings(project_data: dict, new_bindings: dict, valid_func_ids: set[str]) -> None:
+    """Merge generated bindings into project_data, updating by ID and pruning stale."""
     # Merge caseBindings
     existing_cases = {b["caseId"]: b for b in project_data.get("caseBindings", [])}
     for binding in new_bindings.get("caseBindings", []):
         existing_cases[binding["caseId"]] = binding
     project_data["caseBindings"] = list(existing_cases.values())
 
-    # Merge functionBindings
+    # Merge functionBindings: add/update new, keep existing that are still valid
     existing_funcs = {b["functionId"]: b for b in project_data.get("functionBindings", [])}
     for binding in new_bindings.get("functionBindings", []):
         fid = binding["functionId"]
@@ -142,6 +147,14 @@ def _merge_bindings(project_data: dict, new_bindings: dict) -> None:
                 existing["x86ArtifactIds"] = binding["x86ArtifactIds"]
         else:
             existing_funcs[fid] = binding
+
+    # Prune bindings that reference functions no longer in the dataset
+    stale = [fid for fid in existing_funcs if fid not in valid_func_ids]
+    for fid in stale:
+        existing_funcs.pop(fid, None)
+    if stale:
+        logger.info("Pruned %d stale functionBindings (functions cut by top_n)", len(stale))
+
     project_data["functionBindings"] = list(existing_funcs.values())
 
 

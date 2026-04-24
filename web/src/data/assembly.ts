@@ -540,6 +540,7 @@ export function assembleCategoryDetail(ctx: AssemblyContext, categoryId: string)
       id: entry.id,
       symbol: entry.symbol,
       component: entry.component ?? "",
+      sourceFile: entry.sourceFile ?? "",
       selfArm: entry.metrics?.selfArm ?? "-",
       selfX86: entry.metrics?.selfX86 ?? "-",
       totalArm: entry.metrics?.totalArm ?? "-",
@@ -563,10 +564,10 @@ export function assembleCategoryDetail(ctx: AssemblyContext, categoryId: string)
     x86Share: category.x86Share,
     delta: category.delta,
     deltaContribution: category.deltaContribution,
-    caseIds: category.caseIds,
+    caseIds: category.caseIds ?? [],
     hotspots,
-    patternIds: category.patternIds,
-    artifactIds: category.artifactIds,
+    patternIds: category.patternIds ?? [],
+    artifactIds: category.artifactIds ?? [],
   };
 }
 
@@ -623,6 +624,9 @@ export function assembleFunctionDetail(ctx: AssemblyContext, functionId: string)
     component: entry.component ?? "",
     categoryL1: entry.categoryL1 ?? "",
     categoryL2: entry.categoryL2 ?? "",
+    sourceFile: entry.sourceFile ?? "",
+    origin: entry.origin ?? "",
+    sharedObject: entry.sharedObject ?? "",
     caseIds: entry.caseIds ?? [],
     artifactIds,
     metrics: {
@@ -671,6 +675,7 @@ export function assembleComponentDetail(ctx: AssemblyContext, componentId: strin
       id: entry.id,
       symbol: entry.symbol,
       category: entry.categoryL1 ?? "",
+      sourceFile: entry.sourceFile ?? "",
       selfArm: entry.metrics?.selfArm ?? "-",
       selfX86: entry.metrics?.selfX86 ?? "-",
       totalArm: entry.metrics?.totalArm ?? "-",
@@ -693,9 +698,9 @@ export function assembleComponentDetail(ctx: AssemblyContext, componentId: strin
     deltaContribution: component.deltaContribution,
     categories: component.categories,
     hotspots,
-    patternIds: component.patternIds,
-    rootCauseIds: component.rootCauseIds,
-    artifactIds: component.artifactIds,
+    patternIds: component.patternIds ?? [],
+    rootCauseIds: component.rootCauseIds ?? [],
+    artifactIds: component.artifactIds ?? [],
   };
 }
 

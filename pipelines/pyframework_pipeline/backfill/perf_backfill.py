@@ -54,6 +54,58 @@ _L2_SHORT_NAME: dict[str, str] = {
     "CPython.Exceptions.BaseException": "base_exception",
 }
 
+# Source file provenance derived from shared_object.
+_LIB_DISPLAY: dict[str, str] = {
+    "libpython": "CPython",
+    "libscipy_openblas": "OpenBLAS (scipy)",
+    "libopenblas": "OpenBLAS",
+    "libarrow_python": "PyArrow",
+    "libarrow.so": "Apache Arrow",
+    "libjvm": "JVM (OpenJDK)",
+}
+
+# CPython internal symbols -> real source file paths.
+_CPYTHON_SYMBOL_SOURCES: dict[str, str] = {
+    "deduce_unreachable": "Python/gc.c",
+    "visit_decref": "Python/gc.c",
+    "visit_reachable": "Python/gc.c",
+    "untrack_tuples": "Python/gc.c",
+    "gc_collect_region": "Python/gc.c",
+    "visit_add_to_container": "Python/gc.c",
+    "_PyGC_Collect": "Python/gc.c",
+    "_PyEval_EvalFrameDefault": "Python/ceval.c",
+    "_Py_dict_lookup": "Objects/dictobject.c",
+    "dict_traverse": "Objects/dictobject.c",
+    "_PyObject_GenericGetAttrWithDict": "Objects/object.c",
+    "_PyCode_New": "Objects/codeobject.c",
+    "_Py_hashtable_get": "Python/hashtable.c",
+    "PyUnicode_FromKindAndData": "Objects/unicodeobject.c",
+    "tuple_dealloc": "Objects/tupleobject.c",
+    "r_object": "Python/marshal.c",
+    "update_one_slot": "Objects/typeobject.c",
+}
+
+_KERNEL_SYMBOLS = {"unmap_page_range", "copy_page_range", "__tlb_remove_page",
+                    "free_pages_and_swap_cache", "__alloc_pages_nodemask"}
+
+
+def _resolve_source_info(symbol: str, shared_object: str) -> dict[str, str]:
+    """Derive sourceFile and origin from shared_object and symbol."""
+    if shared_object == "[kernel.kallsyms]":
+        return {"sourceFile": "Linux Kernel", "origin": "kernel"}
+    # Check for known CPython symbol first — use real source file path.
+    if symbol in _CPYTHON_SYMBOL_SOURCES:
+        return {"sourceFile": _CPYTHON_SYMBOL_SOURCES[symbol], "origin": "CPython"}
+    so_lower = shared_object.lower()
+    for lib_prefix, display in _LIB_DISPLAY.items():
+        if lib_prefix.lower() in so_lower:
+            return {"sourceFile": display, "origin": display}
+    if "libc" in so_lower or "ld-linux" in so_lower:
+        return {"sourceFile": "glibc", "origin": "glibc"}
+    if shared_object and shared_object != "[unknown]":
+        return {"sourceFile": shared_object, "origin": shared_object}
+    return {"sourceFile": "", "origin": ""}
+
 # Human-readable display names for L1 categories
 _CATEGORY_DISPLAY: dict[str, str] = {
     "interpreter": "Interpreter",
@@ -161,7 +213,7 @@ def _resolve_component(shared_object: str, category_top: str = "") -> str:
     """Map a shared_object + category_top to a component identifier.
 
     Prefers category-based resolution for CPython/Kernel/glibc, falls back
-    to shared_object prefix matching for Library/Unknown.
+    to shared_object prefix matching, then generic catch-all for libraries.
     """
     if category_top:
         comp = _CATEGORY_TO_COMPONENT.get(category_top)
@@ -175,6 +227,9 @@ def _resolve_component(shared_object: str, category_top: str = "") -> str:
             return component
     if "python" in so_lower and ("lib" in so_lower or so_lower.startswith("python")):
         return "cpython"
+    # Any other shared object (lib*.so, *.so) is a third-party library.
+    if so_lower.endswith(".so") or ".so." in so_lower:
+        return "third_party"
     return "unknown"
 
 
@@ -210,10 +265,31 @@ def _parse_int(value: str) -> int:
 
 
 def _format_ms(value_ms: float) -> str:
-    """Format a millisecond value as human-readable string."""
+    """Format a millisecond value adaptively: <1s → ms, >=1s → s."""
     if value_ms == 0.0:
         return "0.0 ms"
+    if value_ms >= 1000.0:
+        return f"{value_ms / 1000.0:.2f} s"
     return f"{value_ms:.1f} ms"
+
+
+def _parse_time_to_ms(value: str) -> float:
+    """Parse a formatted time string back to milliseconds.
+
+    Handles adaptive format outputs: "4.49 s", "154.9 ms", etc.
+    """
+    if not value:
+        return 0.0
+    s = value.strip().replace("+", "")
+    if s.endswith(" s"):
+        return float(s[:-2].strip()) * 1000.0
+    if s.endswith(" ms"):
+        return float(s[:-3].strip())
+    if s.endswith(" µs") or s.endswith(" μs"):
+        return float(s[:-3].strip()) / 1000.0
+    if s.endswith(" ns"):
+        return float(s[:-3].strip()) / 1_000_000.0
+    return _parse_float(s)
 
 
 def _format_pct(value: float) -> str:
@@ -224,10 +300,12 @@ def _format_pct(value: float) -> str:
 
 
 def _format_delta(delta_ms: float) -> str:
-    """Format a delta value with sign prefix."""
+    """Format a delta value with sign prefix, adaptively: <1s → ms, >=1s → s."""
     if delta_ms == 0.0:
         return "+0.0 ms"
     sign = "+" if delta_ms > 0 else ""
+    if abs(delta_ms) >= 1000.0:
+        return f"{sign}{delta_ms / 1000.0:.2f} s"
     return f"{sign}{delta_ms:.1f} ms"
 
 
@@ -465,11 +543,14 @@ def _build_components(
     x86_share_total = sum(d["x86_self"] for d in comp_agg.values())
 
     # Pre-compute all deltas so deltaContribution sums to 100%.
+    # arm_share_total = sum of raw perf self% across all components (e.g., 0.42%).
+    # We normalize times so component times are proportional to their shares
+    # and sum to arm_total_ms (= total wall-clock).
     deltas: dict[str, float] = {}
     for cid in comp_agg:
         data = comp_agg[cid]
-        arm_time = arm_total_ms * data["arm_self"] / 100.0 if arm_total_self > 0 else 0.0
-        x86_time = x86_total_ms * data["x86_self"] / 100.0 if x86_total_self > 0 else 0.0
+        arm_time = (arm_total_ms * data["arm_self"] / arm_share_total) if arm_share_total > 0 else 0.0
+        x86_time = (x86_total_ms * data["x86_self"] / x86_share_total) if x86_share_total > 0 else 0.0
         deltas[cid] = arm_time - x86_time
     net_delta = sum(deltas.values()) or 1.0
 
@@ -489,8 +570,8 @@ def _build_components(
         components.append({
             "id": cid,
             "name": _COMPONENT_DISPLAY.get(cid, cid),
-            "armTime": _format_ms(arm_total_ms * arm_share / 100.0) if arm_total_self > 0 else "0.0 ms",
-            "x86Time": _format_ms(x86_total_ms * x86_share / 100.0) if x86_total_self > 0 else "0.0 ms",
+            "armTime": _format_ms(arm_total_ms * arm_share / arm_share_total) if arm_share_total > 0 else "0.0 ms",
+            "x86Time": _format_ms(x86_total_ms * x86_share / x86_share_total) if x86_share_total > 0 else "0.0 ms",
             "armShare": _format_pct(arm_pct),
             "x86Share": _format_pct(x86_pct),
             "delta": _format_delta(delta),
@@ -517,8 +598,8 @@ def _build_categories(
     deltas: dict[str, float] = {}
     for l1 in cat_agg:
         d = cat_agg[l1]
-        arm_time = arm_total_ms * d["arm_self"] / 100.0 if arm_total_self > 0 else 0.0
-        x86_time = x86_total_ms * d["x86_self"] / 100.0 if x86_total_self > 0 else 0.0
+        arm_time = (arm_total_ms * d["arm_self"] / arm_share_total) if arm_share_total > 0 else 0.0
+        x86_time = (x86_total_ms * d["x86_self"] / x86_share_total) if x86_share_total > 0 else 0.0
         deltas[l1] = arm_time - x86_time
     net_delta = sum(deltas.values()) or 1.0
 
@@ -542,8 +623,8 @@ def _build_categories(
             "id": l1,
             "name": _CATEGORY_DISPLAY.get(l1, l1),
             "level": "L1",
-            "armTime": _format_ms(arm_total_ms * arm_share / 100.0) if arm_total_self > 0 else "0.0 ms",
-            "x86Time": _format_ms(x86_total_ms * x86_share / 100.0) if x86_total_self > 0 else "0.0 ms",
+            "armTime": _format_ms(arm_total_ms * arm_share / arm_share_total) if arm_share_total > 0 else "0.0 ms",
+            "x86Time": _format_ms(x86_total_ms * x86_share / x86_share_total) if x86_share_total > 0 else "0.0 ms",
             "armShare": _format_pct(arm_pct),
             "x86Share": _format_pct(x86_pct),
             "delta": _format_delta(delta),
@@ -577,8 +658,8 @@ def _build_functions(
     for symbol in set(arm_agg) | set(x86_agg):
         arm = arm_agg.get(symbol)
         x86 = x86_agg.get(symbol)
-        a_self = arm_total_ms * (arm["self_share"] if arm else 0.0) / 100.0 if arm_total_self > 0 else 0.0
-        x_self = x86_total_ms * (x86["self_share"] if x86 else 0.0) / 100.0 if x86_total_self > 0 else 0.0
+        a_self = (arm_total_ms * (arm["self_share"] if arm else 0.0) / arm_self_total) if arm_self_total > 0 else 0.0
+        x_self = (x86_total_ms * (x86["self_share"] if x86 else 0.0) / x86_self_total) if x86_self_total > 0 else 0.0
         func_deltas[symbol] = a_self - x_self
     net_delta = sum(func_deltas.values()) or 1.0
 
@@ -602,10 +683,10 @@ def _build_functions(
 
         func_id = _generate_func_id(symbol)
 
-        arm_time_self = arm_total_ms * arm_self_share / 100.0 if arm_total_self > 0 else 0.0
-        x86_time_self = x86_total_ms * x86_self_share / 100.0 if x86_total_self > 0 else 0.0
-        arm_time_total = arm_total_ms * arm_children_share / 100.0 if arm_total_self > 0 else 0.0
-        x86_time_total = x86_total_ms * x86_children_share / 100.0 if x86_total_self > 0 else 0.0
+        arm_time_self = (arm_total_ms * arm_self_share / arm_self_total) if arm_self_total > 0 else 0.0
+        x86_time_self = (x86_total_ms * x86_self_share / x86_self_total) if x86_self_total > 0 else 0.0
+        arm_time_total = (arm_total_ms * arm_children_share / arm_self_total) if arm_self_total > 0 else 0.0
+        x86_time_total = (x86_total_ms * x86_children_share / x86_self_total) if x86_self_total > 0 else 0.0
         delta = func_deltas[symbol]
         delta_contrib = delta / net_delta * 100.0
 
@@ -619,6 +700,8 @@ def _build_functions(
             "component": meta["component"],
             "categoryL1": meta["l1"],
             "categoryL2": meta.get("l2", "") or meta.get("category_sub", ""),
+            **_resolve_source_info(symbol, meta.get("shared_object", "")),
+            "sharedObject": meta.get("shared_object", ""),
             "metrics": {
                 "selfArm": _format_ms(arm_time_self),
                 "selfX86": _format_ms(x86_time_self),
@@ -638,8 +721,8 @@ def _build_functions(
     # Sort by max(self_arm, self_x86) time descending
     merged.sort(
         key=lambda f: max(
-            _parse_float(f["metrics"]["selfArm"].replace(" ms", "").replace("+", "")),
-            _parse_float(f["metrics"]["selfX86"].replace(" ms", "").replace("+", "")),
+            _parse_time_to_ms(f["metrics"]["selfArm"]),
+            _parse_time_to_ms(f["metrics"]["selfX86"]),
         ),
         reverse=True,
     )
@@ -691,11 +774,13 @@ def _build_component_details(
         delta_total = 1.0
 
     # Pre-compute all deltas for deltaContribution normalization.
+    cd_arm_share_total = sum(d["arm_self"] for d in comp_agg.values())
+    cd_x86_share_total = sum(d["x86_self"] for d in comp_agg.values())
     cd_deltas: dict[str, float] = {}
     for cid in comp_agg:
         d = comp_agg[cid]
-        a_t = arm_total_ms * d["arm_self"] / 100.0 if arm_total_self > 0 else 0.0
-        x_t = x86_total_ms * d["x86_self"] / 100.0 if x86_total_self > 0 else 0.0
+        a_t = (arm_total_ms * d["arm_self"] / cd_arm_share_total) if cd_arm_share_total > 0 else 0.0
+        x_t = (x86_total_ms * d["x86_self"] / cd_x86_share_total) if cd_x86_share_total > 0 else 0.0
         cd_deltas[cid] = a_t - x_t
     cd_net_delta = sum(cd_deltas.values()) or 1.0
 
@@ -706,22 +791,20 @@ def _build_component_details(
         x86_share = data["x86_self"]
         delta = cd_deltas[cid]
 
-        arm_time = arm_total_ms * arm_share / 100.0 if arm_total_self > 0 else 0.0
-        x86_time = x86_total_ms * x86_share / 100.0 if x86_total_self > 0 else 0.0
+        arm_time = (arm_total_ms * arm_share / cd_arm_share_total) if cd_arm_share_total > 0 else 0.0
+        x86_time = (x86_total_ms * x86_share / cd_x86_share_total) if cd_x86_share_total > 0 else 0.0
 
         # Normalize shares relative to total captured.
-        arm_share_total = sum(d["arm_self"] for d in comp_agg.values())
-        x86_share_total = sum(d["x86_self"] for d in comp_agg.values())
-        arm_pct = (arm_share / arm_share_total * 100.0) if arm_share_total > 0 else 0.0
-        x86_pct = (x86_share / x86_share_total * 100.0) if x86_share_total > 0 else 0.0
+        arm_pct = (arm_share / cd_arm_share_total * 100.0) if cd_arm_share_total > 0 else 0.0
+        x86_pct = (x86_share / cd_x86_share_total * 100.0) if cd_x86_share_total > 0 else 0.0
 
         # Categories for this component.
         comp_cats = comp_categories.get(cid, {})
         categories = []
         for l1 in sorted(comp_cats, key=lambda c: comp_cats[c]["arm_self"], reverse=True):
             cat_data = comp_cats[l1]
-            cat_arm_time = arm_total_ms * cat_data["arm_self"] / 100.0 if arm_total_self > 0 else 0.0
-            cat_x86_time = x86_total_ms * cat_data["x86_self"] / 100.0 if x86_total_self > 0 else 0.0
+            cat_arm_time = (arm_total_ms * cat_data["arm_self"] / cd_arm_share_total) if cd_arm_share_total > 0 else 0.0
+            cat_x86_time = (x86_total_ms * cat_data["x86_self"] / cd_x86_share_total) if cd_x86_share_total > 0 else 0.0
             cat_delta = cat_arm_time - cat_x86_time
             categories.append({
                 "id": l1,
@@ -744,14 +827,59 @@ def _build_component_details(
             "deltaContribution": _format_delta_pct(delta / cd_net_delta * 100.0),
             "categories": categories,
             "hotspotIds": hotspot_ids,
+            "patternIds": [],
+            "rootCauseIds": [],
+            "artifactIds": [],
         })
 
     return details
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+def _build_category_details(
+    stack_overview: dict,
+    component_details: list[dict],
+    functions: list[dict],
+) -> list[dict]:
+    """Build categoryDetails flat list from stackOverview.categories."""
+    cats = stack_overview.get("categories", [])
+
+    # Build component→category lookup
+    cat_to_components: dict[str, list[str]] = {}
+    for comp in component_details:
+        for comp_cat in comp.get("categories", []):
+            cid = comp_cat.get("id", "")
+            cat_to_components.setdefault(cid, [])
+            if comp["id"] not in cat_to_components[cid]:
+                cat_to_components[cid].append(comp["id"])
+
+    # Build function→category lookup
+    cat_to_funcs: dict[str, list[str]] = {}
+    for func in functions:
+        cat = func.get("categoryL1", "")
+        if cat:
+            cat_to_funcs.setdefault(cat, []).append(func["id"])
+
+    details = []
+    for cat in cats:
+        cat_id = cat.get("id", "")
+        details.append({
+            "id": cat_id,
+            "name": cat.get("name", cat_id),
+            "level": cat.get("level", "L1"),
+            "componentIds": cat_to_components.get(cat_id, []),
+            "armTime": cat.get("armTime", "0.0 ms"),
+            "x86Time": cat.get("x86Time", "0.0 ms"),
+            "armShare": cat.get("armShare", "0.0%"),
+            "x86Share": cat.get("x86Share", "0.0%"),
+            "delta": cat.get("delta", "0.0 ms"),
+            "deltaContribution": cat.get("deltaContribution", "0.0%"),
+            "caseIds": [],
+            "hotspotIds": cat_to_funcs.get(cat_id, []),
+            "patternIds": [],
+            "rootCauseIds": [],
+            "artifactIds": [],
+        })
+    return details
 
 def backfill_perf(
     arm_run_dir: Path,
@@ -841,14 +969,8 @@ def backfill_perf(
             cat["topFunctionId"] = None
 
     # Compute platform totals
-    arm_total_time = sum(
-        _parse_float(c["armTime"].replace(" ms", "").replace("+", ""))
-        for c in components
-    )
-    x86_total_time = sum(
-        _parse_float(c["x86Time"].replace(" ms", "").replace("+", ""))
-        for c in components
-    )
+    arm_total_time = sum(_parse_time_to_ms(c["armTime"]) for c in components)
+    x86_total_time = sum(_parse_time_to_ms(c["x86Time"]) for c in components)
 
     # Update dataset in-place
     dataset["stackOverview"] = {
@@ -870,6 +992,11 @@ def backfill_perf(
         arm_total_self, x86_total_self,
         arm_total_ms, x86_total_ms,
         functions,
+    )
+
+    # Build categoryDetails from stackOverview.categories (flat list for routing).
+    dataset["categoryDetails"] = _build_category_details(
+        dataset["stackOverview"], dataset["componentDetails"], functions,
     )
 
     # Do NOT estimate operator/framework from perf data.
@@ -990,15 +1117,16 @@ def _estimate_total_ms(
     Tries to derive from dataset.cases[].metrics first, then falls back to
     a heuristic based on perf sample counts.
     """
-    # Try to extract from dataset case metrics
+    # Try to extract from dataset case metrics — use demo (wall-clock) only.
+    # Do NOT sum demo + tm (they are the same metric, would double-count).
+    # framework/operator are per-invocation (µs/ns) and irrelevant for totals.
     total_ms = 0.0
     for case in dataset.get("cases", []):
         metrics = case.get("metrics", {})
-        for source_key in ("demo", "framework", "tm"):
-            source = metrics.get(source_key) or {}
-            time_str = source.get(platform, "")
-            if time_str:
-                total_ms += _parse_time_to_ms(time_str)
+        demo = metrics.get("demo") or {}
+        time_str = demo.get(platform, "")
+        if time_str:
+            total_ms += _parse_time_to_ms(time_str)
 
     if total_ms > 0:
         return total_ms

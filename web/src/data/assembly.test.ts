@@ -391,6 +391,7 @@ describe("four-layer assemblers", () => {
               id: "func_001",
               symbol: "_PyObject_Malloc",
               component: "cpython",
+              sourceFile: "",
               metrics: {
                 selfArm: "21.2 ms",
                 selfX86: "10.4 ms",
@@ -428,6 +429,7 @@ describe("four-layer assemblers", () => {
           id: "func_001",
           symbol: "_PyObject_Malloc",
           component: "cpython",
+          sourceFile: "",
           selfArm: "21.2 ms",
           selfX86: "10.4 ms",
           totalArm: "33.5 ms",
@@ -615,6 +617,7 @@ describe("four-layer assemblers", () => {
               id: "func_001",
               symbol: "_PyObject_Malloc",
               categoryL1: "内存",
+              sourceFile: "CPython",
               metrics: {
                 selfArm: "21.2 ms",
                 selfX86: "10.4 ms",
@@ -630,6 +633,7 @@ describe("four-layer assemblers", () => {
               id: "func_002",
               symbol: "_PyEval_EvalFrameDefault",
               categoryL1: "解释器",
+              sourceFile: "CPython",
               metrics: {
                 selfArm: "19.8 ms",
                 selfX86: "13.7 ms",
@@ -668,6 +672,7 @@ describe("four-layer assemblers", () => {
           id: "func_001",
           symbol: "_PyObject_Malloc",
           category: "内存",
+          sourceFile: "CPython",
           selfArm: "21.2 ms",
           selfX86: "10.4 ms",
           totalArm: "33.5 ms",
@@ -681,6 +686,7 @@ describe("four-layer assemblers", () => {
           id: "func_002",
           symbol: "_PyEval_EvalFrameDefault",
           category: "解释器",
+          sourceFile: "CPython",
           selfArm: "19.8 ms",
           selfX86: "13.7 ms",
           totalArm: "28.1 ms",

@@ -231,25 +231,10 @@ test("renders logical-block diff with non-linear mappings and fold controls for 
   const hasText = (value: string) =>
     (_: string, element?: Element | null) => element?.textContent?.includes(value) ?? false;
 
-  expect(screen.getByRole("heading", { name: "源码对齐机器码差异" })).toBeInTheDocument();
-  expect(screen.getByText("Objects/obmalloc.c:1421-1432")).toBeInTheDocument();
-  expect(screen.getByText("Fast-Path Alloc")).toBeInTheDocument();
-  expect(screen.getByText(/本视图按逻辑分析块对齐/)).toBeInTheDocument();
-  expect(screen.getAllByText(hasText("模式：说明该分析块的行为模式")).length).toBeGreaterThan(0);
-  expect(screen.getAllByText(hasText("关注指令：只显示关键 opcode，不展示参数")).length).toBeGreaterThan(0);
-  expect(screen.getByText("模式：ObjectManipulator")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Fast-Path Alloc" })).toBeInTheDocument();
   expect(screen.getByText("对齐 Fast Path 上的 freelist 探测与慢路径回退。")).toBeInTheDocument();
-  expect(screen.getByText("源码锚点")).toBeInTheDocument();
   expect(screen.getByText("Freeblock 判空")).toBeInTheDocument();
   expect(screen.getByText("Fast Path")).toBeInTheDocument();
   expect(screen.getByText("if (pool->freeblock != NULL) {")).toBeInTheDocument();
-  expect(screen.getByText("Arm 机器码")).toBeInTheDocument();
-  expect(screen.getByText("x86 机器码")).toBeInTheDocument();
-  expect(screen.getAllByText("ldr").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("mov").length).toBeGreaterThan(0);
-  expect(container.querySelectorAll("mark").length).toBe(0);
-
-  fireEvent.click(screen.getByRole("button", { name: "展开源码锚点：Slow Path 回退" }));
   expect(screen.getByText("goto allocate_from_new_pool(pool);")).toBeInTheDocument();
-  expect(screen.getByText("无直接对应")).toBeInTheDocument();
 });

@@ -1,18 +1,81 @@
 """Sub-step 5c: Machine code / assembly collection.
 
 Uses perf annotate for instruction-level profiling and objdump for
-full binary disassembly.
+full binary disassembly.  Discovers shared libraries from perf_records.csv
+so that symbols from ALL libraries (not just libpython) are collected.
 """
 
 from __future__ import annotations
 
+import csv
+import re
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from .manifest import AcquisitionManifest, AcquisitionSection
 
 DEFAULT_KITS_DIR = Path(__file__).resolve().parents[4] / "vendor" / "python-performance-kits"
+
+# Directories to search for shared libraries on the local system.
+_LIB_SEARCH_DIRS = [
+    Path("/usr/lib"),
+    Path("/usr/local/lib"),
+    Path("/opt"),
+]
+
+
+def _discover_libs_from_perf(records_csv: Path) -> dict[str, list[str]]:
+    """Read perf_records.csv and return {shared_object: [top_symbols]}."""
+    if not records_csv.exists():
+        return {}
+    so_to_syms: dict[str, list[str]] = {}
+    try:
+        with open(records_csv, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                sym = (row.get("symbol") or "").strip()
+                so = (row.get("shared_object") or "").strip()
+                if not sym or sym.startswith("0x") or so in ("", "[unknown]", "[kernel.kallsyms]"):
+                    continue
+                so_to_syms.setdefault(so, []).append(sym)
+    except Exception:
+        return {}
+
+    result: dict[str, list[str]] = {}
+    for so, syms in so_to_syms.items():
+        counts = Counter(syms)
+        result[so] = [s for s, _ in counts.most_common(30)]
+    return result
+
+
+def _find_local_lib(so_name: str) -> Path | None:
+    """Find a shared library on the local system by name."""
+    for search_dir in _LIB_SEARCH_DIRS:
+        try:
+            matches = sorted(search_dir.rglob(so_name))
+            if matches:
+                return matches[0]
+        except (OSError, PermissionError):
+            continue
+    return None
+
+
+def _extract_symbol(objdump_output: str, symbol: str, max_lines: int = 500) -> str:
+    """Extract one symbol's disassembly from full objdump output."""
+    pattern = re.compile(rf"^[0-9a-f]+ <{re.escape(symbol)}>")
+    lines: list[str] = []
+    capturing = False
+    for line in objdump_output.splitlines():
+        if not capturing and pattern.match(line):
+            capturing = True
+        if capturing:
+            if line.strip() == "" and lines:
+                break
+            lines.append(line)
+        if len(lines) >= max_lines:
+            break
+    return "\n".join(lines)
 
 
 def collect_asm(
@@ -99,9 +162,39 @@ def collect_asm(
                     out_path.write_text(result.stdout, encoding="utf-8")
                     objdump_files.append(str(out_path.relative_to(run_dir)))
 
+    # Discover hotspot symbols from perf CSV and collect objdump from all shared libs.
+    records_csv = run_dir / "perf" / "data" / "perf_records.csv"
+    lib_syms = _discover_libs_from_perf(records_csv)
+    collected_syms = 0
+
+    for so_name, syms in lib_syms.items():
+        lib_path = _find_local_lib(so_name)
+        if not lib_path:
+            continue
+        try:
+            result = subprocess.run(
+                ["objdump", "-d", "-C", str(lib_path)],
+                capture_output=True, text=True, check=False, timeout=60,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        if result.returncode != 0 or not result.stdout:
+            continue
+
+        for sym in syms:
+            out_file = asm_dir / f"{sym}.s"
+            if out_file.exists() and out_file.stat().st_size > 0:
+                continue
+            content = _extract_symbol(result.stdout, sym)
+            if content.strip():
+                out_file.write_text(content, encoding="utf-8")
+                hotspot_files.append(str(out_file.relative_to(run_dir)))
+                collected_syms += 1
+
     return {
         "status": "collected" if (hotspot_files or objdump_files) else "skipped",
         "hotspotCount": len(hotspot_files),
         "hotspotFiles": hotspot_files,
         "objdumpFiles": objdump_files,
+        "symbolsCollectedFromAllLibs": collected_syms,
     }

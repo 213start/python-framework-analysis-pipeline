@@ -622,21 +622,111 @@ def _run_collect(
     # Run python-performance-kits pipeline on remote host (same architecture as perf.data).
     _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform)
 
-    # Collect objdump from JM.
+    # Collect objdump for hotspot symbols across all shared libraries.
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
     asm_dir.mkdir(parents=True, exist_ok=True)
-    libpython = "/opt/flink/.pyenv/versions/3.14.3/lib/libpython3.14.so.1.0"
-    for sym in ["_PyObject_Malloc", "_PyEval_EvalFrameDefault", "PyDict_GetItem"]:
-        logger.info("Collecting objdump for %s...", sym)
-        result = executor.run(
-            f"docker exec flink-jm bash -c "
-            f"'objdump -S -d {libpython} 2>/dev/null | awk \"/<{sym}>:/,/^$/\" | head -200'",
-            timeout=60,
-        )
-        if result.returncode == 0 and result.stdout:
-            (asm_dir / f"{sym}.s").write_text(result.stdout, encoding="utf-8")
+    _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform)
 
     logger.info("Collection complete for %s", platform)
+
+
+def _collect_asm_from_all_libs(
+    executor: "SshExecutor",
+    perf_dir: Path,
+    asm_dir: Path,
+    platform: str,
+) -> None:
+    """Collect objdump for top hotspot symbols from ALL shared libraries.
+
+    Reads perf_records.csv to discover which shared_object each hotspot
+    symbol belongs to, then runs objdump inside the container for each
+    library.  Skips kernel symbols and unresolved addresses.
+    """
+    import csv
+
+    perf_csv = perf_dir / "data" / "perf_records.csv"
+    if not perf_csv.exists():
+        logger.warning("perf_records.csv not found, skipping multi-lib ASM collection")
+        return
+
+    # Group symbols by shared_object, filtering to meaningful ones.
+    so_to_syms: dict[str, list[str]] = {}
+    try:
+        with open(perf_csv, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                sym = (row.get("symbol") or "").strip()
+                so = (row.get("shared_object") or "").strip()
+                if not sym or sym.startswith("0x") or so in ("", "[unknown]"):
+                    continue
+                if so == "[kernel.kallsyms]":
+                    continue
+                so_to_syms.setdefault(so, []).append(sym)
+    except Exception as e:
+        logger.warning("Failed to read perf_records.csv: %s", e)
+        return
+
+    # Keep top symbols per library (by appearance count).
+    from collections import Counter
+    for so, syms in so_to_syms.items():
+        counts = Counter(syms)
+        top = [s for s, _ in counts.most_common(30)]
+        so_to_syms[so] = top
+
+    container = "flink-tm1"
+
+    for so, syms in sorted(so_to_syms.items()):
+        # Find the shared library inside the container.
+        find_result = executor.run(
+            f"docker exec {container} find / -name '{so}' -type f 2>/dev/null | head -1",
+            timeout=30,
+        )
+        so_path = find_result.stdout.strip() if find_result.returncode == 0 else ""
+        if not so_path:
+            logger.warning("Shared library %s not found in container %s, skipping", so, container)
+            continue
+
+        logger.info("Collecting objdump from %s (%d symbols)", so, len(syms))
+
+        # Batch objdump: extract all symbols from this library in one pass,
+        # then split per-symbol with awk.  Much faster than one objdump per symbol.
+        objdump_result = executor.run(
+            f"docker exec {container} bash -c "
+            f"'objdump -d -C {so_path} 2>/dev/null'",
+            timeout=120,
+        )
+        if objdump_result.returncode != 0 or not objdump_result.stdout:
+            logger.warning("objdump failed for %s", so_path)
+            continue
+
+        full_dump = objdump_result.stdout
+
+        # Extract each symbol's disassembly from the full dump.
+        for sym in syms:
+            if (asm_dir / f"{sym}.s").exists() and (asm_dir / f"{sym}.s").stat().st_size > 0:
+                continue  # Already collected (e.g. from a previous library)
+
+            # Use awk-style extraction: lines between "<sym>:" and next empty line.
+            import re
+            pattern = re.compile(rf"^[0-9a-f]+ <{re.escape(sym)}>")
+            lines = []
+            capturing = False
+            for line in full_dump.splitlines():
+                if not capturing and pattern.match(line):
+                    capturing = True
+                if capturing:
+                    if line.strip() == "" and lines:
+                        break
+                    lines.append(line)
+                if len(lines) > 500:
+                    lines = lines[:500]
+                    break
+
+            content = "\n".join(lines)
+            if content.strip():
+                (asm_dir / f"{sym}.s").write_text(content, encoding="utf-8")
+                logger.info("  Collected %s (%d lines)", sym, len(lines))
+
+    logger.info("ASM collection: %d files in %s", len(list(asm_dir.glob("*.s"))), asm_dir)
 
 
 def _run_perf_kits_on_remote(

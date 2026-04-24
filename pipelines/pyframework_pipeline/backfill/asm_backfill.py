@@ -7,8 +7,25 @@ and builds initial diffView skeletons for each hotspot function.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
+
+# Symbol -> {sourceFile, snippet} mapping for known CPython hotspot functions.
+_SYMBOL_MAP_PATH = Path(__file__).resolve().parents[3] / "scripts" / "symbol_source_map.json"
+_symbol_source_map: dict[str, dict] | None = None
+
+
+def _load_symbol_source_map() -> dict[str, dict]:
+    """Load the CPython symbol -> source mapping (lazy, cached)."""
+    global _symbol_source_map
+    if _symbol_source_map is None:
+        if _SYMBOL_MAP_PATH.exists():
+            with open(_SYMBOL_MAP_PATH, encoding="utf-8") as f:
+                _symbol_source_map = json.load(f)
+        else:
+            _symbol_source_map = {}
+    return _symbol_source_map
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +86,124 @@ def _empty_diff_view() -> dict:
         "diffSignals": [],
         "alignmentNote": "",
         "performanceNote": "",
+    }
+
+
+def _populate_diff_view(
+    func: dict,
+    symbol: str,
+    arm_content: str | None,
+    x86_content: str | None,
+) -> None:
+    """Populate diffView with raw ARM/x86 ASM content for side-by-side display.
+
+    Creates a single analysisBlock with armRegions and x86Regions populated
+    from the raw objdump output.  Source anchors are left empty (no C source
+    available); the mapping links the ARM and x86 regions directly.
+    """
+    if not arm_content and not x86_content:
+        return
+
+    func_id = func.get("id", _symbol_to_hash(symbol))
+
+    # Extract key opcodes for highlights (top 5 most frequent mnemonics)
+    def _extract_highlights(asm_text: str, max_items: int = 5) -> list[str]:
+        from collections import Counter
+        mnemonics: Counter[str] = Counter()
+        for line in asm_text.splitlines():
+            # objdump format: "  addr:  bytes  mnemonic  operands"
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                mnemonic = parts[2].strip().split()[0] if parts[2].strip() else ""
+                if mnemonic and not mnemonic.startswith("<") and not mnemonic.startswith("//"):
+                    mnemonics[mnemonic] += 1
+        return [m for m, _ in mnemonics.most_common(max_items)]
+
+    # Build regions
+    arm_region_id = f"arm_{func_id}"
+    x86_region_id = f"x86_{func_id}"
+    anchor_id = f"src_{func_id}"
+
+    arm_region = None
+    x86_region = None
+
+    if arm_content:
+        arm_region = {
+            "id": arm_region_id,
+            "label": f"Arm64 汇编 ({symbol})",
+            "location": f"<arm64> {symbol}",
+            "role": "assembly_arm64",
+            "snippet": arm_content,
+            "highlights": _extract_highlights(arm_content),
+            "defaultExpanded": True,
+        }
+
+    if x86_content:
+        x86_region = {
+            "id": x86_region_id,
+            "label": f"x86_64 汇编 ({symbol})",
+            "location": f"<x86_64> {symbol}",
+            "role": "assembly_x86_64",
+            "snippet": x86_content,
+            "highlights": _extract_highlights(x86_content),
+            "defaultExpanded": True,
+        }
+
+    # Build mapping
+    mapping = {
+        "id": f"map_{func_id}",
+        "label": "全函数对照",
+        "sourceAnchorIds": [anchor_id],
+        "armRegionIds": [arm_region_id] if arm_region else [],
+        "x86RegionIds": [x86_region_id] if x86_region else [],
+        "note": f"{symbol} 的 ARM/x86 反汇编对照（objdump -d 输出）",
+    }
+
+    # Build source anchor with real C source code if available
+    source_map = _load_symbol_source_map()
+    known_source = source_map.get(symbol, {})
+    source_snippet = known_source.get("snippet", "")
+    source_file = func.get("sourceFile", "") or known_source.get("sourceFile", "")
+
+    source_anchor = {
+        "id": anchor_id,
+        "label": symbol,
+        "location": source_file or f"<函数> {symbol}",
+        "snippet": source_snippet,
+        "defaultExpanded": True,
+    }
+
+    # Build analysis block
+    has_real_source = bool(source_snippet)
+    block = {
+        "id": f"block_{func_id}",
+        "label": f"{symbol} 全函数反汇编",
+        "summary": f"{symbol} 在 ARM64 和 x86_64 上的 objdump 反汇编输出对照。",
+        "mappingType": "full_function",
+        "sourceAnchors": [source_anchor],
+        "armRegions": [arm_region] if arm_region else [],
+        "x86Regions": [x86_region] if x86_region else [],
+        "mappings": [mapping],
+        "diffSignals": [],
+        "alignmentNote": "" if has_real_source else "无 C 源码对照，仅展示反汇编差异。",
+        "performanceNote": "",
+        "defaultExpanded": True,
+    }
+
+    diff_guide = ""
+    if has_real_source:
+        diff_guide = (f"下方展示 {source_file} 中 {symbol} 函数的 C 源码实现，"
+                      "以及该函数在 ARM64 和 x86_64 架构上的反汇编输出对照。")
+    else:
+        diff_guide = ("下方展示该函数在 ARM64 和 x86_64 架构上的完整 objdump 反汇编输出。"
+                      "由于是编译器生成的内置函数，暂无对应 C 源码锚点。")
+
+    func["diffView"] = {
+        "functionId": func_id,
+        "sourceFile": source_file or func.get("sourceFile", "") or f"<{func.get('origin', 'unknown')}> {symbol}",
+        "sourceLocation": source_file or f"<{func.get('origin', 'unknown')}> {symbol}",
+        "diffGuide": diff_guide,
+        "analysisBlocks": [block],
     }
 
 
@@ -276,9 +411,15 @@ def backfill_asm(
         else:
             x86_only_count += 1
 
+        arm_content = arm_files[symbol].read_text(encoding="utf-8", errors="replace") if has_arm else None
+        x86_content = x86_files[symbol].read_text(encoding="utf-8", errors="replace") if has_x86 else None
+
         if symbol in funcs_by_symbol:
             func = funcs_by_symbol[symbol]
             _ensure_diff_view(func)
+            # Populate diffView with raw ASM for side-by-side display.
+            if arm_content or x86_content:
+                _populate_diff_view(func, symbol, arm_content, x86_content)
             # Update artifactIds to reference new artifacts with content.
             new_ids: list[str] = []
             if has_arm:
@@ -300,7 +441,75 @@ def backfill_asm(
             new_func_count += 1
 
     # ------------------------------------------------------------------
-    # 4. Return summary
+    # 4. Annotate functions without usable ASM
+    # ------------------------------------------------------------------
+    no_asm_count = 0
+    source_map = _load_symbol_source_map()
+    for func in dataset.get("functions", []):
+        dv = func.get("diffView")
+        has_blocks = dv and dv.get("analysisBlocks")
+        if has_blocks:
+            continue
+        origin = func.get("origin", func.get("sourceFile", ""))
+        sym = func.get("symbol", "")
+        source_file = func.get("sourceFile", "")
+        known = source_map.get(sym, {})
+        snippet = known.get("snippet", "")
+        real_source = known.get("sourceFile", "")
+
+        if origin == "kernel":
+            note = "内核符号，无用户态反汇编可用。"
+        elif origin and origin not in ("CPython", ""):
+            note = f"来自 {origin} 的第三方库函数，当前未采集该库的反汇编。"
+        else:
+            note = "该符号为 static 内联函数或被编译器优化，未在共享库中导出。"
+
+        sf = real_source or source_file
+        loc = real_source or source_file or f"<{origin}> {sym}"
+
+        if not dv:
+            func["diffView"] = {
+                "functionId": func.get("id", ""),
+                "sourceFile": sf,
+                "sourceLocation": loc,
+                "diffGuide": note,
+                "analysisBlocks": [],
+            }
+            dv = func["diffView"]
+        else:
+            dv["sourceFile"] = sf
+            dv["sourceLocation"] = loc
+            dv["diffGuide"] = note
+
+        # If we have C source code but no ASM, add a source-only anchor block
+        if snippet and not dv.get("analysisBlocks"):
+            anchor_id = f"src_{func.get('id', '')}"
+            dv["analysisBlocks"] = [{
+                "id": f"block_{func.get('id', '')}",
+                "label": f"{sym} C 源码",
+                "summary": f"{real_source} 中 {sym} 函数的 C 实现（无反汇编对照）。",
+                "mappingType": "source_only",
+                "sourceAnchors": [{
+                    "id": anchor_id,
+                    "label": sym,
+                    "location": real_source,
+                    "snippet": snippet,
+                    "defaultExpanded": True,
+                }],
+                "armRegions": [],
+                "x86Regions": [],
+                "mappings": [],
+                "diffSignals": [],
+                "alignmentNote": "",
+                "performanceNote": "",
+                "defaultExpanded": True,
+            }]
+            dv["diffGuide"] = f"下方展示 {real_source} 中 {sym} 函数的 C 源码实现。该符号为 static 内联函数或被编译器优化，暂无反汇编对照。"
+
+        no_asm_count += 1
+
+    # ------------------------------------------------------------------
+    # 5. Return summary
     # ------------------------------------------------------------------
     total_arm = len(arm_files)
     total_x86 = len(x86_files)

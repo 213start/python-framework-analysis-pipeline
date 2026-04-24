@@ -88,6 +88,16 @@ export default function FunctionDetailPage() {
         <p>
           分类：<Tag>{state.data.categoryL1}</Tag> <Tag>{state.data.categoryL2}</Tag>
         </p>
+        {state.data.sharedObject ? (
+          <p>
+            来源：<Tag>{state.data.sharedObject}</Tag>
+          </p>
+        ) : null}
+        {state.data.sourceFile ? (
+          <p>
+            源文件：<code>{state.data.sourceFile}</code>
+          </p>
+        ) : null}
       </SectionCard>
       <SectionCard title="函数指标">
         <DataTable
@@ -106,55 +116,20 @@ export default function FunctionDetailPage() {
           ))}
         </ol>
       </SectionCard>
-      {state.data.diffView ? (
-        <SectionCard title="源码对齐机器码差异">
-          <div className="diff-source-meta">
-            <p>
-              源码文件：<code>{state.data.diffView.sourceFile}</code>
-            </p>
-            <p>
-              源码区间：<code>{state.data.diffView.sourceLocation}</code>
-            </p>
-          </div>
-          <div className="diff-guide">
-            <p className="eyebrow">非线性映射说明</p>
-            <p>{state.data.diffView.diffGuide}</p>
-            <div className="diff-guide__legend">
-              <p><strong>模式：</strong>说明该分析块的行为模式。</p>
-              <p><strong>关注指令：</strong>只显示关键 opcode，不展示参数。</p>
-            </div>
-          </div>
-          <div className="diff-block-list">
-            {state.data.diffView.analysisBlocks.map((block) => {
-              const isExpanded = expandedBlocks[block.id] ?? block.defaultExpanded;
-              const patternTag = block.patternTag ?? block.mappingType;
-              return (
-                <article key={block.id} className="diff-block">
-                  <div className="diff-block__header">
-                    <div className="diff-block__meta">
-                      <div className="diff-block__title-row">
-                        <h4 className="diff-block__title">{block.label}</h4>
-                        <Tag>模式：{patternTag}</Tag>
-                      </div>
-                      <p>{block.summary}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="diff-toggle"
-                      onClick={() =>
-                        setExpandedBlocks((current) => ({
-                          ...current,
-                          [block.id]: !isExpanded,
-                        }))
-                      }
-                    >
-                      {isExpanded ? "收起分析块" : "展开分析块"}
-                    </button>
-                  </div>
-                  {isExpanded ? (
-                    <div className="diff-anchor-list">
-                      <p className="eyebrow">源码锚点</p>
-                      {block.sourceAnchors.map((anchor) => {
+      {state.data.diffView && state.data.diffView.analysisBlocks.length > 0
+        ? state.data.diffView.analysisBlocks.map((block) => {
+            const isExpanded = expandedBlocks[block.id] ?? block.defaultExpanded;
+            const patternTag = block.patternTag ?? block.mappingType;
+            const hasSourceContent = block.sourceAnchors.some((a) => a.snippet && a.snippet.trim());
+            return (
+              <SectionCard key={block.id} title={block.label}>
+                <p>{block.summary}</p>
+                <Tag>{patternTag}</Tag>
+                {hasSourceContent && (
+                  <div className="diff-anchor-list">
+                    {block.sourceAnchors
+                      .filter((anchor) => hasSourceContent || anchor.snippet?.trim())
+                      .map((anchor) => {
                         const relatedMappings = (block.mappings ?? []).filter((mapping) =>
                           mapping.sourceAnchorIds.includes(anchor.id),
                         );
@@ -199,14 +174,41 @@ export default function FunctionDetailPage() {
                           </article>
                         );
                       })}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        </SectionCard>
-      ) : null}
+                  </div>
+                )}
+
+                {!hasSourceContent && block.armRegions.length + block.x86Regions.length > 0 && (
+                  <div className="anchor-asm-grid">
+                    <AnchorAsmColumn title="Arm 机器码" regions={block.armRegions} />
+                    <AnchorAsmColumn title="x86 机器码" regions={block.x86Regions} />
+                  </div>
+                )}
+
+                {hasSourceContent && (
+                  <button
+                    type="button"
+                    className="diff-toggle"
+                    style={{ marginTop: "0.5rem" }}
+                    onClick={() =>
+                      setExpandedBlocks((current) => ({
+                        ...current,
+                        [block.id]: !isExpanded,
+                      }))
+                    }
+                  >
+                    {isExpanded ? "收起机器码对照" : "展开机器码对照"}
+                  </button>
+                )}
+                {isExpanded && hasSourceContent && block.armRegions.length + block.x86Regions.length > 0 && (
+                  <div className="anchor-asm-grid">
+                    <AnchorAsmColumn title="Arm 机器码" regions={block.armRegions} />
+                    <AnchorAsmColumn title="x86 机器码" regions={block.x86Regions} />
+                  </div>
+                )}
+              </SectionCard>
+            );
+          })
+        : null}
       <SectionCard title="关联用例">
         <div className="tag-list">
           {state.data.caseIds.map((caseId) => (

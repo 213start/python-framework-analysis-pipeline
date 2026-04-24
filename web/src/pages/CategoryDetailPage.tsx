@@ -35,6 +35,7 @@ export default function CategoryDetailPage() {
         <DataTable
           columns={[
             { key: "symbol", header: "函数", render: (row) => <Link to={`/function/${row.id}`}>{row.symbol}</Link> },
+            { key: "sourceFile", header: "来源", render: (row) => row.sourceFile || "—" },
             { key: "component", header: "组件", render: (row) => row.component },
             { key: "selfArm", header: "Arm 自耗时", render: (row) => row.selfArm },
             { key: "selfX86", header: "x86 自耗时", render: (row) => row.selfX86 },

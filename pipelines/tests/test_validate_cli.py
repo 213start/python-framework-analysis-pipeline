@@ -43,8 +43,10 @@ class ValidateCliTest(unittest.TestCase):
             self.copy_tree(EXAMPLE_ROOT, temp_root)
             source_path = temp_root / "sources" / "pyflink-reference-source.source.json"
             source = json.loads(source_path.read_text())
+            # Remove an artifact that is still referenced by a function.
+            removed_id = "asm_arm64_a8fe4a73"
             source["artifactIndex"] = [
-                artifact for artifact in source["artifactIndex"] if artifact["id"] != "asm_arm64_59ad9455"
+                artifact for artifact in source["artifactIndex"] if artifact["id"] != removed_id
             ]
             source_path.write_text(json.dumps(source, ensure_ascii=False, indent=2))
 
@@ -54,7 +56,7 @@ class ValidateCliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["status"], "error")
         self.assertGreater(payload["errorCount"], 0)
-        self.assertIn("asm_arm64_59ad9455", "\n".join(error["message"] for error in payload["errors"]))
+        self.assertIn(removed_id, "\n".join(error["message"] for error in payload["errors"]))
 
     def test_validate_accepts_project_yaml_config(self) -> None:
         project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"

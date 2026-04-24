@@ -40,6 +40,7 @@ export default function ComponentDetailPage() {
           columns={[
             { key: "symbol", header: "函数", render: (row) => <Link to={`/function/${row.id}`}>{row.symbol}</Link> },
             { key: "category", header: "分类", render: (row) => row.category },
+            { key: "sourceFile", header: "来源", render: (row) => row.sourceFile || "—" },
             { key: "selfArm", header: "Arm 自耗时", render: (row) => row.selfArm },
             { key: "selfX86", header: "x86 自耗时", render: (row) => row.selfX86 },
             { key: "totalArm", header: "Arm 总耗时", render: (row) => row.totalArm },

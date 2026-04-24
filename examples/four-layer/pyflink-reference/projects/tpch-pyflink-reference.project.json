@@ -40,404 +40,6 @@
   ],
   "functionBindings": [
     {
-      "functionId": "func_001",
-      "sourceAnchorIds": [
-        "anchor_alloc_fastpath",
-        "anchor_alloc_slowpath"
-      ],
-      "armArtifactIds": [
-        "asm_arm64_59ad9455"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_64_59ad9455"
-      ],
-      "notes": "对象分配快路径与慢路径回退。"
-    },
-    {
-      "functionId": "func_002",
-      "sourceAnchorIds": [
-        "anchor_opcode_dispatch"
-      ],
-      "armArtifactIds": [
-        "asm_arm64_a8fe4a73"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_64_a8fe4a73"
-      ],
-      "notes": "解释器 dispatch 准备与 opcode 读取。"
-    },
-    {
-      "functionId": "func_003",
-      "sourceAnchorIds": [
-        "anchor_row_adapter_wrap",
-        "anchor_row_adapter_writeback"
-      ],
-      "armArtifactIds": [],
-      "x86ArtifactIds": [],
-      "notes": "行包装适配路径。"
-    },
-    {
-      "functionId": "func_004",
-      "sourceAnchorIds": [
-        "anchor_wrapper_dispatch",
-        "anchor_wrapper_error_guard"
-      ],
-      "armArtifactIds": [],
-      "x86ArtifactIds": [],
-      "notes": "包装层调用与错误出口。"
-    },
-    {
-      "functionId": "func_005",
-      "sourceAnchorIds": [
-        "anchor_wait_enqueue",
-        "anchor_wait_retry"
-      ],
-      "armArtifactIds": [],
-      "x86ArtifactIds": [],
-      "notes": "等待入队与原子重试路径。"
-    },
-    {
-      "functionId": "func_006",
-      "sourceAnchorIds": [
-        "anchor_dict_lookup_probe",
-        "anchor_dict_lookup_miss"
-      ],
-      "armArtifactIds": [
-        "asm_arm64_24048964"
-      ],
-      "x86ArtifactIds": [
-        "asm_x86_64_24048964"
-      ],
-      "notes": "对象模型中的字典探测路径。"
-    },
-    {
-      "functionId": "func_20adef2c"
-    },
-    {
-      "functionId": "func_6eb7d298"
-    },
-    {
-      "functionId": "func_5a7b6172"
-    },
-    {
-      "functionId": "func_2006bd89"
-    },
-    {
-      "functionId": "func_2c27c597"
-    },
-    {
-      "functionId": "func_5f6a3a1d"
-    },
-    {
-      "functionId": "func_8d518bff"
-    },
-    {
-      "functionId": "func_20f19630"
-    },
-    {
-      "functionId": "func_4d826596"
-    },
-    {
-      "functionId": "func_95ab81b0"
-    },
-    {
-      "functionId": "func_37f4e6da"
-    },
-    {
-      "functionId": "func_55cb5b04"
-    },
-    {
-      "functionId": "func_9a3c64dc"
-    },
-    {
-      "functionId": "func_72d4bd12"
-    },
-    {
-      "functionId": "func_9382568d"
-    },
-    {
-      "functionId": "func_adca762f"
-    },
-    {
-      "functionId": "func_684f5e96"
-    },
-    {
-      "functionId": "func_5bb359c8"
-    },
-    {
-      "functionId": "func_be2d59c7"
-    },
-    {
-      "functionId": "func_11e371a4"
-    },
-    {
-      "functionId": "func_4f686adb"
-    },
-    {
-      "functionId": "func_c38a9b3d"
-    },
-    {
-      "functionId": "func_17c8a931"
-    },
-    {
-      "functionId": "func_5a24914c"
-    },
-    {
-      "functionId": "func_a5a29186"
-    },
-    {
-      "functionId": "func_ec667127"
-    },
-    {
-      "functionId": "func_8bf7f8cb"
-    },
-    {
-      "functionId": "func_b78d65eb"
-    },
-    {
-      "functionId": "func_2631aa03"
-    },
-    {
-      "functionId": "func_b4c4cf7d"
-    },
-    {
-      "functionId": "func_cf34da4c"
-    },
-    {
-      "functionId": "func_821617ad"
-    },
-    {
-      "functionId": "func_839d7c42"
-    },
-    {
-      "functionId": "func_b58cfa14"
-    },
-    {
-      "functionId": "func_9da296ba"
-    },
-    {
-      "functionId": "func_55d3584e"
-    },
-    {
-      "functionId": "func_b4410a94"
-    },
-    {
-      "functionId": "func_425a8fb1"
-    },
-    {
-      "functionId": "func_b1338727"
-    },
-    {
-      "functionId": "func_2226ce31"
-    },
-    {
-      "functionId": "func_01721272"
-    },
-    {
-      "functionId": "func_f004967e"
-    },
-    {
-      "functionId": "func_43b0463c"
-    },
-    {
-      "functionId": "func_8525f613"
-    },
-    {
-      "functionId": "func_ddfd638a"
-    },
-    {
-      "functionId": "func_b9bd9d6a"
-    },
-    {
-      "functionId": "func_5b5bcc1f"
-    },
-    {
-      "functionId": "func_07c7ff5d"
-    },
-    {
-      "functionId": "func_1bf2dfb0"
-    },
-    {
-      "functionId": "func_5173c62c"
-    },
-    {
-      "functionId": "func_186b592d"
-    },
-    {
-      "functionId": "func_43ff6dff"
-    },
-    {
-      "functionId": "func_a7ce3947"
-    },
-    {
-      "functionId": "func_24adac1a"
-    },
-    {
-      "functionId": "func_e5a6ef68"
-    },
-    {
-      "functionId": "func_be0cb544"
-    },
-    {
-      "functionId": "func_31464506"
-    },
-    {
-      "functionId": "func_105fb6ab"
-    },
-    {
-      "functionId": "func_3dcd9a31"
-    },
-    {
-      "functionId": "func_15a4fc97"
-    },
-    {
-      "functionId": "func_0f15127f"
-    },
-    {
-      "functionId": "func_69e065db"
-    },
-    {
-      "functionId": "func_6426c1b2"
-    },
-    {
-      "functionId": "func_88189656"
-    },
-    {
-      "functionId": "func_30ca2413"
-    },
-    {
-      "functionId": "func_2d9abb08"
-    },
-    {
-      "functionId": "func_296bddc8"
-    },
-    {
-      "functionId": "func_c9377aa4"
-    },
-    {
-      "functionId": "func_e85bbd76"
-    },
-    {
-      "functionId": "func_b4979c0d"
-    },
-    {
-      "functionId": "func_0518eb5d"
-    },
-    {
-      "functionId": "func_19e5ae30"
-    },
-    {
-      "functionId": "func_76d615a8"
-    },
-    {
-      "functionId": "func_b8f925d4"
-    },
-    {
-      "functionId": "func_f005f3cb"
-    },
-    {
-      "functionId": "func_f90a89d5"
-    },
-    {
-      "functionId": "func_632890d9"
-    },
-    {
-      "functionId": "func_eb3657f8"
-    },
-    {
-      "functionId": "func_25a80988"
-    },
-    {
-      "functionId": "func_34ae7a5f"
-    },
-    {
-      "functionId": "func_1396dd43"
-    },
-    {
-      "functionId": "func_c6d243b2"
-    },
-    {
-      "functionId": "func_86269ace"
-    },
-    {
-      "functionId": "func_09c6b063"
-    },
-    {
-      "functionId": "func_86578425"
-    },
-    {
-      "functionId": "func_21ebc9c5"
-    },
-    {
-      "functionId": "func_d3187f72"
-    },
-    {
-      "functionId": "func_8ae48976"
-    },
-    {
-      "functionId": "func_ece22dc1"
-    },
-    {
-      "functionId": "func_9f161929"
-    },
-    {
-      "functionId": "func_e55d5b98"
-    },
-    {
-      "functionId": "func_b5628c9d"
-    },
-    {
-      "functionId": "func_48fb1362"
-    },
-    {
-      "functionId": "func_a18802de"
-    },
-    {
-      "functionId": "func_4930fc5a"
-    },
-    {
-      "functionId": "func_50817853"
-    },
-    {
-      "functionId": "func_4f67e7b7"
-    },
-    {
-      "functionId": "func_b23db668"
-    },
-    {
-      "functionId": "func_98689535"
-    },
-    {
-      "functionId": "func_f64f2b97"
-    },
-    {
-      "functionId": "func_61669ba5"
-    },
-    {
-      "functionId": "func_1ab943eb"
-    },
-    {
-      "functionId": "func_2d915c14"
-    },
-    {
-      "functionId": "func_d3d3ef81"
-    },
-    {
-      "functionId": "func_845e857c"
-    },
-    {
-      "functionId": "func_ae483528"
-    },
-    {
-      "functionId": "func_b308163e"
-    },
-    {
-      "functionId": "func_1413a8ad"
-    },
-    {
-      "functionId": "func_76d048ac"
-    },
-    {
       "functionId": "func_a8fe4a73",
       "armArtifactIds": [
         "asm_arm64_a8fe4a73"
@@ -447,139 +49,139 @@
       ]
     },
     {
-      "functionId": "func_62efcbfe"
-    },
-    {
-      "functionId": "func_647db2f0"
-    },
-    {
-      "functionId": "func_b33e69dd"
-    },
-    {
-      "functionId": "func_f895786b"
-    },
-    {
-      "functionId": "func_33be41db"
-    },
-    {
-      "functionId": "func_f4d53524"
-    },
-    {
-      "functionId": "func_797f7000"
-    },
-    {
-      "functionId": "func_cfd25606"
-    },
-    {
-      "functionId": "func_6d692bee"
-    },
-    {
-      "functionId": "func_cd742fb4"
-    },
-    {
-      "functionId": "func_5c1ee160"
+      "functionId": "func_647db2f0",
+      "armArtifactIds": [
+        "asm_arm64_647db2f0"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_647db2f0"
+      ]
     },
     {
       "functionId": "func_b3a535d6"
     },
     {
-      "functionId": "func_4a3e32e5"
+      "functionId": "func_ec3b5079",
+      "armArtifactIds": [
+        "asm_arm64_ec3b5079"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_ec3b5079"
+      ]
     },
     {
-      "functionId": "func_bc5ecd9b"
-    },
-    {
-      "functionId": "func_0ce62d9e"
-    },
-    {
-      "functionId": "func_5d30c87c"
-    },
-    {
-      "functionId": "func_a7d965b3"
-    },
-    {
-      "functionId": "func_1cfa20e4"
-    },
-    {
-      "functionId": "func_12c46922"
-    },
-    {
-      "functionId": "func_297307dc"
-    },
-    {
-      "functionId": "func_231eaa19"
-    },
-    {
-      "functionId": "func_2f4a2dc8"
-    },
-    {
-      "functionId": "func_5e968e02"
-    },
-    {
-      "functionId": "func_ec3b5079"
-    },
-    {
-      "functionId": "func_f3dd15e5"
-    },
-    {
-      "functionId": "func_636ba82a"
-    },
-    {
-      "functionId": "func_0b57e3fd"
-    },
-    {
-      "functionId": "func_5e763cad"
-    },
-    {
-      "functionId": "func_24df0514"
+      "functionId": "func_636ba82a",
+      "armArtifactIds": [
+        "asm_arm64_636ba82a"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_636ba82a"
+      ]
     },
     {
       "functionId": "func_9ac4a17c"
     },
     {
-      "functionId": "func_0bdc8f5b"
+      "functionId": "func_81c8a3aa",
+      "armArtifactIds": [
+        "asm_arm64_81c8a3aa"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_81c8a3aa"
+      ]
     },
     {
-      "functionId": "func_c62a060a"
+      "functionId": "func_b2d087c9"
     },
     {
-      "functionId": "func_adfa4096"
+      "functionId": "func_d852a5ca",
+      "armArtifactIds": [
+        "asm_arm64_d852a5ca"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_d852a5ca"
+      ]
     },
     {
-      "functionId": "func_2bd1e878"
+      "functionId": "func_f66c3250",
+      "armArtifactIds": [
+        "asm_arm64_f66c3250"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_f66c3250"
+      ]
     },
     {
-      "functionId": "func_a6d1f44f"
+      "functionId": "func_c46314c3",
+      "armArtifactIds": [
+        "asm_arm64_c46314c3"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_c46314c3"
+      ]
     },
     {
-      "functionId": "func_0c043331"
+      "functionId": "func_93ad4baa",
+      "armArtifactIds": [
+        "asm_arm64_93ad4baa"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_93ad4baa"
+      ]
     },
     {
-      "functionId": "func_fee33d22"
+      "functionId": "func_547ad1cd"
     },
     {
-      "functionId": "func_e2ccac01"
+      "functionId": "func_627aa16d"
     },
     {
-      "functionId": "func_81c8a3aa"
+      "functionId": "func_1ac39861",
+      "armArtifactIds": [
+        "asm_arm64_1ac39861"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_1ac39861"
+      ]
     },
     {
-      "functionId": "func_8ea28335"
+      "functionId": "func_38963125",
+      "armArtifactIds": [
+        "asm_arm64_38963125"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_38963125"
+      ]
     },
     {
-      "functionId": "func_c2cf3dbb"
+      "functionId": "func_d1f4efb4"
     },
     {
-      "functionId": "func_c3d01499"
+      "functionId": "func_2a5cea3f",
+      "armArtifactIds": [
+        "asm_arm64_2a5cea3f"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_2a5cea3f"
+      ]
     },
     {
-      "functionId": "func_3b443f57"
+      "functionId": "func_30490b74",
+      "armArtifactIds": [
+        "asm_arm64_30490b74"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_30490b74"
+      ]
     },
     {
-      "functionId": "func_4677e1cd"
-    },
-    {
-      "functionId": "func_df28af31"
+      "functionId": "func_8aab60b4",
+      "armArtifactIds": [
+        "asm_arm64_8aab60b4"
+      ],
+      "x86ArtifactIds": [
+        "asm_x86_64_8aab60b4"
+      ]
     }
   ],
   "patternBindings": [],
