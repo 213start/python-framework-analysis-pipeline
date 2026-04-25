@@ -7,6 +7,7 @@ remote clusters when data files are not already present locally.
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -23,11 +24,13 @@ class SshExecutor:
         user: str = "",
         key: Path | None = None,
         port: int = 22,
+        env: dict[str, str] | None = None,
     ) -> None:
         self.host = host
         self.user = user
         self.key = key
         self.port = port
+        self.env: dict[str, str] = env or {}
 
     def _build_ssh_args(self, command: str) -> list[str]:
         args = ["ssh"]
@@ -38,6 +41,13 @@ class SshExecutor:
         args.extend(["-o", "StrictHostKeyChecking=no"])
         target = f"{self.user}@{self.host}" if self.user else self.host
         args.append(target)
+        # Inject environment variables from config (e.g. proxy settings).
+        if self.env:
+            exports = " && ".join(
+                f"export {k}={shlex.quote(v)}"
+                for k, v in self.env.items()
+            )
+            command = f"{exports} && {command}"
         # Use login shell so PATH includes /usr/bin, /usr/local/bin, etc.
         args.append(f"bash -lc {subprocess.list2cmdline([command])}")
         return args

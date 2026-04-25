@@ -35,12 +35,14 @@ def build_executor(host_ref_id: str, env_config: dict[str, Any]) -> SshExecutor:
     user = ref.get("user", "")
     key = ref.get("key")
     port = ref.get("port", 22)
+    env = ref.get("env", {})
 
     return SshExecutor(
         host=alias,
         user=user,
         key=Path(key) if key else None,
         port=int(port),
+        env=env,
     )
 
 

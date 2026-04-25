@@ -361,5 +361,45 @@ class YamlParserTest(unittest.TestCase):
         self.assertTrue(caps["docker"])
 
 
+class SshExecutorEnvTest(unittest.TestCase):
+    """Test SshExecutor env var injection."""
+
+    def test_env_injected_into_command(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(
+            host="myhost",
+            env={"http_proxy": "http://proxy:3128", "https_proxy": "http://proxy:3128"},
+        )
+        args = executor._build_ssh_args("docker pull busybox")
+
+        remote_cmd = args[-1]  # last arg is the bash -lc ... part
+        self.assertIn("export http_proxy=", remote_cmd)
+        self.assertIn("export https_proxy=", remote_cmd)
+        self.assertIn("docker pull busybox", remote_cmd)
+
+    def test_no_env_means_no_export(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(host="myhost")
+        args = executor._build_ssh_args("docker pull busybox")
+
+        remote_cmd = args[-1]
+        self.assertNotIn("export", remote_cmd)
+
+    def test_env_values_are_shell_escaped(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(
+            host="myhost",
+            env={"proxy": "http://user:pass@host:3128"},
+        )
+        args = executor._build_ssh_args("echo hi")
+
+        remote_cmd = args[-1]
+        # The @ and : in the value should be properly quoted
+        self.assertIn("proxy=", remote_cmd)
+
+
 if __name__ == "__main__":
     unittest.main()

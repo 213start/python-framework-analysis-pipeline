@@ -58,6 +58,10 @@ hostRefs:
     user: root                # 可选，不填则使用 SSH config 默认值
     key: ~/.ssh/id_rsa        # 可选，不填则使用 SSH config 默认值
     port: 22                  # 可选，默认 22
+    # env:                    # 可选，注入到每条 SSH 命令的环境变量（如代理）
+    #   http_proxy: http://proxy.internal:3128
+    #   https_proxy: http://proxy.internal:3128
+    #   no_proxy: localhost,127.0.0.1
     capabilities:
       ssh: true
       sudo: true
