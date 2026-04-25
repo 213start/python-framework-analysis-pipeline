@@ -80,8 +80,64 @@ def deploy_plan(
         description = step.get("description", "")
         requires_approval = step.get("requiresApproval", False)
         rollback = step.get("rollbackHint", "")
+        script_path = step.get("scriptPath", "")
+        step_timeout = step.get("timeout", 0) or 120
 
         logger.info("[Step %s] %s", step_id, description)
+
+        # Upload local script if specified.
+        if script_path:
+            repo_root = project_path.parent.parent
+            local_script = repo_root / script_path
+            if not local_script.exists():
+                return {
+                    "status": "failed",
+                    "platform": platform_id,
+                    "passed": passed,
+                    "failed": failed,
+                    "skipped": skipped,
+                    "failedStep": {
+                        "id": step_id,
+                        "description": description,
+                        "command": command,
+                        "exitCode": -1,
+                        "stderr": f"Local script not found: {local_script}",
+                    },
+                    "record": {
+                        "schemaVersion": 1,
+                        "platform": platform_id,
+                        "startedAt": started_at,
+                        "finishedAt": _now_iso(),
+                        "mode": "full-auto",
+                        "steps": record_steps,
+                    },
+                }
+            remote_name = local_script.name
+            logger.info("[Step %s] Uploading %s", step_id, script_path)
+            uploaded = executor.push_file(local_script, f"/tmp/{remote_name}")
+            if not uploaded:
+                return {
+                    "status": "failed",
+                    "platform": platform_id,
+                    "passed": passed,
+                    "failed": failed,
+                    "skipped": skipped,
+                    "failedStep": {
+                        "id": step_id,
+                        "description": description,
+                        "command": command,
+                        "exitCode": -1,
+                        "stderr": f"Failed to upload script {script_path}",
+                    },
+                    "record": {
+                        "schemaVersion": 1,
+                        "platform": platform_id,
+                        "startedAt": started_at,
+                        "finishedAt": _now_iso(),
+                        "mode": "full-auto",
+                        "steps": record_steps,
+                    },
+                }
 
         # Approval check.
         if requires_approval and not yes:
@@ -103,7 +159,7 @@ def deploy_plan(
 
         # Execute.
         try:
-            result = executor.run(command, timeout=120)
+            result = executor.run(command, timeout=step_timeout)
         except Exception as exc:
             logger.error("[Step %s] SSH error: %s", step_id, exc)
             record_steps.append({

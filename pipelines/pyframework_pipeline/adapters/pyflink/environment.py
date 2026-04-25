@@ -62,6 +62,25 @@ class PyFlinkEnvironmentAdapter:
 
         host = hosts_by_role.get("jobmanager", hosts_by_role.get("client", ""))
         host_alias = host_refs.get(host, {}).get("alias", host)
+        arch = platform_config.get("arch", "x86_64")
+
+        # Step 0: Build Flink+PyFlink image (skip if already exists)
+        build_script = software.get("buildScript", "scripts/build-flink-image.sh")
+        steps.append(PlanStep(
+            id="build-flink-image",
+            kind="build",
+            hostRef=host,
+            command=(
+                f"docker image inspect {image} >/dev/null 2>&1 "
+                f"|| bash /tmp/build-flink-image.sh {arch}"
+            ),
+            description=f"Build Flink+PyFlink image on {host_alias} (~80 min first run)",
+            mutatesHost=True,
+            requiresApproval=True,
+            rollbackHint=f"docker rmi {image}",
+            scriptPath=build_script,
+            timeout=6000,  # ~100 min
+        ))
 
         # Step 1: Create Docker network
         steps.append(PlanStep(

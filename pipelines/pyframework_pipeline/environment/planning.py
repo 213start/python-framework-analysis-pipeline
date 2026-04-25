@@ -34,6 +34,8 @@ class PlanStep:
     requiresApproval: bool = False
     rollbackHint: str = "No rollback required."
     description: str = ""
+    scriptPath: str = ""   # local script to upload before running
+    timeout: int = 0       # seconds, 0 = use default (120s)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -49,6 +51,10 @@ class PlanStep:
         }
         if self.description:
             d["description"] = self.description
+        if self.scriptPath:
+            d["scriptPath"] = self.scriptPath
+        if self.timeout:
+            d["timeout"] = self.timeout
         return d
 
 

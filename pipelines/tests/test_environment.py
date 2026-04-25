@@ -80,6 +80,16 @@ class EnvironmentPlanTest(unittest.TestCase):
         plan = json.loads(result.stdout)
         step_ids = [s["id"] for s in plan["steps"]]
 
+        # Build step (runs build script if image missing)
+        self.assertIn("build-flink-image", step_ids)
+        build_step = next(s for s in plan["steps"] if s["id"] == "build-flink-image")
+        self.assertEqual(build_step["kind"], "build")
+        self.assertEqual(build_step["scriptPath"], "scripts/build-flink-image.sh")
+        self.assertEqual(build_step["timeout"], 6000)
+        self.assertIn("bash /tmp/build-flink-image.sh aarch64", build_step["command"])
+        self.assertTrue(build_step["mutatesHost"])
+        self.assertTrue(build_step["requiresApproval"])
+
         # Container deployment steps
         self.assertIn("pull-flink-image", step_ids)
         self.assertIn("start-jobmanager", step_ids)
