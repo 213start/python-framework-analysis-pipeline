@@ -110,10 +110,33 @@ def deploy_plan(
                 "id": step_id,
                 "status": "failed",
                 "exitCode": -1,
+                "command": command,
+                "description": description,
                 "note": str(exc),
             })
             failed += 1
-            break
+            return {
+                "status": "failed",
+                "platform": platform_id,
+                "passed": passed,
+                "failed": failed,
+                "skipped": skipped,
+                "failedStep": {
+                    "id": step_id,
+                    "description": description,
+                    "command": command,
+                    "exitCode": -1,
+                    "stderr": str(exc),
+                },
+                "record": {
+                    "schemaVersion": 1,
+                    "platform": platform_id,
+                    "startedAt": started_at,
+                    "finishedAt": _now_iso(),
+                    "mode": "full-auto",
+                    "steps": record_steps,
+                },
+            }
 
         if result.returncode != 0:
             stderr_snippet = result.stderr[:500] if result.stderr else ""
