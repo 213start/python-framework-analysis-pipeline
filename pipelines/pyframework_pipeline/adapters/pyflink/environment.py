@@ -39,6 +39,9 @@ class PyFlinkEnvironmentAdapter:
             platform,
             software.get("flinkImage", DEFAULT_IMAGE),
         )
+        registry = software.get("dockerRegistry", "")
+        if registry:
+            image = f"{registry}/{image}"
         network = software.get("containerNetwork", DEFAULT_NETWORK)
         tm_count = DEFAULT_TM_COUNT
         use_tmpfs = software.get("taskmanagerTmpfs", False)

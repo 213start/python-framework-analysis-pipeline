@@ -401,5 +401,57 @@ class SshExecutorEnvTest(unittest.TestCase):
         self.assertIn("proxy=", remote_cmd)
 
 
+class DockerRegistryTest(unittest.TestCase):
+    """Test dockerRegistry prefix in environment plans."""
+
+    def test_registry_prefix_in_pull_and_run(self) -> None:
+        from pyframework_pipeline.adapters.pyflink.environment import PyFlinkEnvironmentAdapter
+
+        adapter = PyFlinkEnvironmentAdapter()
+        steps = adapter.get_plan_steps(
+            platform="arm",
+            platform_config={
+                "hosts": [
+                    {"role": "client", "hostRef": "test-host"},
+                    {"role": "jobmanager", "hostRef": "test-host"},
+                    {"role": "taskmanager", "hostRef": "test-host"},
+                ],
+            },
+            software={
+                "flinkPyflinkImages": {"arm": "my-flink:latest"},
+                "containerNetwork": "test-net",
+                "dockerRegistry": "registry.internal",
+            },
+            host_refs={"test-host": {"alias": "1.2.3.4"}},
+        )
+        pull_step = next(s for s in steps if s.id == "pull-flink-image")
+        start_step = next(s for s in steps if s.id == "start-jobmanager")
+
+        self.assertIn("registry.internal/my-flink:latest", pull_step.command)
+        self.assertIn("registry.internal/my-flink:latest", start_step.command)
+
+    def test_no_registry_means_no_prefix(self) -> None:
+        from pyframework_pipeline.adapters.pyflink.environment import PyFlinkEnvironmentAdapter
+
+        adapter = PyFlinkEnvironmentAdapter()
+        steps = adapter.get_plan_steps(
+            platform="arm",
+            platform_config={
+                "hosts": [
+                    {"role": "jobmanager", "hostRef": "test-host"},
+                ],
+            },
+            software={
+                "flinkPyflinkImages": {"arm": "my-flink:latest"},
+                "containerNetwork": "test-net",
+            },
+            host_refs={"test-host": {"alias": "1.2.3.4"}},
+        )
+        pull_step = next(s for s in steps if s.id == "pull-flink-image")
+
+        self.assertIn("my-flink:latest", pull_step.command)
+        self.assertNotIn("registry.internal", pull_step.command)
+
+
 if __name__ == "__main__":
     unittest.main()

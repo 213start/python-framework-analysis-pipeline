@@ -38,6 +38,7 @@ software:
   flinkPyflinkImages:
     arm: flink-pyflink:2.2.0-py314-arm-final
     x86: flink-pyflink:2.2.0-py314-x86-final
+  # dockerRegistry: registry.internal  # 可选，镜像仓库前缀，无法访问 Docker Hub 时使用
   dockerRequired: true
   clusterTopology: 1jm-2tm
   containerNetwork: flink-network
