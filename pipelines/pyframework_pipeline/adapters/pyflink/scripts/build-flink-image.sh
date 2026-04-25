@@ -27,7 +27,7 @@ NETWORK="${NETWORK:-flink-network}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.14.3}"
 TM_COUNT="${TM_COUNT:-2}"
 USE_TMPFS="${USE_TMPFS:-true}"
-MAKEOPTS="${MAKEOPTS:--j$(nproc 2>/dev/null || echo 4)}"
+MAKEOPTS="${MAKEOPTS:--j$(($(nproc 2>/dev/null || echo 4) / 2))}"
 PYENV_ROOT="/root/.pyenv"
 PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip"
 PYTHON="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3"
@@ -234,7 +234,7 @@ PYARROW_WITH_HDFS=0 \
 PYARROW_WITH_PARQUET=1 \
 PYARROW_WITH_DATASET=1 \
 PYARROW_WITH_ACERO=1 \
-CMAKE_BUILD_PARALLEL_LEVEL=$(nproc 2>/dev/null || echo 4) \
+CMAKE_BUILD_PARALLEL_LEVEL=$(($(nproc 2>/dev/null || echo 4) / 2)) \
 $PIP install . --no-build-isolation
 echo '  pyarrow installed'
 
