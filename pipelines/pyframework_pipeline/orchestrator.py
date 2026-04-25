@@ -318,19 +318,31 @@ def _run_workload_deploy(
             timeout=120,
         )
         if result.returncode != 0:
-            raise StepError(f"Container build failed: {result.stderr}")
+            raise StepError(
+                f"Container build failed (exit {result.returncode}):\n"
+                f"  Command: docker exec flink-jm bash -c 'cd {remote_dir} && ./build.sh'\n"
+                f"  stderr: {result.stderr[:500]}"
+            )
 
     # Distribute to containers via docker cp.
     jm_result = executor.run(f"docker cp {remote_dir}/. flink-jm:/opt/flink/usrlib")
     if jm_result.returncode != 0:
-        raise StepError(f"Failed to copy workload to JM: {jm_result.stderr}")
+        raise StepError(
+            f"Failed to copy workload to JM (exit {jm_result.returncode}):\n"
+            f"  Command: docker cp {remote_dir}/. flink-jm:/opt/flink/usrlib\n"
+            f"  stderr: {jm_result.stderr[:500]}"
+        )
 
     for i in range(1, 3):  # tm1, tm2
         tm_result = executor.run(
             f"docker cp {remote_dir}/. flink-tm{i}:/opt/flink/usrlib"
         )
         if tm_result.returncode != 0:
-            logger.warning("Failed to copy to flink-tm%d: %s", i, tm_result.stderr)
+            raise StepError(
+                f"Failed to copy workload to TM{i} (exit {tm_result.returncode}):\n"
+                f"  Command: docker cp {remote_dir}/. flink-tm{i}:/opt/flink/usrlib\n"
+                f"  stderr: {tm_result.stderr[:500]}"
+            )
 
 
 def _run_benchmark(
@@ -817,9 +829,12 @@ def _run_perf_kits_on_remote(
         timeout=600,
     )
     if result.returncode != 0:
-        logger.warning("Container perf-kits pipeline failed: %s", result.stderr[:500])
-        logger.warning("stdout: %s", result.stdout[:500])
-        return
+        raise StepError(
+            f"perf-kits pipeline failed inside TM container (exit {result.returncode}):\n"
+            f"  Command: {python_bin} {container_kits}/run_single_platform_pipeline.py ...\n"
+            f"  stderr: {result.stderr[:500]}\n"
+            f"  stdout: {result.stdout[:500]}"
+        )
 
     # Collect outputs from container via host staging.
     host_output = "/tmp/pyframework-perf-kits-output"
@@ -1010,7 +1025,11 @@ def _run_backfill(project_path: Path, run_dir: Path) -> None:
 
     rc = run_backfill(project_path, arm_dir, x86_dir)
     if rc != 0:
-        raise StepError("Backfill failed")
+        raise StepError(
+            f"Backfill failed (rc={rc}). Check logs above for which sub-module failed.\n"
+            f"  ARM dir: {arm_dir}\n"
+            f"  x86 dir: {x86_dir}"
+        )
 
 
 def _run_bridge_publish(project_path: Path) -> None:
@@ -1027,7 +1046,13 @@ def _run_bridge_publish(project_path: Path) -> None:
         discussion_category=bridge_config.get("category", "General"),
     )
     if result.get("errors", 0) > 0:
-        raise StepError(f"Bridge publish had {result['errors']} errors")
+        raise StepError(
+            f"Bridge publish had {result['errors']} error(s):\n"
+            f"  repo: {bridge_config['repo']}\n"
+            f"  platform: {bridge_config['platform']}\n"
+            f"  type: {bridge_config.get('type', 'discussion')}\n"
+            f"  details: {result.get('error_details', 'see logs above')}"
+        )
 
 
 import sys
