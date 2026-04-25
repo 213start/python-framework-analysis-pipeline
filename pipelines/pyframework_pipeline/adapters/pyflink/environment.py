@@ -91,19 +91,7 @@ class PyFlinkEnvironmentAdapter:
             description=f"Create Docker network '{network}' on {host_alias}",
         ))
 
-        # Step 2: Pull Flink image
-        steps.append(PlanStep(
-            id="pull-flink-image",
-            kind="prepare",
-            hostRef=host,
-            command=_docker_pull_if_missing(image),
-            description=f"Pull Flink image {image} on {host_alias}",
-            mutatesHost=True,
-            requiresApproval=True,
-            rollbackHint=f"docker rmi {image}",
-        ))
-
-        # Step 3: Start JobManager
+        # Step 2: Start JobManager
         steps.append(PlanStep(
             id="start-jobmanager",
             kind="framework-start",
@@ -246,10 +234,6 @@ class PyFlinkEnvironmentAdapter:
                 ))
 
         return steps
-
-
-def _docker_pull_if_missing(image: str) -> str:
-    return f"docker image inspect {image} >/dev/null 2>&1 || docker pull {image}"
 
 
 def _docker_reconcile_container(name: str, image: str, run_args: str) -> str:

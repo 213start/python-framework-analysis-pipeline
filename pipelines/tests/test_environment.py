@@ -91,7 +91,6 @@ class EnvironmentPlanTest(unittest.TestCase):
         self.assertTrue(build_step["requiresApproval"])
 
         # Container deployment steps
-        self.assertIn("pull-flink-image", step_ids)
         self.assertIn("start-jobmanager", step_ids)
         self.assertIn("start-taskmanager-1", step_ids)
         self.assertIn("start-taskmanager-2", step_ids)
@@ -104,22 +103,22 @@ class EnvironmentPlanTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
-        pull_step = next(s for s in plan["steps"] if s["id"] == "pull-flink-image")
+        build_step = next(s for s in plan["steps"] if s["id"] == "build-flink-image")
         start_step = next(s for s in plan["steps"] if s["id"] == "start-jobmanager")
 
-        self.assertIn("flink-pyflink:2.2.0-py314-arm-final", pull_step["command"])
+        self.assertIn("flink-pyflink:2.2.0-py314-arm-final", build_step["command"])
         self.assertIn("flink-pyflink:2.2.0-py314-arm-final", start_step["command"])
 
-    def test_plan_skips_pull_when_image_exists(self) -> None:
+    def test_plan_build_step_skips_when_image_exists(self) -> None:
         result = CliInvoker.run(
             "environment", "plan", str(PROJECT_YAML), "--platform", "arm"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
-        pull_step = next(s for s in plan["steps"] if s["id"] == "pull-flink-image")
+        build_step = next(s for s in plan["steps"] if s["id"] == "build-flink-image")
 
-        self.assertIn("docker image inspect", pull_step["command"])
-        self.assertIn("|| docker pull", pull_step["command"])
+        self.assertIn("docker image inspect", build_step["command"])
+        self.assertIn("|| bash /tmp/build-flink-image.sh", build_step["command"])
 
     def test_plan_recreates_existing_container_when_image_differs(self) -> None:
         result = CliInvoker.run(
@@ -434,7 +433,7 @@ class DockerRegistryTest(unittest.TestCase):
             },
             host_refs={"test-host": {"alias": "1.2.3.4"}},
         )
-        pull_step = next(s for s in steps if s.id == "pull-flink-image")
+        pull_step = next(s for s in steps if s.id == "build-flink-image")
         start_step = next(s for s in steps if s.id == "start-jobmanager")
 
         self.assertIn("registry.internal/my-flink:latest", pull_step.command)
@@ -457,10 +456,10 @@ class DockerRegistryTest(unittest.TestCase):
             },
             host_refs={"test-host": {"alias": "1.2.3.4"}},
         )
-        pull_step = next(s for s in steps if s.id == "pull-flink-image")
+        build_step = next(s for s in steps if s.id == "build-flink-image")
 
-        self.assertIn("my-flink:latest", pull_step.command)
-        self.assertNotIn("registry.internal", pull_step.command)
+        self.assertIn("my-flink:latest", build_step.command)
+        self.assertNotIn("registry.internal", build_step.command)
 
 
 if __name__ == "__main__":
