@@ -78,13 +78,30 @@ echo '  System deps installed'
 
 # Disable SSL verification for all network tools (proxy intercepts HTTPS)
 git config --global http.sslVerify false
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 524288000
+git config --global http.lowSpeedLimit 1000
+git config --global http.lowSpeedTime 30
 echo 'insecure' >> ~/.curlrc
 echo 'check_certificate = off' >> ~/.wgetrc
 echo 'Acquire::https::Verify-Peer \"false\";' > /etc/apt/apt.conf.d/99no-ssl-verify
-echo '  SSL verification disabled for git/curl/wget/apt'
+echo '  SSL verification disabled, git retry configured'
 
-# Install pyenv
-curl -sSL https://pyenv.run | bash
+# Retry wrapper for unreliable proxy connections
+retry() {
+    local attempts=5 delay=10 cmd=\"\$@\"
+    for i in \$(seq 1 \$attempts); do
+        echo \"    [retry \$i/\$attempts] \$cmd\"
+        if eval \$cmd; then return 0; fi
+        echo '    Failed, waiting '\$delay's...'
+        sleep \$delay
+    done
+    echo '    All retries exhausted.'
+    return 1
+}
+
+# Install pyenv (with retry for gnutls_handshake failures)
+retry 'curl -sSL https://pyenv.run \| bash'
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PATH
 eval \"\$(pyenv init -)\"
@@ -164,6 +181,19 @@ set -e
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PYENV_ROOT/versions/$PYTHON_VERSION/bin:\$PATH
 
+# Retry wrapper (redefined here since this is a new shell)
+retry() {
+    local attempts=5 delay=10 cmd=\"\$@\"
+    for i in \$(seq 1 \$attempts); do
+        echo \"    [retry \$i/\$attempts] \$cmd\"
+        if eval \$cmd; then return 0; fi
+        echo '    Failed, waiting '\$delay's...'
+        sleep \$delay
+    done
+    echo '    All retries exhausted.'
+    return 1
+}
+
 # 1. numpy (beam's Cythonize requires it at build time)
 echo '  [4a] Installing numpy...'
 $PIP install numpy
@@ -212,7 +242,7 @@ $PIP install \
 # 5. pyarrow 23 (Python 3.14 requires >=23, source build against system Arrow C++)
 echo '  [4e] Installing Apache Arrow C++ dev packages...'
 apt-get install -y lsb-release wget
-wget -q https://apache.jfrog.io/artifactory/arrow/\$(lsb_release --id --short | tr A-Z a-z)/apache-arrow-apt-source-latest-\$(lsb_release --codename --short).deb -O /tmp/arrow-apt.deb
+retry wget -q https://apache.jfrog.io/artifactory/arrow/\$(lsb_release --id --short | tr A-Z a-z)/apache-arrow-apt-source-latest-\$(lsb_release --codename --short).deb -O /tmp/arrow-apt.deb
 dpkg -i /tmp/arrow-apt.deb
 apt-get update -qq
 apt-get install -y libarrow-dev libparquet-dev libarrow-dataset-dev libarrow-acero-dev
@@ -224,7 +254,7 @@ $PIP install cmake ninja
 # Download pyarrow source manually (pip install fails due to dynamic version 0.0.0)
 echo '  [4f] Downloading pyarrow 23.0.1 source...'
 cd /tmp && mkdir -p pyarrow-build && cd pyarrow-build
-curl -sSL https://files.pythonhosted.org/packages/88/22/134986a4cc224d593c1afde5494d18ff629393d74cc2eddb176669f234a4/pyarrow-23.0.1.tar.gz -o pyarrow-23.0.1.tar.gz
+retry curl -sSL https://files.pythonhosted.org/packages/88/22/134986a4cc224d593c1afde5494d18ff629393d74cc2eddb176669f234a4/pyarrow-23.0.1.tar.gz -o pyarrow-23.0.1.tar.gz
 tar xzf pyarrow-23.0.1.tar.gz
 cd pyarrow-23.0.1
 
