@@ -69,6 +69,8 @@ class PyFlinkEnvironmentAdapter:
         # Step 0: Build Flink+PyFlink image (skip if already exists)
         build_script = "adapters/pyflink/scripts/build-flink-image.sh"
         base_image = software.get("flinkImage", DEFAULT_IMAGE)
+        if registry:
+            base_image = f"{registry}/{base_image}"
         build_env = (
             f"IMAGE_NAME={image} BASE_IMAGE={base_image} "
             f"NETWORK={network} PYTHON_VERSION={python_version} "

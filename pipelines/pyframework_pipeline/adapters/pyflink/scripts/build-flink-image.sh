@@ -27,10 +27,19 @@ NETWORK="${NETWORK:-flink-network}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.14.3}"
 TM_COUNT="${TM_COUNT:-2}"
 USE_TMPFS="${USE_TMPFS:-true}"
-MAKEOPTS="${MAKEOPTS:--j2}"
+MAKEOPTS="${MAKEOPTS:--j$(nproc 2>/dev/null || echo 4)}"
 PYENV_ROOT="/root/.pyenv"
 PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip"
 PYTHON="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3"
+
+# Forward proxy env vars into docker exec calls (container doesn't inherit host env)
+DOCKER_PROXY_FLAGS=""
+for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+    val="${!var:-}"
+    if [ -n "$val" ]; then
+        DOCKER_PROXY_FLAGS="$DOCKER_PROXY_FLAGS -e $var=$val"
+    fi
+done
 
 echo "=== Building $IMAGE_NAME on $ARCH ==="
 echo "  BASE_IMAGE=$BASE_IMAGE"
@@ -56,7 +65,7 @@ echo ""
 echo "[Phase 2/7] Installing build deps and compiling Python $PYTHON_VERSION..."
 echo "  (This takes ~40 min with LTO+PGO on 4 cores)"
 
-docker exec -u root flink-jm bash -c "
+docker exec $DOCKER_PROXY_FLAGS -u root flink-jm bash -c "
 set -e
 
 # System build deps
@@ -92,7 +101,7 @@ echo "[Phase 2/7] Done."
 echo ""
 echo "[Phase 3/7] Fixing pip and installing build tools..."
 
-docker exec -u root flink-jm bash -c "
+docker exec $DOCKER_PROXY_FLAGS -u root flink-jm bash -c "
 set -e
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PYENV_ROOT/versions/$PYTHON_VERSION/bin:\$PATH
@@ -143,7 +152,7 @@ echo ""
 echo "[Phase 4/7] Installing Python dependencies..."
 echo "  Order matters: numpy first (beam Cythonize needs it), then beam, then flink"
 
-docker exec -u root flink-jm bash -c "
+docker exec $DOCKER_PROXY_FLAGS -u root flink-jm bash -c "
 set -e
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PYENV_ROOT/versions/$PYTHON_VERSION/bin:\$PATH
@@ -225,6 +234,7 @@ PYARROW_WITH_HDFS=0 \
 PYARROW_WITH_PARQUET=1 \
 PYARROW_WITH_DATASET=1 \
 PYARROW_WITH_ACERO=1 \
+CMAKE_BUILD_PARALLEL_LEVEL=$(nproc 2>/dev/null || echo 4) \
 $PIP install . --no-build-isolation
 echo '  pyarrow installed'
 
@@ -248,7 +258,7 @@ fi
 # Extract major.minor from PYTHON_VERSION for .so names
 PY_MM="${PYTHON_VERSION%.*}"
 
-docker exec -u root flink-jm bash -c "
+docker exec $DOCKER_PROXY_FLAGS -u root flink-jm bash -c "
 set -e
 export PATH=$PYENV_ROOT/versions/$PYTHON_VERSION/bin:\$PATH
 
@@ -320,9 +330,7 @@ sleep 15
 echo ""
 echo "[Phase 7/7] Verifying cluster health..."
 
-docker exec flink-jm bash -c "
-set -e
-TM_COUNT=\$(curl -sf http://localhost:8081/taskmanagers | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get(\"taskmanagers\",[])))')
+docker exec $DOCKER_PROXY_FLAGS flink-jm bash -c " | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get(\"taskmanagers\",[])))')
 echo \"  TaskManagers registered: \$TM_COUNT\"
 if [ \"\$TM_COUNT\" -lt 2 ]; then
     echo '  WARNING: Less than 2 TMs registered!'
@@ -333,7 +341,7 @@ curl -sf http://localhost:8081/overview | python3 -c 'import sys,json; d=json.lo
 # Install perf inside containers
 echo "  Installing profiling tools..."
 for c in flink-jm $(for i in $(seq 1 "$TM_COUNT"); do echo "flink-tm$i"; done); do
-    docker exec -u root "$c" bash -c 'apt-get update -qq && apt-get install -y linux-tools-common linux-tools-generic' || true
+    docker exec $DOCKER_PROXY_FLAGS -u root "$c" bash -c 'apt-get update -qq && apt-get install -y linux-tools-common linux-tools-generic' || true
 done
 
 echo ""
