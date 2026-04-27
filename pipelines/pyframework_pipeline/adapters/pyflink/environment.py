@@ -193,6 +193,7 @@ class PyFlinkEnvironmentAdapter:
                 "objdump": "binutils",
                 "gdb": "gdb",
                 "readelf": "binutils",
+                "apt": "apt",
             }
             packages = sorted({tool_packages.get(t, t) for t in profiling_tools})
             pkg_str = " ".join(packages)
