@@ -145,18 +145,15 @@ class PyFlinkEnvironmentAdapter:
                 rollbackHint=f"docker rm -f flink-tm{i}",
             ))
 
-        # Step 5: Readiness — check cluster overview via REST API (with retry)
+        # Step 5: Readiness — check cluster overview via REST API
         steps.append(PlanStep(
             id="readiness-cluster-health",
             kind="framework-readiness",
             hostRef=host,
             command=(
-                "for i in $(seq 1 30); do "
-                "docker exec flink-jm curl -sf http://localhost:8081/overview && exit 0; "
-                "sleep 2; done; exit 1"
+                "docker exec flink-jm curl -f http://localhost:8081/overview"
             ),
-            description=f"Check Flink cluster health on {host_alias} (waits up to 60s)",
-            timeout=120,
+            description=f"Check Flink cluster health on {host_alias}",
         ))
 
         # Step 6: Readiness — verify TM count
