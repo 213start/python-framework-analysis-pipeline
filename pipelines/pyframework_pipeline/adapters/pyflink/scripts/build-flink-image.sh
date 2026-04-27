@@ -423,7 +423,15 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-TM_COUNT_ACTUAL=$(docker exec flink-jm curl -sf http://localhost:8081/taskmanagers | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("taskmanagers",[])))')
+echo "  Waiting for TaskManagers to register..."
+TM_COUNT_ACTUAL=0
+for i in $(seq 1 20); do
+    TM_COUNT_ACTUAL=$(docker exec flink-jm curl -sf http://localhost:8081/taskmanagers 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("taskmanagers",[])))' 2>/dev/null || echo 0)
+    if [ "$TM_COUNT_ACTUAL" -ge "$TM_COUNT" ] 2>/dev/null; then
+        break
+    fi
+    sleep 3
+done
 echo "  TaskManagers registered: $TM_COUNT_ACTUAL"
 if [ "$TM_COUNT_ACTUAL" -lt "$TM_COUNT" ]; then
     echo "  WARNING: Only $TM_COUNT_ACTUAL/$TM_COUNT TMs registered!"

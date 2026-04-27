@@ -174,13 +174,18 @@ class PyFlinkEnvironmentAdapter:
             kind="framework-smoke-test",
             hostRef=host,
             command=(
-                f"docker exec flink-jm curl -sf "
+                f"for i in $(seq 1 10); do "
+                f"count=$(docker exec flink-jm curl -sf "
                 f"http://localhost:8081/taskmanagers | "
-                f"python3 -c \"import sys,json; d=json.load(sys.stdin); "
-                f"assert len(d.get('taskmanagers',[])) >= {tm_count}, "
-                f"'TM count %d < {tm_count}' % len(d.get('taskmanagers',[]))\""
+                f"python3 -c 'import sys,json; "
+                f"d=json.load(sys.stdin); print(len(d.get(\"taskmanagers\",[])))'); "
+                f"if [ \"$count\" -ge {tm_count} ] 2>/dev/null; then "
+                f"echo \"TMs registered: $count\"; exit 0; fi; "
+                f"sleep 3; done; "
+                f"echo \"Only $count/{tm_count} TMs registered\"; exit 1"
             ),
             description=f"Verify {tm_count} TaskManagers registered on {host_alias}",
+            timeout=60,
         ))
 
         # Step 7: Install profiling tools inside containers
@@ -204,16 +209,11 @@ class PyFlinkEnvironmentAdapter:
                     hostRef=host,
                     command=(
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
-                        f"'dpkg -s {pkg_str} >/dev/null 2>&1 || "
-                        f"apt-get update && apt-get install -y {pkg_str}; "
-                        f"echo \"  perf debug: ls /usr/lib/linux-tools:\"; "
-                        f"ls /usr/lib/linux-tools/ 2>/dev/null || echo \"    (dir not found)\"; "
+                        f"'dpkg -s {pkg_str} >/dev/null 2>&1 "
+                        f"|| (apt-get install -y {pkg_str}); "
                         f"perf_real=\\$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1); "
-                        f"echo \"  perf debug: found=\\$perf_real\"; "
                         f"if [ -n \"\\$perf_real\" ]; then "
-                        f"ln -sf \\$perf_real /usr/local/bin/perf; "
-                        f"echo \"  perf linked: /usr/local/bin/perf -> \\$perf_real\"; "
-                        f"else echo \"  perf debug: no binary found under /usr/lib/linux-tools\"; fi'"
+                        f"ln -sf \\$perf_real /usr/local/bin/perf; fi'"
                     ),
                     description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
                     mutatesHost=True,
