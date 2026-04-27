@@ -405,13 +405,13 @@ def _run_benchmark(
             f"/opt/flink/usrlib/benchmark_runner.py "
             f"--query {query} --rows {rows}",
             timeout=300,
+            stream=True,
         )
         if result.returncode != 0:
             raise StepError(
                 f"Benchmark {query} failed (exit {result.returncode}):\n"
                 f"  Command: docker exec flink-jm {python_bin} benchmark_runner.py --query {query} --rows {rows}\n"
-                f"  stdout: {result.stdout[:500]}\n"
-                f"  stderr: {result.stderr[:500]}"
+                f"  output: {result.stdout[-2000:]}"
             )
 
         # Parse BENCHMARK_RESULT from stdout.
