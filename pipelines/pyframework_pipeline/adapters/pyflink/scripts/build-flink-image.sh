@@ -360,24 +360,48 @@ if [ "$USE_TMPFS" = "true" ]; then
     TMPFS_FLAG="--tmpfs /tmp:rw,exec"
 fi
 
-# Start JobManager
-docker rm -f flink-jm 2>/dev/null || true
-docker run -d --name flink-jm --hostname flink-jm --network "$NETWORK" \
-    -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
-    -p 8081:8081 \
-    "$IMAGE_NAME" jobmanager
-echo "  Started flink-jm"
+# Start JobManager (reuse if already running with same image)
+if docker inspect flink-jm >/dev/null 2>&1; then
+    current=$(docker inspect -f '{{.Config.Image}}' flink-jm)
+    if [ "$current" = "$IMAGE_NAME" ]; then
+        echo "  flink-jm already running with $IMAGE_NAME"
+        docker start flink-jm 2>/dev/null || true
+    else
+        echo "  flink-jm image changed ($current -> $IMAGE_NAME), recreating..."
+        docker rm -f flink-jm
+        docker run -d --name flink-jm --hostname flink-jm --network "$NETWORK" \
+            -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
+            -p 8081:8081 \
+            "$IMAGE_NAME" jobmanager
+    fi
+else
+    docker run -d --name flink-jm --hostname flink-jm --network "$NETWORK" \
+        -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
+        -p 8081:8081 \
+        "$IMAGE_NAME" jobmanager
+    echo "  Started flink-jm"
+fi
 
-# Start TaskManagers
+# Start TaskManagers (reuse if already running with same image)
 for i in $(seq 1 "$TM_COUNT"); do
-    docker rm -f "flink-tm$i" 2>/dev/null || true
-    docker run -d --name "flink-tm$i" --network "$NETWORK" \
+    tm="flink-tm$i"
+    if docker inspect "$tm" >/dev/null 2>&1; then
+        current=$(docker inspect -f '{{.Config.Image}}' "$tm")
+        if [ "$current" = "$IMAGE_NAME" ]; then
+            echo "  $tm already running with $IMAGE_NAME"
+            docker start "$tm" 2>/dev/null || true
+            continue
+        else
+            docker rm -f "$tm"
+        fi
+    fi
+    docker run -d --name "$tm" --network "$NETWORK" \
         -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
         $TMPFS_FLAG \
         --privileged \
         -e PYTHONPERFSUPPORT=1 \
         "$IMAGE_NAME" taskmanager
-    echo "  Started flink-tm$i"
+    echo "  Started $tm"
 done
 
 # Wait for TMs to register
