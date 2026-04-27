@@ -204,9 +204,7 @@ class PyFlinkEnvironmentAdapter:
                     hostRef=host,
                     command=(
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
-                        f"'apt-get update && apt-get install -y {pkg_str}; "
-                        f"which perf >/dev/null 2>&1 && "
-                        f"ln -sf $(which perf) /usr/local/bin/perf || true'"
+                        f"'apt-get update && apt-get install -y {pkg_str}'"
                     ),
                     description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
                     mutatesHost=True,
@@ -216,7 +214,7 @@ class PyFlinkEnvironmentAdapter:
 
             # Step 8: Verify profiling tools
             verify_cmds = {
-                "perf": "/usr/local/bin/perf --version",
+                "perf": "perf --version",
                 "strace": "strace --version",
                 "objdump": "objdump --version",
                 "gdb": "gdb --version",
