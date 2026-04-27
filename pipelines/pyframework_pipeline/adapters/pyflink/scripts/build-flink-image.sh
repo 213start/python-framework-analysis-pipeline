@@ -414,6 +414,15 @@ sleep 15
 echo ""
 echo "[Phase 7/7] Verifying cluster health..."
 
+# Wait for Flink REST API to be ready
+echo "  Waiting for Flink REST API..."
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:8081/overview >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
 TM_COUNT_ACTUAL=$(docker exec flink-jm curl -sf http://localhost:8081/taskmanagers | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("taskmanagers",[])))')
 echo "  TaskManagers registered: $TM_COUNT_ACTUAL"
 if [ "$TM_COUNT_ACTUAL" -lt "$TM_COUNT" ]; then
