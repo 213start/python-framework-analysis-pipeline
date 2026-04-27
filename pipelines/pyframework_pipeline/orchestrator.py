@@ -367,6 +367,9 @@ def _run_benchmark(
     executor = build_executor(host_ref, env_config)
     python_bin = _find_container_python(executor, env_config)
 
+    # Ensure Java UDF JAR exists inside JM container.
+    _ensure_jar(executor)
+
     platform_run_dir = run_dir / platform
     platform_run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -624,6 +627,29 @@ def _find_container_python(
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
     return "python3"
+
+
+def _ensure_jar(executor: "SshExecutor") -> None:
+    """Ensure Java UDF JAR exists inside JM container, build if missing."""
+    jar_path = "/opt/flink/usrlib/java-udf/FlinkDemo-1.0-SNAPSHOT.jar"
+    check = executor.run(
+        f"docker exec flink-jm ls {jar_path}",
+        timeout=15,
+    )
+    if check.returncode == 0 and check.stdout.strip():
+        return
+    logger.info("[5a] JAR not found, building inside JM container...")
+    result = executor.run(
+        "docker exec flink-jm bash -c "
+        "'cd /opt/flink/usrlib/java-udf && bash build.sh'",
+        timeout=120,
+        stream=True,
+    )
+    if result.returncode != 0:
+        raise StepError(
+            f"JAR build failed (exit {result.returncode}):\n"
+            f"  output: {result.stdout[-2000:]}"
+        )
 
 
 def _find_container_perf(executor: "SshExecutor") -> str:
