@@ -362,6 +362,7 @@ def _run_benchmark(
     env_config = load_environment_config(project_path)
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
+    python_bin = _find_container_python(executor, env_config)
 
     platform_run_dir = run_dir / platform
     platform_run_dir.mkdir(parents=True, exist_ok=True)
@@ -400,7 +401,7 @@ def _run_benchmark(
     for query in queries:
         logger.info("Running query %s on %s...", query, platform)
         result = executor.run(
-            f"docker exec flink-jm /opt/flink/.pyenv/versions/3.14.3/bin/python3 "
+            f"docker exec flink-jm {python_bin} "
             f"/opt/flink/usrlib/benchmark_runner.py "
             f"--query {query} --rows {rows}",
             timeout=300,
@@ -408,7 +409,7 @@ def _run_benchmark(
         if result.returncode != 0:
             raise StepError(
                 f"Benchmark {query} failed (exit {result.returncode}):\n"
-                f"  Command: docker exec flink-jm python3 benchmark_runner.py --query {query} --rows {rows}\n"
+                f"  Command: docker exec flink-jm {python_bin} benchmark_runner.py --query {query} --rows {rows}\n"
                 f"  stdout: {result.stdout[:500]}\n"
                 f"  stderr: {result.stderr[:500]}"
             )
@@ -594,6 +595,32 @@ def _merge_wall_clock_times(
     )
     logger.info("Wrote wall-clock timing for %d queries to %s",
                 len(wall_clock_times), timing_path.relative_to(platform_run_dir))
+
+
+def _find_container_python(
+    executor: "SshExecutor",
+    env_config: dict | None = None,
+) -> str:
+    """Find the Python binary path inside the JM container."""
+    py_version = "3.14.3"
+    if env_config:
+        py_version = env_config.get("software", {}).get("pythonVersion", py_version)
+    expected = f"/root/.pyenv/versions/{py_version}/bin/python3"
+    result = executor.run(
+        f"docker exec flink-jm ls {expected}",
+        timeout=15,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return expected
+    # Fallback: find any pyenv python3.
+    result = executor.run(
+        "docker exec flink-jm bash -c "
+        "'ls /root/.pyenv/versions/*/bin/python3 2>/dev/null | sort -V | tail -1'",
+        timeout=15,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return "python3"
 
 
 def _find_container_perf(executor: "SshExecutor") -> str:
@@ -791,7 +818,7 @@ def _run_perf_kits_on_remote(
     container_kits = "/opt/flink/perf-kits-scripts"
     container_output = "/opt/flink/perf-kits-output"
     perf_data_container = "/tmp/perf-udf.data"
-    python_bin = "/opt/flink/.pyenv/versions/3.14.3/bin/python3"
+    python_bin = _find_container_python(executor)
     perf_bin = _find_container_perf(executor)
 
     # Deploy scripts into container via host staging.
