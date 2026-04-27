@@ -165,7 +165,19 @@ def publish(
     source_path = _find_source(root)
 
     if dataset_path is None:
-        raise FileNotFoundError(f"No dataset JSON found under {root}")
+        logger.error(
+            "No dataset JSON found under %s. "
+            "Run step 6 (backfill) first to generate four-layer data.",
+            root,
+        )
+        return {
+            "total_functions": 0,
+            "published": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": 1,
+            "issues": [],
+        }
 
     dataset = _load_json(dataset_path)
     source_data = _load_json(source_path) if source_path else {}
@@ -391,7 +403,14 @@ def fetch(
     dataset_path = _find_dataset(root)
 
     if dataset_path is None:
-        raise FileNotFoundError(f"No dataset JSON found under {root}")
+        logger.error(
+            "No dataset JSON found under %s. "
+            "Run step 6 (backfill) first to generate four-layer data.",
+            root,
+        )
+        return {"status": "no_dataset", "fetched": 0, "parsed": 0, "failed": 0}
+
+    dataset = _load_json(dataset_path)
 
     manifest_path = root / "bridge-manifest.json"
     manifest = load_bridge_manifest(manifest_path)
@@ -411,7 +430,6 @@ def fetch(
     else:
         issue_client = create_client(platform, token, base_url=base_url)
 
-    dataset = _load_json(dataset_path)
     func_map = {f["id"]: f for f in dataset.get("functions", []) if "id" in f}
 
     fetched = 0
