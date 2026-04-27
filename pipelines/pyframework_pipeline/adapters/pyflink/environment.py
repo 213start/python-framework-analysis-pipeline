@@ -174,15 +174,15 @@ class PyFlinkEnvironmentAdapter:
             kind="framework-smoke-test",
             hostRef=host,
             command=(
-                f"for i in $(seq 1 10); do "
-                f"count=$(docker exec flink-jm curl -sf "
+                f"for i in \\$(seq 1 10); do "
+                f"count=\\$(docker exec flink-jm curl -sf "
                 f"http://localhost:8081/taskmanagers | "
                 f"python3 -c 'import sys,json; "
                 f"d=json.load(sys.stdin); print(len(d.get(\"taskmanagers\",[])))'); "
-                f"if [ \"$count\" -ge {tm_count} ] 2>/dev/null; then "
-                f"echo \"TMs registered: $count\"; exit 0; fi; "
+                f"if [ \"\\$count\" -ge {tm_count} ] 2>/dev/null; then "
+                f"echo \"TMs registered: \\$count\"; exit 0; fi; "
                 f"sleep 3; done; "
-                f"echo \"Only $count/{tm_count} TMs registered\"; exit 1"
+                f"echo \"Only \\$count/{tm_count} TMs registered\"; exit 1"
             ),
             description=f"Verify {tm_count} TaskManagers registered on {host_alias}",
             timeout=60,
