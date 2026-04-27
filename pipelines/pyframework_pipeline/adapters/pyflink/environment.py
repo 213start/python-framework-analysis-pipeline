@@ -208,7 +208,7 @@ class PyFlinkEnvironmentAdapter:
                         f"apt-get update && apt-get install -y {pkg_str}; "
                         f"echo \"  perf debug: ls /usr/lib/linux-tools:\"; "
                         f"ls /usr/lib/linux-tools/ 2>/dev/null || echo \"    (dir not found)\"; "
-                        f"perf_real=$(find /usr/lib/linux-tools -name perf \\( -type f -o -type l \\) 2>/dev/null | sort -V | tail -1); "
+                        f"perf_real=$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1); "
                         f"echo \"  perf debug: found=$perf_real\"; "
                         f"if [ -n \"$perf_real\" ]; then "
                         f"ln -sf $perf_real /usr/local/bin/perf; "
