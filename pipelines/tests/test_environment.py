@@ -156,7 +156,6 @@ class EnvironmentPlanTest(unittest.TestCase):
         )
         self.assertIn("docker exec -u root", install_step["command"])
         self.assertIn("flink-jm", install_step["command"])
-        self.assertIn("linux-tools-.*-generic", install_step["command"])
         self.assertIn("/usr/local/bin/perf", install_step["command"])
         self.assertIn("strace", install_step["command"])
         self.assertIn("binutils", install_step["command"])

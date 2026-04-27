@@ -193,7 +193,6 @@ class PyFlinkEnvironmentAdapter:
                 "objdump": "binutils",
                 "gdb": "gdb",
                 "readelf": "binutils",
-                "apt": "apt",
             }
             packages = sorted({tool_packages.get(t, t) for t in profiling_tools})
             pkg_str = " ".join(packages)
@@ -206,11 +205,6 @@ class PyFlinkEnvironmentAdapter:
                     command=(
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
                         f"'apt-get update -qq && apt-get install -y -qq {pkg_str} && "
-                        f"perf_pkg=$(apt-cache search --names-only "
-                        f"\"^linux-tools-.*-generic$\" | "
-                        f"awk \"{{print \\$1}}\" | sort -V | tail -1); "
-                        f"if [ -n \"$perf_pkg\" ]; then "
-                        f"apt-get install -y -qq \"$perf_pkg\"; fi; "
                         f"perf_bin=$(find /usr/lib -path \"*linux-tools*\" "
                         f"-name perf -type f | "
                         f"sort -V | tail -1); "
