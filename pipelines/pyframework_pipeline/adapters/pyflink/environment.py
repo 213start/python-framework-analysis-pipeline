@@ -188,7 +188,7 @@ class PyFlinkEnvironmentAdapter:
         if profiling_tools:
             # Map tool names to package names
             tool_packages = {
-                "perf": "linux-tools-common",
+                "perf": "linux-tools-generic",
                 "strace": "strace",
                 "objdump": "binutils",
                 "gdb": "gdb",
