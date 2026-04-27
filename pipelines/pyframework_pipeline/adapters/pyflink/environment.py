@@ -62,7 +62,14 @@ class PyFlinkEnvironmentAdapter:
 
         host = hosts_by_role.get("jobmanager", hosts_by_role.get("client", ""))
         host_alias = host_refs.get(host, {}).get("alias", host)
+        host_env = host_refs.get(host, {}).get("env", {})
         arch = platform_config.get("arch", "x86_64")
+
+        # Build docker exec proxy flags (container doesn't inherit host env)
+        _proxy_vars = ["http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]
+        docker_proxy_flags = " ".join(
+            f"-e {k}={v}" for k, v in host_env.items() if k in _proxy_vars and v
+        )
         python_version = software.get("pythonVersion", "3.14.3")
         use_tmpfs = software.get("taskmanagerTmpfs", False)
 
@@ -196,7 +203,7 @@ class PyFlinkEnvironmentAdapter:
                     kind="prepare",
                     hostRef=host,
                     command=(
-                        f"docker exec -u root {name} bash -c "
+                        f"docker exec -u root {docker_proxy_flags} {name} bash -c "
                         f"'apt-get update -qq && apt-get install -y -qq {pkg_str} && "
                         f"perf_pkg=$(apt-cache search --names-only "
                         f"\"^linux-tools-.*-generic$\" | "
