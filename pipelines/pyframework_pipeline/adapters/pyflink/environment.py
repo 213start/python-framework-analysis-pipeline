@@ -204,12 +204,9 @@ class PyFlinkEnvironmentAdapter:
                     hostRef=host,
                     command=(
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
-                        f"'apt-get update -qq && apt-get install -y -qq {pkg_str} && "
-                        f"perf_bin=$(find /usr/lib -path \"*linux-tools*\" "
-                        f"-name perf -type f | "
-                        f"sort -V | tail -1); "
-                        f"if [ -n \"$perf_bin\" ]; then "
-                        f"install -D -m 0755 \"$perf_bin\" /usr/local/bin/perf; fi'"
+                        f"'apt-get update && apt-get install -y {pkg_str}; "
+                        f"which perf >/dev/null 2>&1 && "
+                        f"ln -sf $(which perf) /usr/local/bin/perf || true'"
                     ),
                     description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
                     mutatesHost=True,
