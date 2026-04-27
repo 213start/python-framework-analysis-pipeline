@@ -302,45 +302,12 @@ def _run_workload_deploy(
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
-    # Upload workload to remote.
+    # Upload workload to remote host staging.
     remote_dir = "/tmp/pyframework-workload"
     logger.info("Uploading %s to %s:%s", local_dir, host_ref, remote_dir)
     ok = executor.push_dir(local_dir, remote_dir)
     if not ok:
         raise StepError(f"Failed to upload workload to {host_ref}:\n  Local: {local_dir}\n  Remote: {remote_dir}")
-
-    # Build JAR inside container if build.sh exists but JAR is missing.
-    build_sh = local_dir / "java-udf" / "build.sh"
-    jar_name = "FlinkDemo-1.0-SNAPSHOT.jar"
-    jar_local = local_dir / "java-udf" / jar_name
-    if build_sh.exists() and not jar_local.exists():
-        logger.info("JAR not found locally, building inside container...")
-        result = executor.run(
-            f"docker exec flink-jm bash -c "
-            f"'cd {remote_dir}/java-udf && bash build.sh'",
-            timeout=120,
-            stream=True,
-        )
-        if result.returncode != 0:
-            raise StepError(
-                f"Container build failed (exit {result.returncode}):\n"
-                f"  Command: docker exec flink-jm bash -c 'cd {remote_dir}/java-udf && bash build.sh'\n"
-                f"  output: {result.stdout[-2000:]}"
-            )
-    elif workload.get("build") == "container":
-        logger.info("Building JAR inside container...")
-        result = executor.run(
-            f"docker exec flink-jm bash -c "
-            f"'cd {remote_dir} && ./build.sh'",
-            timeout=120,
-            stream=True,
-        )
-        if result.returncode != 0:
-            raise StepError(
-                f"Container build failed (exit {result.returncode}):\n"
-                f"  Command: docker exec flink-jm bash -c 'cd {remote_dir} && ./build.sh'\n"
-                f"  output: {result.stdout[-2000:]}"
-            )
 
     # Distribute to containers via docker cp.
     jm_result = executor.run(f"docker cp {remote_dir}/. flink-jm:/opt/flink/usrlib")
@@ -362,6 +329,25 @@ def _run_workload_deploy(
                 f"  Command: docker cp {remote_dir}/. flink-tm{i}:/opt/flink/usrlib\n"
                 f"  stdout: {tm_result.stdout[:500]}\n"
                 f"  stderr: {tm_result.stderr[:500]}"
+            )
+
+    # Build JAR inside container if missing (after docker cp so source files are in place).
+    build_sh = local_dir / "java-udf" / "build.sh"
+    jar_name = "FlinkDemo-1.0-SNAPSHOT.jar"
+    jar_local = local_dir / "java-udf" / jar_name
+    if build_sh.exists() and not jar_local.exists():
+        logger.info("JAR not found locally, building inside container...")
+        result = executor.run(
+            f"docker exec flink-jm bash -c "
+            f"'cd /opt/flink/usrlib/java-udf && bash build.sh'",
+            timeout=120,
+            stream=True,
+        )
+        if result.returncode != 0:
+            raise StepError(
+                f"Container build failed (exit {result.returncode}):\n"
+                f"  Command: docker exec flink-jm bash -c 'cd /opt/flink/usrlib/java-udf && bash build.sh'\n"
+                f"  output: {result.stdout[-2000:]}"
             )
 
 
