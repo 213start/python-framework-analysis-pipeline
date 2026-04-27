@@ -717,7 +717,7 @@ def _run_collect(
 
     # Run python-performance-kits pipeline on remote host (same architecture as perf.data).
     logger.info("[5b] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
-    _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform)
+    _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path)
 
     # Collect objdump for hotspot symbols across all shared libraries.
     logger.info("[5b] Collecting objdump for hotspot symbols on %s...", platform)
@@ -832,13 +832,20 @@ def _run_perf_kits_on_remote(
     perf_data_local: Path,
     perf_dir: Path,
     platform: str,
+    project_path: Path | None = None,
 ) -> None:
     """Run python-performance-kits pipeline inside the TM container.
 
     Running inside the container gives perf report access to the exact
     binaries (libpython3.14.so, etc.) so symbols resolve correctly.
     """
-    kits_local = Path(__file__).resolve().parents[2] / "vendor" / "python-performance-kits"
+    # Resolve vendor dir: project_path is projects/<id>/project.yaml,
+    # repo root is project_path.parent.parent.parent.
+    if project_path:
+        repo_root = project_path.parent.parent.parent
+    else:
+        repo_root = Path(__file__).resolve().parents[2]
+    kits_local = repo_root / "vendor" / "python-performance-kits"
     scripts_dir = kits_local / "scripts" / "perf_insights"
     if not scripts_dir.exists():
         logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
