@@ -145,15 +145,21 @@ class PyFlinkEnvironmentAdapter:
                 rollbackHint=f"docker rm -f flink-tm{i}",
             ))
 
-        # Step 5: Readiness — check cluster overview via REST API
+        # Step 5: Readiness — ensure cluster running + check REST API
+        tm_names = " ".join(f"flink-tm{i}" for i in range(1, tm_count + 1))
         steps.append(PlanStep(
             id="readiness-cluster-health",
             kind="framework-readiness",
             hostRef=host,
             command=(
-                "docker exec flink-jm curl -f http://localhost:8081/overview"
+                f"docker start flink-jm {tm_names} 2>/dev/null || true; "
+                f"sleep 5; "
+                f"for i in $(seq 1 30); do "
+                f"docker exec flink-jm curl -f http://localhost:8081/overview && exit 0; "
+                f"sleep 2; done; exit 1"
             ),
-            description=f"Check Flink cluster health on {host_alias}",
+            description=f"Start cluster if stopped, then check health on {host_alias}",
+            timeout=120,
         ))
 
         # Step 6: Readiness — verify TM count
@@ -166,7 +172,7 @@ class PyFlinkEnvironmentAdapter:
                 f"http://localhost:8081/taskmanagers | "
                 f"python3 -c \"import sys,json; d=json.load(sys.stdin); "
                 f"assert len(d.get('taskmanagers',[])) >= {tm_count}, "
-                f"f'TM count {{len(d.get(\\\"taskmanagers\\\",[]))}} < {tm_count}'\""
+                f"'TM count %d < {tm_count}' % len(d.get('taskmanagers',[]))\""
             ),
             description=f"Verify {tm_count} TaskManagers registered on {host_alias}",
         ))
