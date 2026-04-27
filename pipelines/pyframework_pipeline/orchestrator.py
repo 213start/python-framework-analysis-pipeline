@@ -522,6 +522,7 @@ def _ensure_container_perf(
             f"'apt-get update -qq && apt-get install -y -qq "
             f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
             timeout=120,
+            stream=True,
         )
 
     # Verify.
@@ -791,6 +792,7 @@ def _collect_asm_from_all_libs(
             f"docker exec {container} bash -c "
             f"'objdump -d -C {so_path} 2>/dev/null'",
             timeout=120,
+            stream=True,
         )
         if objdump_result.returncode != 0 or not objdump_result.stdout:
             logger.warning("objdump failed for %s", so_path)
@@ -897,8 +899,9 @@ def _run_perf_kits_on_remote(
         f"{perf_data_container} -o {container_output} "
         f"--benchmark tpch --platform {platform} "
         f"--perf-bin {perf_bin} "
-        f"--skip-annotate --no-print-report 2>&1 | tail -10",
+        f"--skip-annotate --no-print-report",
         timeout=600,
+        stream=True,
     )
     if result.returncode != 0:
         raise StepError(
@@ -914,6 +917,7 @@ def _run_perf_kits_on_remote(
     executor.run(
         f"docker cp flink-tm1:{container_output}/ {host_output}",
         timeout=60,
+        stream=True,
     )
 
     for remote_rel in [
@@ -1027,6 +1031,7 @@ def _collect_binary_from_container(
     cp_result = executor.run(
         f"docker cp {container}:{staging} {host_tmp}",
         timeout=60,
+        stream=True,
     )
     if cp_result.returncode != 0:
         logger.warning("docker cp failed for %s:%s: %s", container, staging, cp_result.stderr)
