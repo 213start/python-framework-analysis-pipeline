@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_SSL_CONTEXT = ssl._create_unverified_context()
 
 _GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 _REQUEST_TIMEOUT = 30  # seconds
@@ -222,7 +225,7 @@ class DiscussionClient:
         req.add_header("User-Agent", "pyframework-pipeline")
 
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT, context=_SSL_CONTEXT) as resp:
                 raw = resp.read()
                 result = json.loads(raw.decode("utf-8")) if raw else {}
         except urllib.error.HTTPError as exc:
