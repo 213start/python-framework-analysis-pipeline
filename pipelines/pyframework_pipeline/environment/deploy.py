@@ -23,6 +23,7 @@ def deploy_plan(
     platform_id: str,
     plan_path: Path | None = None,
     *,
+    output_dir: Path | None = None,
     yes: bool = False,
 ) -> dict[str, Any]:
     """Execute an environment plan on remote hosts.
@@ -35,6 +36,9 @@ def deploy_plan(
         Platform ID (e.g. "arm", "x86").
     plan_path : Path or None
         Path to environment-plan.json. If None, generates a fresh plan.
+    output_dir : Path or None
+        Directory for deploy-record.json. If None, falls back to
+        project_path.parent / "output" / platform_id.
     yes : bool
         Skip approval prompts for mutating steps.
 
@@ -43,10 +47,11 @@ def deploy_plan(
     dict with deployment summary.
     """
 
+    _record_dir = output_dir or (project_path.parent / "output" / platform_id)
+
     def _save_record(record: dict) -> None:
-        record_dir = project_path.parent / "output" / platform_id
-        record_dir.mkdir(parents=True, exist_ok=True)
-        (record_dir / "deploy-record.json").write_text(
+        _record_dir.mkdir(parents=True, exist_ok=True)
+        (_record_dir / "deploy-record.json").write_text(
             json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
@@ -113,8 +118,7 @@ def deploy_plan(
 
     # Resume: load previous record and skip already-passed steps.
     passed_ids: set[str] = set()
-    output_dir = project_path.parent / "output" / platform_id
-    prev_record_path = output_dir / "deploy-record.json"
+    prev_record_path = _record_dir / "deploy-record.json"
     if prev_record_path.exists():
         try:
             prev = json.loads(prev_record_path.read_text(encoding="utf-8"))

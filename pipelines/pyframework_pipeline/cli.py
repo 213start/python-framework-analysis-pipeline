@@ -84,6 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--platform", required=True, help="目标平台 ID")
     deploy_parser.add_argument("--plan", help="已有的 environment-plan.json 路径")
     deploy_parser.add_argument("--yes", action="store_true", help="跳过确认提示")
+    deploy_parser.add_argument("--output", help="输出目录（与 plan 共用）")
 
     # environment teardown
     teardown_parser = env_sub.add_parser(
@@ -436,8 +437,10 @@ def _cmd_env_deploy(args) -> int:
 
     project_path = Path(args.project)
     plan_path = Path(args.plan) if args.plan else None
+    output_dir = Path(args.output) if args.output else None
 
-    result = deploy_plan(project_path, args.platform, plan_path, yes=args.yes)
+    result = deploy_plan(project_path, args.platform, plan_path,
+                         output_dir=output_dir, yes=args.yes)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("status") != "failed" else 1
 
