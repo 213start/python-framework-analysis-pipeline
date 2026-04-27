@@ -42,6 +42,50 @@ def deploy_plan(
     -------
     dict with deployment summary.
     """
+
+    def _save_record(record: dict) -> None:
+        record_dir = project_path.parent / "output" / platform_id
+        record_dir.mkdir(parents=True, exist_ok=True)
+        (record_dir / "deploy-record.json").write_text(
+            json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _fail(step_id: str, description: str, command: str,
+              exit_code: int, stderr: str) -> dict[str, Any]:
+        """Build failure result and save record for resume."""
+        record_steps.append({
+            "id": step_id,
+            "status": "failed",
+            "exitCode": exit_code,
+            "command": command,
+            "description": description,
+            "note": stderr[:500],
+        })
+        failed_now = failed + 1
+        record = {
+            "schemaVersion": 1,
+            "platform": platform_id,
+            "startedAt": started_at,
+            "finishedAt": _now_iso(),
+            "mode": "full-auto",
+            "steps": record_steps,
+        }
+        _save_record(record)
+        return {
+            "status": "failed",
+            "platform": platform_id,
+            "passed": passed,
+            "failed": failed_now,
+            "skipped": skipped,
+            "failedStep": {
+                "id": step_id,
+                "description": description,
+                "command": command,
+                "exitCode": exit_code,
+                "stderr": stderr[:500],
+            },
+            "record": record,
+        }
     from ..config import load_environment_config
     from .planning import generate_plan
 
@@ -114,54 +158,14 @@ def deploy_plan(
             pkg_dir = Path(pyframework_pipeline.__file__).parent
             local_script = pkg_dir / script_path
             if not local_script.exists():
-                return {
-                    "status": "failed",
-                    "platform": platform_id,
-                    "passed": passed,
-                    "failed": failed,
-                    "skipped": skipped,
-                    "failedStep": {
-                        "id": step_id,
-                        "description": description,
-                        "command": command,
-                        "exitCode": -1,
-                        "stderr": f"Local script not found: {local_script}",
-                    },
-                    "record": {
-                        "schemaVersion": 1,
-                        "platform": platform_id,
-                        "startedAt": started_at,
-                        "finishedAt": _now_iso(),
-                        "mode": "full-auto",
-                        "steps": record_steps,
-                    },
-                }
+                return _fail(step_id, description, command, -1,
+                             f"Local script not found: {local_script}")
             remote_name = local_script.name
             logger.info("[Step %s] Uploading %s", step_id, script_path)
             uploaded = executor.push_file(local_script, f"/tmp/{remote_name}")
             if not uploaded:
-                return {
-                    "status": "failed",
-                    "platform": platform_id,
-                    "passed": passed,
-                    "failed": failed,
-                    "skipped": skipped,
-                    "failedStep": {
-                        "id": step_id,
-                        "description": description,
-                        "command": command,
-                        "exitCode": -1,
-                        "stderr": f"Failed to upload script {script_path}",
-                    },
-                    "record": {
-                        "schemaVersion": 1,
-                        "platform": platform_id,
-                        "startedAt": started_at,
-                        "finishedAt": _now_iso(),
-                        "mode": "full-auto",
-                        "steps": record_steps,
-                    },
-                }
+                return _fail(step_id, description, command, -1,
+                             f"Failed to upload script {script_path}")
 
         # Approval check.
         if requires_approval and not yes:
@@ -186,75 +190,14 @@ def deploy_plan(
             result = executor.run(command, timeout=step_timeout, stream=True)
         except Exception as exc:
             logger.error("[Step %s] SSH error: %s", step_id, exc)
-            record_steps.append({
-                "id": step_id,
-                "status": "failed",
-                "exitCode": -1,
-                "command": command,
-                "description": description,
-                "note": str(exc),
-            })
-            failed += 1
-            return {
-                "status": "failed",
-                "platform": platform_id,
-                "passed": passed,
-                "failed": failed,
-                "skipped": skipped,
-                "failedStep": {
-                    "id": step_id,
-                    "description": description,
-                    "command": command,
-                    "exitCode": -1,
-                    "stderr": str(exc),
-                },
-                "record": {
-                    "schemaVersion": 1,
-                    "platform": platform_id,
-                    "startedAt": started_at,
-                    "finishedAt": _now_iso(),
-                    "mode": "full-auto",
-                    "steps": record_steps,
-                },
-            }
+            return _fail(step_id, description, command, -1, str(exc))
 
         if result.returncode != 0:
             stderr_snippet = result.stderr[:500] if result.stderr else ""
             if result.returncode == 127 and not stderr_snippet:
                 stderr_snippet = "command not found in PATH (exit 127)"
             logger.error("[Step %s] Failed (exit %d)", step_id, result.returncode)
-            record_steps.append({
-                "id": step_id,
-                "status": "failed",
-                "exitCode": result.returncode,
-                "command": command,
-                "description": description,
-                "note": stderr_snippet,
-            })
-            failed += 1
-            # Abort: attach details so caller can surface them.
-            return {
-                "status": "failed",
-                "platform": platform_id,
-                "passed": passed,
-                "failed": failed,
-                "skipped": skipped,
-                "failedStep": {
-                    "id": step_id,
-                    "description": description,
-                    "command": command,
-                    "exitCode": result.returncode,
-                    "stderr": stderr_snippet,
-                },
-                "record": {
-                    "schemaVersion": 1,
-                    "platform": platform_id,
-                    "startedAt": started_at,
-                    "finishedAt": _now_iso(),
-                    "mode": "full-auto",
-                    "steps": record_steps,
-                },
-            }
+            return _fail(step_id, description, command, result.returncode, stderr_snippet)
         else:
             logger.info("[Step %s] Passed", step_id)
             record_steps.append({"id": step_id, "status": "passed", "exitCode": 0})
@@ -278,6 +221,8 @@ def deploy_plan(
         },
         "steps": record_steps,
     }
+
+    _save_record(record)
 
     return {
         "status": "failed" if failed > 0 else "completed",
