@@ -206,9 +206,14 @@ class PyFlinkEnvironmentAdapter:
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
                         f"'dpkg -s {pkg_str} >/dev/null 2>&1 || "
                         f"apt-get update && apt-get install -y {pkg_str}; "
+                        f"echo \"  perf debug: ls /usr/lib/linux-tools:\"; "
+                        f"ls /usr/lib/linux-tools/ 2>/dev/null || echo \"    (dir not found)\"; "
                         f"perf_real=$(find /usr/lib/linux-tools -name perf -type f 2>/dev/null | sort -V | tail -1); "
+                        f"echo \"  perf debug: found=$perf_real\"; "
                         f"if [ -n \"$perf_real\" ]; then "
-                        f"ln -sf $perf_real /usr/local/bin/perf; fi'"
+                        f"ln -sf $perf_real /usr/local/bin/perf; "
+                        f"echo \"  perf linked: /usr/local/bin/perf -> $perf_real\"; "
+                        f"else echo \"  perf debug: no binary found under /usr/lib/linux-tools\"; fi'"
                     ),
                     description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
                     mutatesHost=True,
