@@ -41,15 +41,18 @@ class GitHubClient:
         labels: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create an issue and return ``{"number": ..., "html_url": ...}``."""
+        logger.info("Creating issue in %s/%s: %s", owner, repo, title[:80])
         url = f"{self._base}/repos/{owner}/{repo}/issues"
         payload: dict[str, Any] = {"title": title, "body": body}
         if labels:
             payload["labels"] = labels
         data = self._request("POST", url, payload)
-        return {
+        result = {
             "number": data.get("number"),
             "html_url": data.get("html_url", ""),
         }
+        logger.info("Created issue #%s in %s/%s", result["number"], owner, repo)
+        return result
 
     def get_issue_comments(
         self,
@@ -58,6 +61,7 @@ class GitHubClient:
         issue_number: int,
     ) -> list[dict[str, Any]]:
         """Fetch all comments for *issue_number*, handling Link-header pagination."""
+        logger.info("Fetching comments for issue #%s in %s/%s", issue_number, owner, repo)
         comments: list[dict[str, Any]] = []
         url: str | None = (
             f"{self._base}/repos/{owner}/{repo}/issues/{issue_number}/comments"
@@ -67,7 +71,56 @@ class GitHubClient:
             for c in page:
                 comments.append({"body": c.get("body", ""), "id": c.get("id")})
             url = next_url
+        logger.info("Fetched %d comments for issue #%s", len(comments), issue_number)
         return comments
+
+    def update_issue(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        body: str,
+    ) -> None:
+        """Update the body of an existing issue."""
+        logger.info("Updating issue #%s body in %s/%s", issue_number, owner, repo)
+        url = f"{self._base}/repos/{owner}/{repo}/issues/{issue_number}"
+        self._request("PATCH", url, {"body": body})
+        logger.info("Updated issue #%s", issue_number)
+
+    def list_issues_by_label(
+        self,
+        owner: str,
+        repo: str,
+        label: str,
+    ) -> dict[str, dict[str, Any]]:
+        """List issues with *label*, keyed by title.
+
+        Returns ``{title: {"number": int, "html_url": str}}``.
+        """
+        logger.info("Listing issues with label %r in %s/%s", label, owner, repo)
+        result: dict[str, dict[str, Any]] = {}
+        page = 1
+        while True:
+            url = (
+                f"{self._base}/repos/{owner}/{repo}/issues"
+                f"?labels={label}&state=all&per_page=100&page={page}"
+            )
+            data = self._request("GET", url)
+            items = data if isinstance(data, list) else [data]
+            if not items:
+                break
+            for item in items:
+                title = item.get("title", "")
+                if title:
+                    result[title] = {
+                        "number": item.get("number"),
+                        "html_url": item.get("html_url", ""),
+                    }
+            if len(items) < 100:
+                break
+            page += 1
+        logger.info("Found %d issues with label %r", len(result), label)
+        return result
 
     def ensure_label(
         self,

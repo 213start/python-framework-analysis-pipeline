@@ -66,7 +66,7 @@ class ValidateCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["status"], "ok")
-        self.assertEqual(payload["projectId"], "tpch-pyflink-reference")
+        self.assertEqual(payload["projectId"], "pyflink-tpch-reference")
 
     def test_config_validate_rejects_placeholder_bridge_token(self) -> None:
         project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"

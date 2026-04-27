@@ -51,8 +51,26 @@ class ValidationReport:
 def validate_four_layer_project(path: Path) -> ValidationReport:
     root = resolve_four_layer_root(path).resolve()
     project = load_single_json(root / "projects", ".project.json")
-    project_id = str(project.get("id", "unknown-project"))
+
+    # Fallback: read project id from project.yaml when .project.json missing.
+    project_id = project.get("id")
+    if not project_id and (root / "project.yaml").exists():
+        from pyframework_pipeline.config import parse_simple_yaml
+        try:
+            project_id = parse_simple_yaml(root / "project.yaml").get("id")
+        except Exception:
+            pass
+    project_id = str(project_id or "unknown-project")
+
     report = ValidationReport(project_id=project_id, root=root)
+
+    # If no four-layer data exists yet, return ok (data not generated).
+    has_data = (
+        any((root / "datasets").glob("*.dataset.json"))
+        or any((root / "sources").glob("*.source.json"))
+    )
+    if not has_data:
+        return report
 
     framework = load_ref_json(root / "frameworks", project.get("frameworkRef"), ".framework.json", report)
     dataset = load_ref_json(root / "datasets", project.get("datasetRef"), ".dataset.json", report)
@@ -87,9 +105,11 @@ def validate_four_layer_project(path: Path) -> ValidationReport:
 
 
 def load_single_json(directory: Path, suffix: str) -> JsonObject:
+    if not directory.is_dir():
+        return {}
     matches = sorted(directory.glob(f"*{suffix}"))
-    if len(matches) != 1:
-        raise ValueError(f"Expected exactly one {suffix} in {directory}, found {len(matches)}")
+    if not matches:
+        return {}
     return load_json(matches[0])
 
 

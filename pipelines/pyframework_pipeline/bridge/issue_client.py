@@ -31,6 +31,25 @@ class IssueClient(Protocol):
         """Fetch all comments.  Returns list with ``body`` and ``id`` fields."""
         ...
 
+    def update_issue(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        body: str,
+    ) -> None:
+        """Update the body of an existing issue."""
+        ...
+
+    def list_issues_by_label(
+        self,
+        owner: str,
+        repo: str,
+        label: str,
+    ) -> dict[str, dict[str, Any]]:
+        """List issues with *label*, keyed by title."""
+        ...
+
     def ensure_label(
         self,
         owner: str,

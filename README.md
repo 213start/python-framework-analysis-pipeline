@@ -76,6 +76,8 @@
 
 Pipeline 按 Step 1→7 串行执行。从仓库根目录执行 `PYTHONPATH=pipelines python3 -m pyframework_pipeline <subcommand>`，要求 Python ≥ 3.10（无第三方依赖）。完整参数和排错见 [`pipelines/pyframework_pipeline/README.md`](pipelines/pyframework_pipeline/README.md)。
 
+运行目录结构约定：`projects/{project}/runs/{run_id}/`，每个平台有子目录 `{platform}/`。
+
 ### 流程步骤
 
 | Step | 名称 | CLI 子命令 | 输入 | 输出 |
@@ -88,6 +90,36 @@ Pipeline 按 Step 1→7 串行执行。从仓库根目录执行 `PYTHONPATH=pipe
 | **5c** | Acquire 汇总 | `acquire all` | • S5a/S5b 全部产物 | • `acquisition-manifest.json` |
 | **6** | Backfill 回填 | `backfill run` | • `timing-normalized.json`<br>• `perf_records.csv`<br>• `*.s`<br>• 四层 JSON | • `*.dataset.json`<br>• `*.source.json`<br>• `*.project.json` |
 | **7** | Bridge 桥接 | `bridge publish`<br>`bridge fetch` | • 四层 JSON (functions, artifacts)<br>• `PYFRAMEWORK_BRIDGE_TOKEN` | • GitHub/GitCode Issues |
+
+### 中间产物目录
+
+以 `runs/{run_id}/{platform}/` 为基准，各步骤产物存放位置如下：
+
+| 步骤 | 产物路径 | 内容 | 说明 |
+|------|---------|------|------|
+| 5a | `{platform}/timing/timing-normalized.json` | 每条 query 的 wall-clock / throughput / operator 计时 | benchmark 执行结果，带 artifact resume |
+| 5a | `{platform}/timing/timing-raw.json` | 原始计时数据（含 TM stdout 解析） | 中间格式 |
+| 5a | `{platform}/tm-stdout-tm{N}.log` | 每个 TM 最后 50 行日志 | 含 `[BENCHMARK_SUMMARY]` JSON |
+| 5b | `{platform}/perf/data/perf-{platform}.data` | `perf record` 采集的二进制 perf.data | 从容器 `/tmp/perf-udf.data` 拉取 |
+| 5b | `{platform}/perf/data/perf_records.csv` | python-performance-kits 解析结果 | 列：symbol, shared_object, count, ... |
+| 5b | `{platform}/asm/{arm64\|x86_64}/*.s` | 每个热点函数的 objdump 反汇编 | 按符号名命名，如 `memcpy_avx_erms.s` |
+| 5b | `{platform}/asm/objdump/*.s` | 整个 .so 的完整 objdump | 完整库反汇编备份 |
+| 5c | `{platform}/acquisition-manifest.json` | 汇总采集状态的 manifest | 记录各采集器状态和文件清单 |
+| 6 | `datasets/*.dataset.json` | 四层 Dataset（functions, cases, patterns, rootCauses） | 回填后更新 |
+| 6 | `sources/*.source.json` | 四层 Source（artifactIndex, sourceAnchors） | 含 filePath 或 content 引用 |
+| 6 | `projects/*.project.json` | 四层 Project（bindings） | 绑定 Dataset ↔ Source |
+| 7 | `bridge-manifest.json` | 已发布的 discussion/issue 清单 | 跟踪 status 和 issue_number |
+| — | `pipeline-run.json` | Pipeline 运行状态（已完成步骤、错误） | 支持 `--resume-from` |
+
+### 排查数据缺失
+
+**"No asm for XXX, skipping"** 意味着该函数在 `source.artifactIndex` 中没有对应的 asm 附件。按以下顺序排查：
+
+1. `{platform}/asm/{arch}/XXX.s` 文件是否存在 → 不存在说明 5b 步骤未采集到该符号
+2. `{platform}/perf/data/data/perf_records.csv` 中是否包含该符号 → 不存在说明 perf 热点采样未命中
+3. `{platform}/timing/timing-normalized.json` 中该 query 是否有 wall-clock 数据 → 确认 benchmark 是否跑过
+
+**源码为空** 意味着 `source.sourceAnchors` 中没有该函数的 snippet。检查 `sources/*.source.json` 中 `sourceAnchors` 是否包含 `functionId` 匹配项。
 
 ## 前端应用
 

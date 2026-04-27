@@ -372,78 +372,74 @@ def _run_benchmark(
 
     platform_run_dir = run_dir / platform
     platform_run_dir.mkdir(parents=True, exist_ok=True)
+    timing_path = platform_run_dir / "timing" / "timing-normalized.json"
 
     tm_count = _parse_tm_count(env_config)
 
-    # Ensure perf is available inside TM containers.
-    logger.info("[5a] Ensuring perf is available inside TM containers on %s...", platform)
-    _ensure_container_perf(executor, tm_count)
+    # --- Sub-step: run benchmark with perf (artifact: timing-normalized.json) ---
+    if timing_path.exists() and timing_path.stat().st_size > 0:
+        logger.info("[5a] timing-normalized.json exists, skipping benchmark on %s", platform)
+    else:
+        if not queries:
+            raise StepError("No queries configured")
 
-    # Clean stale perf data inside TM containers.
-    for i in range(1, tm_count + 1):
+        # Ensure perf + start recording.
+        logger.info("[5a] Ensuring perf and starting recording on %s...", platform)
+        _ensure_container_perf(executor, tm_count)
+        for i in range(1, tm_count + 1):
+            executor.run(
+                f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
+                timeout=30,
+            )
+        perf_binary = _find_container_perf(executor)
         executor.run(
-            f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
+            f"docker exec -d flink-tm1 {perf_binary} record "
+            f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data",
             timeout=30,
         )
 
-    # Start perf recording inside TM1 container (system-wide within container
-    # PID namespace, captures Python worker subprocesses).
-    perf_binary = _find_container_perf(executor)
-    logger.info("Starting perf record on %s (background via docker exec -d)...", platform)
-    executor.run(
-        f"docker exec -d flink-tm1 {perf_binary} record "
-        f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data",
-        timeout=30,
-    )
+        # Run queries.
+        import json as _json
 
-    # Run all queries while perf is recording, capture wall-clock times.
-    if not queries:
-        raise StepError("No queries configured")
+        wall_clock_times: dict[str, dict] = {}
 
-    import json as _json
-
-    wall_clock_times: dict[str, dict] = {}
-
-    for query in queries:
-        logger.info("Running query %s on %s...", query, platform)
-        result = executor.run(
-            f"docker exec flink-jm {python_bin} "
-            f"/opt/flink/usrlib/benchmark_runner.py "
-            f"--query {query} --rows {rows}",
-            timeout=300,
-            stream=True,
-        )
-        if result.returncode != 0:
-            raise StepError(
-                f"Benchmark {query} failed (exit {result.returncode}):\n"
-                f"  Command: docker exec flink-jm {python_bin} benchmark_runner.py --query {query} --rows {rows}\n"
-                f"  output: {result.stdout[-2000:]}"
+        for query in queries:
+            logger.info("[5a] Running query %s on %s...", query, platform)
+            result = executor.run(
+                f"docker exec flink-jm {python_bin} "
+                f"/opt/flink/usrlib/benchmark_runner.py "
+                f"--query {query} --rows {rows}",
+                timeout=300,
+                stream=True,
             )
+            if result.returncode != 0:
+                raise StepError(
+                    f"Benchmark {query} failed (exit {result.returncode}):\n"
+                    f"  Command: docker exec flink-jm {python_bin} benchmark_runner.py --query {query} --rows {rows}\n"
+                    f"  output: {result.stdout[-2000:]}"
+                )
 
-        # Parse BENCHMARK_RESULT from stdout.
-        wc = _parse_benchmark_result(result.stdout, query)
-        if wc:
-            wall_clock_times[query] = wc
-            logger.info("  %s: wall-clock %.3fs, throughput %s rows/s",
-                        query, wc["wallClockSeconds"], wc.get("throughputRowsPerSec", "-"))
+            wc = _parse_benchmark_result(result.stdout, query)
+            if wc:
+                wall_clock_times[query] = wc
+                logger.info("  %s: wall-clock %.3fs, throughput %s rows/s",
+                            query, wc["wallClockSeconds"], wc.get("throughputRowsPerSec", "-"))
 
-        for i in range(1, tm_count + 1):
-            logs = executor.docker_logs(f"flink-tm{i}", tail=50)
-            (platform_run_dir / f"tm-stdout-tm{i}.log").write_text(logs, encoding="utf-8")
+            for i in range(1, tm_count + 1):
+                logs = executor.docker_logs(f"flink-tm{i}", tail=50)
+                (platform_run_dir / f"tm-stdout-tm{i}.log").write_text(logs, encoding="utf-8")
 
-        # Collect per-invocation operator timing from TM worker stats file.
-        _collect_operator_timing(executor, tm_count, query, wall_clock_times)
+            _collect_operator_timing(executor, tm_count, query, wall_clock_times)
 
-    # Write wall-clock timing to timing-normalized.json.
-    _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
+        _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
-    # Stop perf inside TM1.
-    logger.info("[5a] Stopping perf record on %s...", platform)
-    executor.run(
-        "docker exec flink-tm1 bash -c 'kill -INT \\$(pidof perf) || true'",
-        timeout=30,
-    )
-    time.sleep(2)
+        # Stop perf.
+        logger.info("[5a] Stopping perf record on %s...", platform)
+        executor.run(
+            "docker exec flink-tm1 bash -c 'kill -INT \\$(pidof perf) || true'",
+            timeout=30,
+        )
+        time.sleep(2)
 
 
 def _collect_operator_timing(
@@ -700,31 +696,40 @@ def _run_collect(
         tm_container = "flink-tm1"
         logger.warning("Could not determine task TM via JM, falling back to %s", tm_container)
 
-    # Collect perf.data from TM container via docker cp + scp.
     perf_dir = platform_run_dir / "perf" / "data"
     perf_dir.mkdir(parents=True, exist_ok=True)
     perf_data_local = perf_dir / f"perf-{platform}.data"
-    if not perf_data_local.exists() or perf_data_local.stat().st_size == 0:
-        logger.info("[5b] Collecting perf.data from %s on %s...", tm_container, platform)
+    perf_csv = perf_dir / "perf_records.csv"
+
+    # --- Sub-step: collect perf.data (artifact: perf-{platform}.data) ---
+    if perf_data_local.exists() and perf_data_local.stat().st_size > 0:
+        logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
+                     perf_data_local.stat().st_size)
+    else:
+        logger.info("[5b.1] Collecting perf.data from %s on %s...", tm_container, platform)
         _collect_binary_from_container(
             executor,
             tm_container,
             "/tmp/perf-udf.data",
             perf_data_local,
         )
+
+    # --- Sub-step: run perf-kits pipeline (artifact: perf_records.csv) ---
+    if perf_csv.exists() and perf_csv.stat().st_size > 0:
+        logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
     else:
-        logger.info("perf.data already exists (%d bytes), skipping collection",
-                     perf_data_local.stat().st_size)
+        logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
+        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path)
 
-    # Run python-performance-kits pipeline on remote host (same architecture as perf.data).
-    logger.info("[5b] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
-    _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path)
-
-    # Collect objdump for hotspot symbols across all shared libraries.
-    logger.info("[5b] Collecting objdump for hotspot symbols on %s...", platform)
+    # --- Sub-step: collect ASM (artifact: *.s files) ---
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
     asm_dir.mkdir(parents=True, exist_ok=True)
-    _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform)
+    if list(asm_dir.glob("*.s")):
+        logger.info("[5b.3] ASM files exist (%d), skipping objdump on %s",
+                     len(list(asm_dir.glob("*.s"))), platform)
+    else:
+        logger.info("[5b.3] Collecting objdump for hotspot symbols on %s...", platform)
+        _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform)
 
     logger.info("Collection complete for %s", platform)
 
@@ -743,7 +748,7 @@ def _collect_asm_from_all_libs(
     """
     import csv
 
-    perf_csv = perf_dir / "data" / "perf_records.csv"
+    perf_csv = perf_dir / "perf_records.csv"
     if not perf_csv.exists():
         logger.warning("perf_records.csv not found, skipping multi-lib ASM collection")
         return

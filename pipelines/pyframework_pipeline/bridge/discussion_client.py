@@ -15,7 +15,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_SSL_CONTEXT = ssl._create_unverified_context()
+_SSL_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+_SSL_CONTEXT.check_hostname = False
+_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+_SSL_CONTEXT.set_ciphers("DEFAULT:@SECLEVEL=0")
+_SSL_CONTEXT.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
 
 _GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 _REQUEST_TIMEOUT = 30  # seconds
@@ -48,6 +52,7 @@ class DiscussionClient:
         body: str,
     ) -> dict[str, Any]:
         """Create a Discussion.  Returns ``{"number": ..., "url": ...}``."""
+        logger.info("Creating discussion: %s", title[:80])
         query = """
         mutation($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
           createDiscussion(input: {
@@ -73,10 +78,12 @@ class DiscussionClient:
         discussion = (
             data.get("createDiscussion", {}).get("discussion", {})
         )
-        return {
+        result = {
             "number": discussion.get("number"),
             "url": discussion.get("url", ""),
         }
+        logger.info("Created discussion #%s", result["number"])
+        return result
 
     def get_discussion_comments(
         self,
@@ -84,6 +91,7 @@ class DiscussionClient:
         repo: str,
         discussion_number: int,
     ) -> list[dict[str, Any]]:
+        logger.info("Fetching comments for discussion #%s", discussion_number)
         """Fetch threaded comments for a Discussion.
 
         Returns a list of top-level comments, each with a ``replies`` list::
@@ -142,9 +150,11 @@ class DiscussionClient:
                 "body": node.get("body", ""),
                 "replies": replies,
             })
+        logger.info("Fetched %d comments for discussion #%s", len(result), discussion_number)
         return result
 
     def get_repo_id(self, owner: str, repo: str) -> str:
+        logger.info("Resolving repo ID for %s/%s", owner, repo)
         """Get the GraphQL node ID for a repository."""
         query = """
         query($owner: String!, $repo: String!) {
@@ -158,6 +168,7 @@ class DiscussionClient:
         repo_id = data.get("repository", {}).get("id", "")
         if not repo_id:
             raise ValueError(f"Could not resolve repo ID for {owner}/{repo}")
+        logger.info("Resolved repo ID: %s", repo_id[:12] + "...")
         return repo_id
 
     def get_discussion_category_id(
@@ -165,6 +176,7 @@ class DiscussionClient:
         repo_id: str,
         category_name: str = "General",
     ) -> str:
+        logger.info("Looking up discussion category: %s", category_name)
         """Get the GraphQL ID for a Discussion category by name."""
         query = """
         query($repoId: ID!) {
@@ -189,6 +201,7 @@ class DiscussionClient:
         )
         for cat in categories:
             if cat.get("name", "").lower() == category_name.lower():
+                logger.info("Found category %r (id: %s)", cat["name"], cat["id"][:12] + "...")
                 return cat["id"]
         # Fallback: return first category if name doesn't match.
         if categories:
@@ -201,6 +214,114 @@ class DiscussionClient:
         raise ValueError(
             f"No discussion categories found (looking for {category_name!r})"
         )
+
+    def update_discussion_body(
+        self,
+        owner: str,
+        repo: str,
+        discussion_number: int,
+        body: str,
+    ) -> None:
+        """Update the body of an existing Discussion."""
+        logger.info("Updating discussion #%s body", discussion_number)
+        node_id = self._get_discussion_node_id(owner, repo, discussion_number)
+        query = """
+        mutation($discussionId: ID!, $body: String!) {
+          updateDiscussion(input: {
+            discussionId: $discussionId,
+            body: $body
+          }) {
+            discussion {
+              number
+            }
+          }
+        }
+        """
+        variables = {"discussionId": node_id, "body": body}
+        self._graphql(query, variables)
+        logger.info("Updated discussion #%s", discussion_number)
+
+    def list_discussions(
+        self,
+        owner: str,
+        repo: str,
+    ) -> dict[str, dict[str, Any]]:
+        """List all discussions, keyed by title.
+
+        Returns ``{title: {"number": int, "url": str}}``.
+        """
+        logger.info("Listing discussions in %s/%s", owner, repo)
+        query = """
+        query($owner: String!, $repo: String!, $first: Int!, $after: String) {
+          repository(owner: $owner, name: $repo) {
+            discussions(first: $first, after: $after) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                number
+                title
+                url
+              }
+            }
+          }
+        }
+        """
+        result: dict[str, dict[str, Any]] = {}
+        cursor: str | None = None
+        while True:
+            variables = {"owner": owner, "repo": repo, "first": 100, "after": cursor}
+            data = self._graphql(query, variables)
+            page = (
+                data.get("repository", {})
+                .get("discussions", {})
+            )
+            for node in page.get("nodes", []):
+                result[node["title"]] = {
+                    "number": node.get("number"),
+                    "url": node.get("url", ""),
+                }
+            page_info = page.get("pageInfo", {})
+            if page_info.get("hasNextPage"):
+                cursor = page_info["endCursor"]
+            else:
+                break
+        logger.info("Found %d discussions in %s/%s", len(result), owner, repo)
+        return result
+
+    def _get_discussion_node_id(
+        self,
+        owner: str,
+        repo: str,
+        discussion_number: int,
+    ) -> str:
+        """Resolve a discussion number to its GraphQL node ID."""
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            discussion(number: $number) {
+              id
+            }
+          }
+        }
+        """
+        variables = {
+            "owner": owner,
+            "repo": repo,
+            "number": discussion_number,
+        }
+        data = self._graphql(query, variables)
+        node_id = (
+            data.get("repository", {})
+            .get("discussion", {})
+            .get("id", "")
+        )
+        if not node_id:
+            raise ValueError(
+                f"Could not resolve node ID for discussion #{discussion_number}"
+            )
+        return node_id
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -124,30 +124,22 @@ class TestSubStepLogging(unittest.TestCase):
 
     def test_benchmark_has_step_labels(self):
         """_run_benchmark must log key sub-steps with [5a] prefix."""
-        # Find _run_benchmark function body
         content = SRC
-        self.assertIn("[5a]", content, "Missing [5a] step labels in _run_benchmark")
-
-        # Must have labels for: perf check, perf start, perf stop, query run
-        required_labels = [
-            "Ensuring perf",
-            "Starting perf record",
-            "Stopping perf record",
-        ]
-        for label in required_labels:
-            self.assertIn(label, content, f"Missing log line containing '{label}'")
+        self.assertIn("[5a] timing-normalized.json exists", content,
+                      "Missing [5a] artifact check label")
+        self.assertIn("[5a] Ensuring perf", content,
+                      "Missing [5a] perf start label")
+        self.assertIn("[5a] Running query", content,
+                      "Missing [5a] query run label")
+        self.assertIn("[5a] Stopping perf", content,
+                      "Missing [5a] perf stop label")
 
     def test_collect_has_step_labels(self):
-        """_run_collect must log key sub-steps with [5b] prefix."""
-        self.assertIn("[5b]", content := SRC, "Missing [5b] step labels in _run_collect")
-
-        required_labels = [
-            "Collecting perf.data",
-            "Running perf-kits",
-            "Collecting objdump",
-        ]
-        for label in required_labels:
-            self.assertIn(label, content, f"Missing log line containing '{label}'")
+        """_run_collect must log key sub-steps with [5b.N] prefix."""
+        content = SRC
+        self.assertIn("[5b.1]", content, "Missing [5b.1] step label")
+        self.assertIn("[5b.2]", content, "Missing [5b.2] step label")
+        self.assertIn("[5b.3]", content, "Missing [5b.3] step label")
 
 
 class TestStreamOutputCapturedInErrors(unittest.TestCase):
@@ -185,6 +177,30 @@ class TestStreamOutputCapturedInErrors(unittest.TestCase):
                     break
 
         self.assertEqual(errors, [], "\n".join(errors))
+
+
+class TestSubStepArtifactChecks(unittest.TestCase):
+    """Each sub-step must check its artifact before running."""
+
+    def test_benchmark_queries_check_timing_json(self):
+        """[5a] must check timing-normalized.json before running queries."""
+        self.assertIn("timing_path.exists()", SRC,
+                      "Missing timing-normalized.json artifact check before queries")
+
+    def test_collect_perf_data_checks_file_size(self):
+        """[5b.1] must check perf-{platform}.data exists and size > 0."""
+        self.assertIn("perf_data_local.exists()", SRC,
+                      "Missing perf.data artifact check before collection")
+
+    def test_perf_kits_checks_csv(self):
+        """[5b.2] must check perf_records.csv exists before running perf-kits."""
+        self.assertIn("perf_csv.exists()", SRC,
+                      "Missing perf_records.csv artifact check before perf-kits")
+
+    def test_asm_checks_s_files(self):
+        """[5b.3] must check *.s files exist before running objdump."""
+        self.assertIn('asm_dir.glob("*.s")', SRC,
+                      "Missing *.s artifact check before ASM collection")
 
 
 if __name__ == "__main__":

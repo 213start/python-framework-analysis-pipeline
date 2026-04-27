@@ -136,13 +136,19 @@ def validate_pipeline_config(
             if not root.exists():
                 add("fourLayerRoot", f"fourLayerRoot does not exist: {root}")
             else:
-                from .validators.four_layer import validate_four_layer_project
-                report = validate_four_layer_project(project_path)
-                if report.status != "ok":
-                    add(
-                        "fourLayerRoot",
-                        f"four-layer validation failed with {len(report.errors)} errors",
-                    )
+                # Skip four-layer validation if data hasn't been generated yet.
+                has_data = (
+                    any((root / "datasets").glob("*.dataset.json"))
+                    and any((root / "sources").glob("*.source.json"))
+                )
+                if has_data:
+                    from .validators.four_layer import validate_four_layer_project
+                    report = validate_four_layer_project(project_path)
+                    if report.status != "ok":
+                        add(
+                            "fourLayerRoot",
+                            f"four-layer validation failed with {len(report.errors)} errors",
+                        )
 
     env_path = project_path.parent / "environment.yaml"
     env_config: dict[str, Any] = {}

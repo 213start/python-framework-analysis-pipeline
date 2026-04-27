@@ -1,6 +1,6 @@
 id: pyflink-tpch-reference
 name: PyFlink TPC-H Reference
-fourLayerRoot: ../../examples/four-layer/pyflink-reference
+fourLayerRoot: .
 
 workload:
   localDir: ../../workload/tpch/pyflink
@@ -17,7 +17,7 @@ workload:
     - q19
 
 bridge:
-  repo: sisibeloved/spark
+  repo: sisibeloved/flink
   platform: github
   type: discussion
   category: General

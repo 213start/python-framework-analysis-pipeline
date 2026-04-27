@@ -35,6 +35,33 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _upsert_manifest_entry(
+    manifest: BridgeManifest,
+    function_id: str,
+    platform: str,
+    repo: str,
+    issue_number: int,
+    issue_url: str,
+) -> None:
+    """Insert or update a manifest entry for *function_id*."""
+    for e in manifest.issues:
+        if e.function_id == function_id:
+            e.issue_number = issue_number
+            e.issue_url = issue_url
+            e.status = "created"
+            return
+    manifest.issues.append(BridgeIssueEntry(
+        issue_type="asm-diff",
+        function_id=function_id,
+        platform=platform,
+        repo=repo,
+        issue_number=issue_number,
+        issue_url=issue_url,
+        status="created",
+        created_at=_now_iso(),
+    ))
+
+
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -174,24 +201,28 @@ def publish(
             except Exception:
                 logger.warning("Failed to create label (may already exist)")
 
-    # Track functions already published.
-    existing = {
-        e.function_id for e in manifest.issues if e.status != "failed"
-    }
+    # Fetch remote state: map title → {number, url}.
+    remote_map: dict[str, dict[str, Any]] = {}
+    if not dry_run:
+        if use_discussion:
+            assert discussion_client is not None
+            remote_map = discussion_client.list_discussions(owner, repo_name)
+        else:
+            assert issue_client is not None
+            remote_map = issue_client.list_issues_by_label(
+                owner, repo_name, _LABEL_ASM_DIFF,
+            )
+        logger.info("Remote has %d existing discussions/issues", len(remote_map))
 
     functions = dataset.get("functions", [])
     published: list[dict[str, Any]] = []
     skipped = 0
+    updated = 0
     errors = 0
 
     for func in functions:
         func_id = func.get("id", "")
         symbol = func.get("symbol", "<unknown>")
-
-        if func_id in existing:
-            logger.info("Skipping %s (already published)", symbol)
-            skipped += 1
-            continue
 
         # Collect ARM and x86 assembly.
         arm_asm = None
@@ -237,62 +268,73 @@ def publish(
             })
             continue
 
+        existing_remote = remote_map.get(issue["title"])
+
         try:
-            if use_discussion:
-                assert discussion_client is not None
-                assert repo_id is not None
-                category_id = discussion_client.get_discussion_category_id(
-                    repo_id, discussion_category,
+            if existing_remote:
+                # Update existing discussion/issue body.
+                number = existing_remote["number"]
+                url = existing_remote.get("url") or existing_remote.get("html_url", "")
+                logger.info("Updating %s → #%s (already exists)", symbol, number)
+                if use_discussion:
+                    assert discussion_client is not None
+                    discussion_client.update_discussion_body(
+                        owner, repo_name, number, issue["body"],
+                    )
+                else:
+                    assert issue_client is not None
+                    issue_client.update_issue(
+                        owner, repo_name, number, issue["body"],
+                    )
+                _upsert_manifest_entry(
+                    manifest, func_id, platform, repo, number, url,
                 )
-                result = discussion_client.create_discussion(
-                    repo_id=repo_id,
-                    category_id=category_id,
-                    title=issue["title"],
-                    body=issue["body"],
-                )
-                entry = BridgeIssueEntry(
-                    issue_type="asm-diff",
-                    function_id=func_id,
-                    platform=platform,
-                    repo=repo,
-                    issue_number=result.get("number", 0),
-                    issue_url=result.get("url", ""),
-                    status="created",
-                    created_at=_now_iso(),
-                    extra={"bridge_type": "discussion"},
-                )
+                published.append({
+                    "symbol": symbol,
+                    "issue_number": number,
+                    "issue_url": url,
+                })
+                updated += 1
             else:
-                assert issue_client is not None
-                result = issue_client.create_issue(
-                    owner=owner,
-                    repo=repo_name,
-                    title=issue["title"],
-                    body=issue["body"],
-                    labels=[_LABEL_ASM_DIFF],
+                # Create new discussion/issue.
+                if use_discussion:
+                    assert discussion_client is not None
+                    assert repo_id is not None
+                    category_id = discussion_client.get_discussion_category_id(
+                        repo_id, discussion_category,
+                    )
+                    result = discussion_client.create_discussion(
+                        repo_id=repo_id,
+                        category_id=category_id,
+                        title=issue["title"],
+                        body=issue["body"],
+                    )
+                    number = result.get("number", 0)
+                    url = result.get("url", "")
+                else:
+                    assert issue_client is not None
+                    result = issue_client.create_issue(
+                        owner=owner,
+                        repo=repo_name,
+                        title=issue["title"],
+                        body=issue["body"],
+                        labels=[_LABEL_ASM_DIFF],
+                    )
+                    number = result.get("number", 0)
+                    url = result.get("html_url", "")
+                _upsert_manifest_entry(
+                    manifest, func_id, platform, repo, number, url,
                 )
-                entry = BridgeIssueEntry(
-                    issue_type="asm-diff",
-                    function_id=func_id,
-                    platform=platform,
-                    repo=repo,
-                    issue_number=result.get("number", 0),
-                    issue_url=result.get("html_url", ""),
-                    status="created",
-                    created_at=_now_iso(),
-                    extra={"bridge_type": "issue"},
-                )
+                published.append({
+                    "symbol": symbol,
+                    "issue_number": number,
+                    "issue_url": url,
+                })
+                logger.info("Published %s → #%s", symbol, number)
         except Exception as exc:
             logger.error("Failed to publish %s: %s", symbol, exc)
             errors += 1
             continue
-
-        manifest.issues.append(entry)
-        published.append({
-            "symbol": symbol,
-            "issue_number": entry.issue_number,
-            "issue_url": entry.issue_url,
-        })
-        logger.info("Published %s → #%s", symbol, entry.issue_number)
 
     # Save manifest.
     manifest.write(manifest_path)
@@ -300,6 +342,7 @@ def publish(
     return {
         "total_functions": len(functions),
         "published": len(published),
+        "updated": updated,
         "skipped": skipped,
         "errors": errors,
         "issues": published,

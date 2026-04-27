@@ -100,20 +100,23 @@ def run_backfill(
     return 0
 
 
-def _load_layers(root: Path) -> tuple | None:
-    """Load Dataset, Source, and Project JSON from the four-layer root."""
+def _load_layers(root: Path) -> tuple:
+    """Load Dataset, Source, and Project JSON from the four-layer root.
+
+    Returns empty templates for any layer that has no existing file.
+    """
     dataset = _load_single_json(root / "datasets", ".dataset.json")
     source = _load_single_json(root / "sources", ".source.json")
     project_data = _load_single_json(root / "projects", ".project.json")
 
-    if dataset is None or source is None or project_data is None:
-        return None
-
     return dataset, source, project_data
 
 
-def _load_single_json(directory: Path, suffix: str) -> dict | None:
-    """Load the single JSON file matching *suffix* in *directory*."""
+def _load_single_json(directory: Path, suffix: str) -> dict:
+    """Load the single JSON file matching *suffix* in *directory*.
+
+    Returns empty dict if directory or file doesn't exist.
+    """
     if not directory.is_dir():
         return {}
     matches = list(directory.glob(f"*{suffix}"))
@@ -124,7 +127,7 @@ def _load_single_json(directory: Path, suffix: str) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
         logger.error("Failed to load %s: %s", path, e)
-        return None
+        return {}
 
 
 def _merge_bindings(project_data: dict, new_bindings: dict, valid_func_ids: set[str]) -> None:
