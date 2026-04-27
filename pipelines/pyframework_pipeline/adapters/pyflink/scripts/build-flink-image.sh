@@ -396,7 +396,7 @@ if [ "$TM_COUNT_ACTUAL" -lt "$TM_COUNT" ]; then
     echo "  WARNING: Only $TM_COUNT_ACTUAL/$TM_COUNT TMs registered!"
 fi
 
-curl -sf http://localhost:8081/overview | python3 -c 'import sys,json; d=json.load(sys.stdin); print(f"  Slots: {d[\"slots-number\"]}, TMs: {d[\"taskmanagers\"]}")'
+curl -sf http://localhost:8081/overview | python3 -c 'import sys,json; d=json.load(sys.stdin); print("  Slots: %s, TMs: %s" % (d["slots-number"], d["taskmanagers"]))'
 
 # Install perf inside containers
 echo "  Installing profiling tools..."
