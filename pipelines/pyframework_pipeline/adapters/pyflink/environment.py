@@ -205,7 +205,7 @@ class PyFlinkEnvironmentAdapter:
                     command=(
                         f"docker exec -u root {docker_proxy_flags} {name} bash -c "
                         f"'dpkg -s {pkg_str} >/dev/null 2>&1 || "
-                        f"{{ apt-get update && apt-get install -y {pkg_str}; }}; "
+                        f"apt-get update && apt-get install -y {pkg_str}; "
                         f"perf_real=$(find /usr/lib/linux-tools -name perf -type f 2>/dev/null | sort -V | tail -1); "
                         f"if [ -n \"$perf_real\" ]; then "
                         f"ln -sf $perf_real /usr/local/bin/perf; fi'"
