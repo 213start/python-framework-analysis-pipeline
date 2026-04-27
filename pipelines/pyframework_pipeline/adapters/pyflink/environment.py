@@ -152,11 +152,13 @@ class PyFlinkEnvironmentAdapter:
             kind="framework-readiness",
             hostRef=host,
             command=(
-                f"docker start flink-jm {tm_names} 2>/dev/null || true; "
-                f"sleep 5; "
                 f"for i in $(seq 1 30); do "
                 f"docker exec flink-jm curl -f http://localhost:8081/overview && exit 0; "
-                f"sleep 2; done; exit 1"
+                f"if [ $i -eq 1 ]; then "
+                f"echo '  Flink not responding, restarting cluster...'; "
+                f"docker restart flink-jm {tm_names}; "
+                f"sleep 10; "
+                f"else sleep 2; fi; done; exit 1"
             ),
             description=f"Start cluster if stopped, then check health on {host_alias}",
             timeout=120,
