@@ -107,6 +107,19 @@ class PipelineRunState:
                 break
         self._save()
 
+    def clear_from(self, step: str) -> None:
+        """Remove state entries for *step* and all subsequent steps."""
+        step_ids = [d["step"] for d in STEP_DEFS]
+        if step not in step_ids:
+            return
+        cutoff = step_ids.index(step)
+        clear_ids = set(step_ids[cutoff:])
+        self.data["steps"] = [
+            s for s in self.data.get("steps", [])
+            if s["step"] not in clear_ids
+        ]
+        self._save()
+
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
@@ -158,6 +171,8 @@ def run_pipeline(
     if resume_from:
         if resume_from in step_ids:
             start_idx = step_ids.index(resume_from)
+            state.clear_from(resume_from)
+            logger.info("Resuming from step %s — cleared downstream state", resume_from)
         else:
             logger.error("Unknown step: %s. Valid: %s", resume_from, step_ids)
             return 1
