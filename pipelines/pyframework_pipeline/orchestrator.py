@@ -321,6 +321,7 @@ def _run_workload_deploy(
             raise StepError(
                 f"Container build failed (exit {result.returncode}):\n"
                 f"  Command: docker exec flink-jm bash -c 'cd {remote_dir} && ./build.sh'\n"
+                f"  stdout: {result.stdout[:500]}\n"
                 f"  stderr: {result.stderr[:500]}"
             )
 
@@ -330,6 +331,7 @@ def _run_workload_deploy(
         raise StepError(
             f"Failed to copy workload to JM (exit {jm_result.returncode}):\n"
             f"  Command: docker cp {remote_dir}/. flink-jm:/opt/flink/usrlib\n"
+            f"  stdout: {jm_result.stdout[:500]}\n"
             f"  stderr: {jm_result.stderr[:500]}"
         )
 
@@ -341,6 +343,7 @@ def _run_workload_deploy(
             raise StepError(
                 f"Failed to copy workload to TM{i} (exit {tm_result.returncode}):\n"
                 f"  Command: docker cp {remote_dir}/. flink-tm{i}:/opt/flink/usrlib\n"
+                f"  stdout: {tm_result.stdout[:500]}\n"
                 f"  stderr: {tm_result.stderr[:500]}"
             )
 
@@ -406,6 +409,7 @@ def _run_benchmark(
             raise StepError(
                 f"Benchmark {query} failed (exit {result.returncode}):\n"
                 f"  Command: docker exec flink-jm python3 benchmark_runner.py --query {query} --rows {rows}\n"
+                f"  stdout: {result.stdout[:500]}\n"
                 f"  stderr: {result.stderr[:500]}"
             )
 
@@ -522,6 +526,7 @@ def _ensure_container_perf(
     if check.returncode != 0 or not check.stdout.strip():
         raise StepError(
             f"Could not install perf inside TM container (exit {check.returncode}):\n"
+            f"  stdout: {check.stdout[:500]}\n"
             f"  stderr: {check.stderr[:500]}"
         )
     return check.stdout.strip()
