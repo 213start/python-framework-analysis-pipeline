@@ -366,6 +366,7 @@ def _run_benchmark(
     tm_count = _parse_tm_count(env_config)
 
     # Ensure perf is available inside TM containers.
+    logger.info("[5a] Ensuring perf is available inside TM containers on %s...", platform)
     _ensure_container_perf(executor, tm_count)
 
     # Clean stale perf data inside TM containers.
@@ -378,10 +379,10 @@ def _run_benchmark(
     # Start perf recording inside TM1 container (system-wide within container
     # PID namespace, captures Python worker subprocesses).
     perf_binary = _find_container_perf(executor)
+    logger.info("Starting perf record on %s (background via docker exec -d)...", platform)
     executor.run(
-        f"nohup docker exec flink-tm1 {perf_binary} record "
-        f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data "
-        f">/dev/null 2>&1 &",
+        f"docker exec -d flink-tm1 {perf_binary} record "
+        f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data",
         timeout=30,
     )
 
@@ -426,8 +427,9 @@ def _run_benchmark(
     _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
     # Stop perf inside TM1.
+    logger.info("[5a] Stopping perf record on %s...", platform)
     executor.run(
-        "docker exec flink-tm1 bash -c 'kill -INT $(pidof perf) || true'",
+        "docker exec flink-tm1 bash -c 'kill -INT \\$(pidof perf) || true'",
         timeout=30,
     )
     time.sleep(2)
@@ -641,7 +643,7 @@ def _run_collect(
     perf_dir.mkdir(parents=True, exist_ok=True)
     perf_data_local = perf_dir / f"perf-{platform}.data"
     if not perf_data_local.exists() or perf_data_local.stat().st_size == 0:
-        logger.info("Collecting perf.data from %s...", tm_container)
+        logger.info("[5b] Collecting perf.data from %s on %s...", tm_container, platform)
         _collect_binary_from_container(
             executor,
             tm_container,
@@ -653,9 +655,11 @@ def _run_collect(
                      perf_data_local.stat().st_size)
 
     # Run python-performance-kits pipeline on remote host (same architecture as perf.data).
+    logger.info("[5b] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
     _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform)
 
     # Collect objdump for hotspot symbols across all shared libraries.
+    logger.info("[5b] Collecting objdump for hotspot symbols on %s...", platform)
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
     asm_dir.mkdir(parents=True, exist_ok=True)
     _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform)
