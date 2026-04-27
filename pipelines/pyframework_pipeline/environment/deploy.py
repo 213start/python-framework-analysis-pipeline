@@ -67,6 +67,22 @@ def deploy_plan(
     host_ref = get_platform_host_ref(env_config, platform_id)
     executor = build_executor(host_ref, env_config)
 
+    # Resume: load previous record and skip already-passed steps.
+    passed_ids: set[str] = set()
+    output_dir = project_path.parent / "output" / platform_id
+    prev_record_path = output_dir / "deploy-record.json"
+    if prev_record_path.exists():
+        try:
+            prev = json.loads(prev_record_path.read_text(encoding="utf-8"))
+            for s in prev.get("steps", []):
+                if s.get("status") == "passed":
+                    passed_ids.add(s["id"])
+            if passed_ids:
+                logger.info("Resuming: skipping %d already-passed steps: %s",
+                            len(passed_ids), ", ".join(sorted(passed_ids)))
+        except (json.JSONDecodeError, KeyError):
+            logger.warning("Could not parse previous deploy record, starting fresh")
+
     # Execute steps.
     record_steps: list[dict[str, Any]] = []
     passed = 0
@@ -84,6 +100,13 @@ def deploy_plan(
         step_timeout = step.get("timeout", 0) or 120
 
         logger.info("[Step %s] %s", step_id, description)
+
+        # Skip already-passed steps from previous run.
+        if step_id in passed_ids:
+            logger.info("[Step %s] Already passed, skipping", step_id)
+            record_steps.append({"id": step_id, "status": "passed", "note": "resumed"})
+            passed += 1
+            continue
 
         # Upload local script if specified.
         if script_path:
