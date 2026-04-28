@@ -145,10 +145,8 @@ def validate_pipeline_config(
                     from .validators.four_layer import validate_four_layer_project
                     report = validate_four_layer_project(project_path)
                     if report.status != "ok":
-                        add(
-                            "fourLayerRoot",
-                            f"four-layer validation failed with {len(report.errors)} errors",
-                        )
+                        for err in report.errors:
+                            add("fourLayerRoot", f"[{err.code}] {err.message}")
 
     env_path = project_path.parent / "environment.yaml"
     env_config: dict[str, Any] = {}
