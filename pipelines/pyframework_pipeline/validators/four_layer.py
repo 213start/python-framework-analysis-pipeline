@@ -72,14 +72,12 @@ def validate_four_layer_project(path: Path) -> ValidationReport:
     if not has_data:
         return report
 
-    framework = _load_layer_if_populated(root, "frameworks", project.get("frameworkRef"), ".framework.json", report)
-    dataset = load_ref_json(root / "datasets", project.get("datasetRef"), ".dataset.json", report)
-    source = load_ref_json(root / "sources", project.get("sourceRef"), ".source.json", report)
+    framework = _load_layer(root, "frameworks", project.get("frameworkRef"), ".framework.json", report)
+    dataset = _load_layer(root, "datasets", project.get("datasetRef"), ".dataset.json", report)
+    source = _load_layer(root, "sources", project.get("sourceRef"), ".source.json", report)
     if not dataset or not source:
         return report
     if not framework:
-        # Framework layer not yet populated — skip framework-dependent checks.
-        return report
         return report
 
     validate_schema(framework, "framework.schema.json", "Framework", report)
@@ -137,6 +135,24 @@ def _load_layer_if_populated(
     if not any(directory.glob(f"*{suffix}")):
         return None
     return load_ref_json(directory, ref, suffix, report)
+
+
+def _load_layer(
+    root: Path, dirname: str, ref: Any, suffix: str, report: ValidationReport,
+) -> JsonObject | None:
+    """Load a layer JSON by ref or auto-discovery.
+
+    - Directory empty → return None (layer not yet populated).
+    - Ref provided and file exists → load via ref (strict).
+    - Ref missing but directory has a file → auto-discover (lenient).
+    """
+    directory = root / dirname
+    if not any(directory.glob(f"*{suffix}")):
+        return None
+    if isinstance(ref, str) and ref:
+        return load_ref_json(directory, ref, suffix, report)
+    # No ref — auto-discover the single file in directory.
+    return load_single_json(directory, suffix)
 
 
 def load_json(path: Path) -> JsonObject:

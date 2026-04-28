@@ -123,6 +123,62 @@ class TestValidatePartialData(unittest.TestCase):
                 f"{[e.to_dict() for e in report.errors]}",
             )
 
+    def test_auto_discover_without_project_refs(self) -> None:
+        """Backfill created dataset + source files but .project.json has no refs.
+
+        The validator should auto-discover files by scanning the directories
+        instead of reporting missing_ref for every layer.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "four-layer"
+            root.mkdir()
+
+            # Dataset.
+            ds_dir = root / "datasets"
+            ds_dir.mkdir()
+            ds_data = {
+                "id": "tpch",
+                "frameworkId": "tpch",
+                "cases": [],
+                "functions": [],
+                "patterns": [],
+                "rootCauses": [],
+                "stackOverview": {"categories": [], "components": []},
+            }
+            (ds_dir / "tpch.dataset.json").write_text(
+                json.dumps(ds_data), encoding="utf-8",
+            )
+
+            # Source.
+            src_dir = root / "sources"
+            src_dir.mkdir()
+            src_data = {
+                "id": "tpch",
+                "frameworkId": "tpch",
+                "repo": {"url": "https://github.com/test/repo"},
+                "sourceFiles": [],
+                "sourceAnchors": [],
+                "artifactIndex": [],
+            }
+            (src_dir / "tpch.source.json").write_text(
+                json.dumps(src_data), encoding="utf-8",
+            )
+
+            # Project JSON exists but has no refs at all (empty backfill output).
+            proj_dir = root / "projects"
+            proj_dir.mkdir()
+            proj_data = {"id": "tpch"}
+            (proj_dir / "tpch.project.json").write_text(
+                json.dumps(proj_data), encoding="utf-8",
+            )
+
+            report = validate_four_layer_project(root)
+            self.assertEqual(
+                report.status, "ok",
+                f"Expected ok for auto-discovered data, got errors: "
+                f"{[e.to_dict() for e in report.errors]}",
+            )
+
     def test_full_data_validates_ok(self) -> None:
         """All four layers present — should validate without errors."""
         with tempfile.TemporaryDirectory() as tmp:
