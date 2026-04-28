@@ -201,5 +201,38 @@ class TestSubStepArtifactChecks(unittest.TestCase):
                       "Missing *.s artifact check before ASM collection")
 
 
+class TestBenchmarkArgsMatch(unittest.TestCase):
+    """Arguments passed to benchmark_runner.py must match its argparse."""
+
+    @classmethod
+    def setUpClass(cls):
+        runner_path = (
+            Path(__file__).resolve().parents[2]
+            / "workload" / "tpch" / "pyflink" / "benchmark_runner.py"
+        )
+        cls.runner_src = runner_path.read_text(encoding="utf-8")
+        # Extract valid --flag names from benchmark_runner.py argparse.
+        cls.valid_flags = set(re.findall(
+            r'add_argument\("(--[^"]+)"', cls.runner_src,
+        ))
+
+    def test_orchestrator_uses_valid_benchmark_args(self):
+        """Every --flag after benchmark_runner.py in orchestrator must exist."""
+        errors = []
+        for m in re.finditer(
+            r"benchmark_runner\.py\s+([^\"]+?)(?:\"|\s*$)",
+            SRC, re.MULTILINE,
+        ):
+            arg_str = m.group(1)
+            flags = re.findall(r"(--\w[\w-]*)", arg_str)
+            for flag in flags:
+                if flag not in self.valid_flags:
+                    errors.append(
+                        f"orchestrator passes {flag} to benchmark_runner.py "
+                        f"but it only accepts: {sorted(self.valid_flags)}"
+                    )
+        self.assertEqual(errors, [], "\n".join(errors))
+
+
 if __name__ == "__main__":
     unittest.main()
