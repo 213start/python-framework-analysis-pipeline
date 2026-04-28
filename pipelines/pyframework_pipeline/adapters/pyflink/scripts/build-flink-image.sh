@@ -351,6 +351,29 @@ apt-get update -qq && apt-get install -y -qq \
 perf_real=\$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1)
 if [ -n \"\$perf_real\" ]; then ln -sf \$perf_real /usr/local/bin/perf; fi
 echo '  Profiling tools (perf, strace, objdump, gdb, readelf) installed into image'
+
+# Ensure PyFlink UDF runner script exists (may be missing with --no-build-isolation).
+PYFLINK_DIR=\$($PYTHON -c 'import pyflink; import os; print(os.path.dirname(pyflink.__file__))')
+PYFLINK_BIN=\$PYFLINK_DIR/bin
+mkdir -p \$PYFLINK_BIN
+if [ ! -f \$PYFLINK_BIN/pyflink-udf-runner.sh ]; then
+    cat > \$PYFLINK_BIN/pyflink-udf-runner.sh << 'RUNNER'
+#!/usr/bin/env bash
+python=\${python:-python}
+if [ -n \"\$_PYTHON_WORKING_DIR\" ]; then
+    cd \"\$_PYTHON_WORKING_DIR\"
+    if [[ \"\$python\" == \${_PYTHON_WORKING_DIR}* ]]; then
+        chmod +x \"\$python\"
+    fi
+fi
+log=\"\${BOOT_LOG_DIR}/flink-python-udf-boot.log\"
+\${python} -m pyflink.fn_execution.beam.beam_boot \"\$@\" 2>&1 | tee \${log}
+RUNNER
+    chmod +x \$PYFLINK_BIN/pyflink-udf-runner.sh
+    echo '  Created pyflink-udf-runner.sh (was missing from pip install)'
+else
+    echo '  pyflink-udf-runner.sh already exists'
+fi
 "
 
 # Commit the image

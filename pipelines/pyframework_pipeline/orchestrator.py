@@ -474,6 +474,7 @@ def _run_benchmark(
         logger.info("[5a] Deploying perf wrapper on %s...", platform)
         _ensure_container_perf(executor, tm_count, include_jm=True)
         perf_binary = _find_container_perf(executor)
+        _ensure_pyflink_runner(executor, python_bin)
         _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary, include_jm=True)
 
         # Verify wrapper was deployed correctly.
@@ -628,6 +629,53 @@ def _ensure_container_perf(
         "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
         timeout=30,
     ).stdout.strip()
+
+
+def _ensure_pyflink_runner(executor: "SshExecutor", python_bin: str) -> None:
+    """Ensure pyflink-udf-runner.sh exists in the JM container.
+
+    May be missing when apache-flink is installed with --no-build-isolation.
+    """
+    check = executor.run(
+        f"docker exec flink-jm {python_bin} -c "
+        "'import pyflink, os; print(os.path.join(os.path.dirname(pyflink.__file__), \"bin\", \"pyflink-udf-runner.sh\"))'",
+        timeout=15,
+    )
+    if check.returncode != 0:
+        logger.warning("[5a] Could not locate pyflink package dir: %s", check.stderr.strip())
+        return
+
+    runner_path = check.stdout.strip()
+    exists = executor.run(f"docker exec flink-jm test -f {runner_path}", timeout=10)
+    if exists.returncode == 0:
+        logger.info("[5a] pyflink-udf-runner.sh exists at %s", runner_path)
+        return
+
+    logger.info("[5a] pyflink-udf-runner.sh missing, creating at %s", runner_path)
+    import base64
+
+    runner_script = (
+        '#!/usr/bin/env bash\n'
+        'python=${python:-python}\n'
+        'if [ -n "$_PYTHON_WORKING_DIR" ]; then\n'
+        '    cd "$_PYTHON_WORKING_DIR"\n'
+        '    if [[ "$python" == ${_PYTHON_WORKING_DIR}* ]]; then\n'
+        '        chmod +x "$python"\n'
+        '    fi\n'
+        'fi\n'
+        'log="${BOOT_LOG_DIR}/flink-python-udf-boot.log"\n'
+        '${python} -m pyflink.fn_execution.beam.beam_boot "$@" 2>&1 | tee ${log}\n'
+    )
+    encoded = base64.b64encode(runner_script.encode()).decode()
+    bin_dir = runner_path.rsplit("/", 1)[0]
+    executor.run(
+        f"docker exec flink-jm bash -c "
+        f"'mkdir -p {bin_dir} && "
+        f"echo {encoded} | base64 -d > {runner_path} && "
+        f"chmod +x {runner_path}'",
+        timeout=15,
+    )
+    logger.info("[5a] Created pyflink-udf-runner.sh")
 
 
 def _parse_benchmark_result(stdout: str, query_id: str) -> dict | None:
