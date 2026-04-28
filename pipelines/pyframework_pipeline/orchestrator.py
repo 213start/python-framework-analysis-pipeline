@@ -447,10 +447,20 @@ def _run_benchmark(
     tm_count = _parse_tm_count(env_config)
 
     # When resuming, re-deploy workload so the latest benchmark_runner.py
-    # is in the container.  Don't remove old artifacts — the step-level
-    # existence checks handle skipping completed work.
+    # is in the container.
     if force:
         _run_workload_deploy(project_path, run_dir, platform)
+        removed = []
+        for old in [
+            platform_run_dir / "timing" / "timing-normalized.json",
+            platform_run_dir / "timing" / "timing-raw.json",
+            platform_run_dir / "perf" / "data" / f"perf-{platform}.data",
+        ]:
+            if old.exists():
+                old.unlink()
+                removed.append(old.relative_to(run_dir))
+        if removed:
+            logger.info("[5a] Force: removed old artifacts: %s", removed)
 
     # --- Sub-step: run benchmark with perf (artifact: timing-normalized.json) ---
     if timing_path.exists() and timing_path.stat().st_size > 0:
@@ -1209,11 +1219,15 @@ def _run_perf_kits_on_remote(
     # Collect outputs from container via host staging.
     host_output = "/tmp/pyframework-perf-kits-output"
     executor.run(f"rm -rf {host_output}", timeout=30)
-    executor.run(
+    cp_result = executor.run(
         f"docker cp {container}:{container_output}/ {host_output}",
-        timeout=60,
+        timeout=120,
         stream=True,
     )
+    if cp_result.returncode != 0:
+        raise StepError(
+            f"docker cp perf-kits output failed: {cp_result.stdout}"
+        )
 
     for remote_rel in [
         "data/perf_records.csv",
@@ -1227,8 +1241,8 @@ def _run_perf_kits_on_remote(
         executor.fetch_file(remote_path, local_path)
         logger.info("Collected %s", remote_rel)
 
-    # Cleanup.
-    executor.run(f"docker exec {container} rm -rf {container_kits} {container_output}", timeout=30)
+    # Cleanup host staging only (keep container output for inspection).
+    executor.run(f"docker exec {container} rm -rf {container_kits}", timeout=30)
     executor.run(f"rm -rf {host_output}", timeout=30)
 
 
