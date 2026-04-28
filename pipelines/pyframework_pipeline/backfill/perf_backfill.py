@@ -378,6 +378,9 @@ def _filter_python_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
         sym = (row.get("symbol") or "").strip()
         if sym.startswith("0x") or sym == "[unknown]":
             continue
+        # Skip raw hex addresses without 0x prefix (unresolved IPs from perf).
+        if len(sym) >= 8 and all(c in "0123456789abcdef" for c in sym.lower()):
+            continue
         if sym in _KERNEL_IDLE_SYMBOLS:
             continue
 

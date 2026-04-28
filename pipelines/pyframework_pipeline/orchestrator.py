@@ -941,7 +941,7 @@ def _find_so_in_container(
     base = os.path.basename(so_name)
     is_so = base.endswith(".so") or ".so." in base
     lib_dirs = "/usr/lib /usr/local/lib /opt /lib"
-    bin_dirs = "/usr/local/bin /usr/bin /opt"
+    bin_dirs = "/usr/local/bin /usr/bin /opt /root/.pyenv /root"
 
     # Try exact match in common paths.
     search_dirs = f"{lib_dirs} {bin_dirs}" if not is_so else lib_dirs
@@ -961,10 +961,10 @@ def _find_so_in_container(
             timeout=15,
         )
     else:
-        # Non-.so (e.g. python3.14 static binary): search bin + lib paths.
+        # Non-.so (e.g. python3.14 static binary): search bin + lib + pyenv paths.
         find_result = executor.run(
             f"docker exec {container} find {lib_dirs} {bin_dirs} -name '*{stem}*' -type f 2>/dev/null | head -3",
-            timeout=15,
+            timeout=30,
         )
     if find_result.returncode == 0 and find_result.stdout.strip():
         candidates = [p.strip() for p in find_result.stdout.strip().splitlines() if p.strip()]
@@ -1025,6 +1025,9 @@ def _collect_asm_from_all_libs(
                 sym = (row.get("symbol") or "").strip()
                 so = (row.get("shared_object") or "").strip()
                 if not sym or sym.startswith("0x") or so in ("", "[unknown]"):
+                    continue
+                # Skip raw hex addresses without 0x prefix (unresolved IPs).
+                if len(sym) >= 8 and all(c in "0123456789abcdef" for c in sym.lower()):
                     continue
                 if so == "[kernel.kallsyms]":
                     continue
