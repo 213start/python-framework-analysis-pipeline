@@ -604,59 +604,30 @@ def _ensure_container_perf(
     tm_count: int,
     include_jm: bool = False,
 ) -> str:
-    """Install linux-tools inside containers if perf is not available."""
-    # Check if perf already exists on TM1.
-    tm_check = executor.run(
-        "docker exec flink-tm1 bash -c "
-        "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
-        timeout=30,
-    )
-    tm_ok = tm_check.returncode == 0 and tm_check.stdout.strip()
-
-    # Check JM separately if needed.
-    jm_ok = True
+    """Verify perf is available in containers (installed during image build)."""
+    containers = []
     if include_jm:
-        jm_check = executor.run(
-            "docker exec flink-jm bash -c "
+        containers.append("flink-jm")
+    containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
+
+    for c in containers:
+        check = executor.run(
+            f"docker exec {c} bash -c "
             "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
             timeout=30,
         )
-        jm_ok = jm_check.returncode == 0 and jm_check.stdout.strip()
-
-    if tm_ok and jm_ok:
-        return tm_check.stdout.strip()
-
-    # Install on containers that need it.
-    containers = []
-    if include_jm and not jm_ok:
-        containers.append("flink-jm")
-    if not tm_ok:
-        containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
-
-    if containers:
-        logger.info("Installing linux-tools inside %s...", ", ".join(containers))
-        for c in containers:
-            executor.run(
-                f"docker exec -u root {c} bash -c "
-                f"'apt-get update -qq && apt-get install -y -qq "
-                f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
-                timeout=120,
-                stream=True,
+        if check.returncode != 0 or not check.stdout.strip():
+            raise StepError(
+                f"perf not found in {c}. linux-tools must be installed "
+                f"during image build (build-flink-image.sh Phase 5).\n"
+                f"  stdout: {check.stdout[:500]}\n"
+                f"  stderr: {check.stderr[:500]}"
             )
-
-    # Verify.
-    check = executor.run(
+    return executor.run(
         "docker exec flink-tm1 bash -c "
         "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
         timeout=30,
-    )
-    if check.returncode != 0 or not check.stdout.strip():
-        raise StepError(
-            f"Could not install perf inside TM container (exit {check.returncode}):\n"
-            f"  stdout: {check.stdout[:500]}\n"
-            f"  stderr: {check.stderr[:500]}"
-        )
-    return check.stdout.strip()
+    ).stdout.strip()
 
 
 def _parse_benchmark_result(stdout: str, query_id: str) -> dict | None:

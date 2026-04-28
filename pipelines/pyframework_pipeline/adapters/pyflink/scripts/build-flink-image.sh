@@ -341,6 +341,11 @@ echo '  Fixed flink user Python access'
 rm -rf /tmp/pip-* /tmp/python-build.* /tmp/*.whl /tmp/pyarrow-src /tmp/fix_pip*.py /tmp/verify*.py /tmp/pyarrow-build /tmp/arrow-apt.deb
 $PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip cache purge
 echo '  Cleaned up build artifacts'
+
+# Install perf (linux-tools) into the image so containers don't
+# need to install it on every restart.
+apt-get update -qq && apt-get install -y -qq linux-tools-common linux-tools-generic 2>&1 | tail -1
+echo '  perf (linux-tools) installed into image'
 "
 
 # Commit the image
@@ -440,12 +445,6 @@ if [ "$TM_COUNT_ACTUAL" -lt "$TM_COUNT" ]; then
 fi
 
 curl -sf http://localhost:8081/overview | python3 -c 'import sys,json; d=json.load(sys.stdin); print("  Slots: %s, TMs: %s" % (d["slots-number"], d["taskmanagers"]))'
-
-# Install perf inside containers
-echo "  Installing profiling tools..."
-for c in flink-jm $(for i in $(seq 1 "$TM_COUNT"); do echo "flink-tm$i"; done); do
-    docker exec $DOCKER_PROXY_FLAGS -u root "$c" bash -c 'apt-get update -qq && apt-get install -y linux-tools-common linux-tools-generic' || true
-done
 
 echo ""
 echo "=== BUILD COMPLETE ==="
