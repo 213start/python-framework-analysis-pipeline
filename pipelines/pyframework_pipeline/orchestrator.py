@@ -457,11 +457,12 @@ def _run_benchmark(
         if not queries:
             raise StepError("No queries configured")
 
-        # Deploy perf wrapper script to TM containers.
-        logger.info("[5a] Deploying perf wrapper to TM containers on %s...", platform)
-        _ensure_container_perf(executor, tm_count)
+        # Deploy perf wrapper script.  Install perf on JM + TMs because
+        # Python workers run inside the JM in local execution mode.
+        logger.info("[5a] Deploying perf wrapper on %s...", platform)
+        _ensure_container_perf(executor, tm_count, include_jm=True)
         perf_binary = _find_container_perf(executor)
-        _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary)
+        _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary, include_jm=True)
 
         # Verify wrapper was deployed correctly.
         wrapper_check = executor.run(
@@ -589,8 +590,9 @@ def _collect_operator_timing(
 def _ensure_container_perf(
     executor: "SshExecutor",
     tm_count: int,
+    include_jm: bool = False,
 ) -> str:
-    """Install linux-tools inside TM containers if perf is not available."""
+    """Install linux-tools inside containers if perf is not available."""
     # Check if perf already exists inside TM1.
     check = executor.run(
         "docker exec flink-tm1 bash -c "
@@ -600,10 +602,15 @@ def _ensure_container_perf(
     if check.returncode == 0 and check.stdout.strip():
         return check.stdout.strip()
 
-    logger.info("Installing linux-tools inside TM containers...")
-    for i in range(1, tm_count + 1):
+    containers = []
+    if include_jm:
+        containers.append("flink-jm")
+    containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
+
+    logger.info("Installing linux-tools inside %s...", ", ".join(containers))
+    for c in containers:
         executor.run(
-            f"docker exec -u root flink-tm{i} bash -c "
+            f"docker exec -u root {c} bash -c "
             f"'apt-get update -qq && apt-get install -y -qq "
             f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
             timeout=120,
@@ -743,8 +750,9 @@ def _deploy_perf_wrapper(
     tm_count: int,
     python_bin: str,
     perf_binary: str,
+    include_jm: bool = False,
 ) -> None:
-    """Deploy perf wrapper script to TM containers.
+    """Deploy perf wrapper script to containers.
 
     The wrapper uses ``exec perf record ... -- python "$@"`` so that perf
     wraps the entire Python UDF worker lifecycle.  Flink's
@@ -764,16 +772,17 @@ def _deploy_perf_wrapper(
     encoded = base64.b64encode(script.encode()).decode()
 
     wrapper_path = "/tmp/_perf_python_wrapper.sh"
-    # Deploy to JM (where Python workers run in local execution mode)
-    # and all TMs (where workers run in remote/cluster mode).
-    containers = ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]
-    for container in containers:
+    containers = []
+    if include_jm:
+        containers.append("flink-jm")
+    containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
+    for c in containers:
         executor.run(
-            f"docker exec {container} rm -f /tmp/perf-udf.data",
+            f"docker exec {c} rm -f /tmp/perf-udf.data",
             timeout=30,
         )
         executor.run(
-            f"docker exec {container} bash -c "
+            f"docker exec {c} bash -c "
             f"'echo {encoded} | base64 -d > {wrapper_path} && "
             f"chmod +x {wrapper_path}'",
             timeout=30,
