@@ -713,7 +713,7 @@ def _ensure_jar(executor: "SshExecutor") -> None:
         return
     logger.info("[5a] JAR not found, building inside JM container...")
     result = executor.run(
-        "docker exec -u root flink-jm bash -c "
+        "docker exec flink-jm bash -c "
         "'cd /opt/flink/usrlib/java-udf && bash build.sh'",
         timeout=120,
         stream=True,
