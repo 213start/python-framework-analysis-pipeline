@@ -564,10 +564,11 @@ def _collect_operator_timing(
     containers = ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]
     for c in containers:
         label = "JM" if c == "flink-jm" else c.replace("flink-", "").upper()
+        # No --tail limit: BENCHMARK_SUMMARY may be thousands of lines back
+        # after multiple queries with verbose Flink output.
         result = executor.run(
-            f"docker logs {c} --tail 500 2>&1 | "
-            f"grep BENCHMARK_SUMMARY | tail -1",
-            timeout=60,
+            f"docker logs {c} 2>&1 | grep BENCHMARK_SUMMARY | tail -1",
+            timeout=120,
         )
         if result.returncode == 0 and "BENCHMARK_SUMMARY" in (result.stdout or ""):
             try:
@@ -1366,9 +1367,19 @@ def _run_acquire_all(project_path: Path, run_dir: Path, *, force: bool = False) 
 
     for plat in platforms:
         plat_dir = run_dir / plat
-        stdout_files = list(plat_dir.glob("tm-stdout-*.log"))
-        timing_result = collect_timing(plat_dir, plat, stdout_files or None)
-        logger.info("Timing %s: %d cases", plat, len(timing_result.get("cases", [])))
+        # Step 5a's _merge_wall_clock_times writes timing-normalized.json
+        # directly from container logs.  Only fall back to log-file parsing
+        # if step 5a didn't produce the file.
+        timing_file = plat_dir / "timing" / "timing-normalized.json"
+        if timing_file.exists() and timing_file.stat().st_size > 10:
+            import json as _json
+            existing = _json.loads(timing_file.read_text(encoding="utf-8"))
+            cases = existing.get("cases", [])
+            logger.info("Timing %s: %d cases (from step 5a)", plat, len(cases))
+        else:
+            stdout_files = list(plat_dir.glob("tm-stdout-*.log"))
+            timing_result = collect_timing(plat_dir, plat, stdout_files or None)
+            logger.info("Timing %s: %d cases", plat, len(timing_result.get("cases", [])))
 
         # Perf-kits and objdump already ran on remote in step 5b.
         # The local collect_perf/collect_asm would fail because the binaries
