@@ -8,6 +8,8 @@ so that symbols from ALL libraries (not just libpython) are collected.
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import re
 import subprocess
 from collections import Counter
@@ -181,15 +183,31 @@ def collect_asm(
         if result.returncode != 0 or not result.stdout:
             continue
 
+        # Load existing symbol map for hash→symbol resolution.
+        sym_map_path = asm_dir / "symbol_map.json"
+        try:
+            symbol_map = json.loads(sym_map_path.read_text(encoding="utf-8")) if sym_map_path.exists() else {}
+        except (json.JSONDecodeError, OSError):
+            symbol_map = {}
+
         for sym in syms:
-            out_file = asm_dir / f"{sym}.s"
+            sym_hash = hashlib.md5(sym.encode()).hexdigest()[:8]
+            out_file = asm_dir / f"{sym_hash}.s"
             if out_file.exists() and out_file.stat().st_size > 0:
                 continue
             content = _extract_symbol(result.stdout, sym)
             if content.strip():
                 out_file.write_text(content, encoding="utf-8")
+                symbol_map[sym_hash] = sym
                 hotspot_files.append(str(out_file.relative_to(run_dir)))
                 collected_syms += 1
+
+        # Persist updated symbol map.
+        if symbol_map:
+            sym_map_path.write_text(
+                json.dumps(symbol_map, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     return {
         "status": "collected" if (hotspot_files or objdump_files) else "skipped",

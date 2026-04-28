@@ -772,6 +772,26 @@ def _run_collect(
     logger.info("Collection complete for %s", platform)
 
 
+def _load_symbol_map(asm_dir: Path) -> dict[str, str]:
+    """Load hash→symbol mapping from symbol_map.json."""
+    map_path = asm_dir / "symbol_map.json"
+    if map_path.exists():
+        try:
+            return json.loads(map_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_symbol_map(asm_dir: Path, symbol_map: dict[str, str]) -> None:
+    """Persist hash→symbol mapping alongside .s files."""
+    if symbol_map:
+        (asm_dir / "symbol_map.json").write_text(
+            json.dumps(symbol_map, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
 def _collect_asm_from_all_libs(
     executor: "SshExecutor",
     perf_dir: Path,
@@ -844,8 +864,12 @@ def _collect_asm_from_all_libs(
         full_dump = objdump_result.stdout
 
         # Extract each symbol's disassembly from the full dump.
+        symbol_map = _load_symbol_map(asm_dir)
         for sym in syms:
-            if (asm_dir / f"{sym}.s").exists() and (asm_dir / f"{sym}.s").stat().st_size > 0:
+            import hashlib as _hashlib
+            sym_hash = _hashlib.md5(sym.encode()).hexdigest()[:8]
+            safe_name = f"{sym_hash}.s"
+            if (asm_dir / safe_name).exists() and (asm_dir / safe_name).stat().st_size > 0:
                 continue  # Already collected (e.g. from a previous library)
 
             # Use awk-style extraction: lines between "<sym>:" and next empty line.
@@ -866,9 +890,11 @@ def _collect_asm_from_all_libs(
 
             content = "\n".join(lines)
             if content.strip():
-                (asm_dir / f"{sym}.s").write_text(content, encoding="utf-8")
+                (asm_dir / safe_name).write_text(content, encoding="utf-8")
+                symbol_map[sym_hash] = sym
                 logger.info("  Collected %s (%d lines)", sym, len(lines))
 
+    _save_symbol_map(asm_dir, symbol_map)
     logger.info("ASM collection: %d files in %s", len(list(asm_dir.glob("*.s"))), asm_dir)
 
 

@@ -214,8 +214,9 @@ def _populate_diff_view(
 def _discover_asm_files(run_dir: Path, platform_dirs: tuple[str, ...]) -> dict[str, Path]:
     """Find .s files under ``<run_dir>/asm/<sub>/``.
 
-    Returns ``{symbol_name: absolute_path}`` where *symbol_name* is the
-    filename stem (without the ``.s`` extension).
+    Returns ``{symbol_name: absolute_path}``.  Resolves hashed filenames
+    via ``symbol_map.json`` sidecar files; falls back to using the stem
+    as the symbol name for backwards compatibility.
     """
     result: dict[str, Path] = {}
     asm_root = run_dir / "asm"
@@ -226,10 +227,19 @@ def _discover_asm_files(run_dir: Path, platform_dirs: tuple[str, ...]) -> dict[s
         sub_dir = asm_root / sub
         if not sub_dir.is_dir():
             continue
+
+        # Load symbol_map.json if it exists (hash → symbol).
+        map_path = sub_dir / "symbol_map.json"
+        hash_to_sym: dict[str, str] = {}
+        if map_path.exists():
+            try:
+                hash_to_sym = json.loads(map_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                hash_to_sym = {}
+
         for s_file in sorted(sub_dir.glob("*.s")):
-            symbol = s_file.stem
-            # First discovery wins — avoids duplicates when both arm64/ and
-            # arm/ happen to exist with overlapping content.
+            stem = s_file.stem
+            symbol = hash_to_sym.get(stem, stem)
             if symbol not in result:
                 result[symbol] = s_file
     return result
