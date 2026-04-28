@@ -372,12 +372,14 @@ if docker inspect flink-jm >/dev/null 2>&1; then
         docker run -d --name flink-jm --hostname flink-jm --network "$NETWORK" \
             -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
             -p 8081:8081 \
+            --privileged \
             "$IMAGE_NAME" jobmanager
     fi
 else
     docker run -d --name flink-jm --hostname flink-jm --network "$NETWORK" \
         -e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' \
         -p 8081:8081 \
+        --privileged \
         "$IMAGE_NAME" jobmanager
     echo "  Started flink-jm"
 fi

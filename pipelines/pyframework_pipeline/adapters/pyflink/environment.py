@@ -109,18 +109,28 @@ class PyFlinkEnvironmentAdapter:
         ))
 
         # Step 2: Start JobManager
+        # JM needs --privileged for perf_event_open (same as TMs).
+        jm_run_args = (
+            f"docker run -d --name flink-jm --network {network} "
+            f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
+            f"-p 8081:8081 --privileged {image} jobmanager"
+        )
         steps.append(PlanStep(
             id="start-jobmanager",
             kind="framework-start",
             hostRef=host,
-            command=_docker_reconcile_container(
-                name="flink-jm",
-                image=image,
-                run_args=(
-                f"docker run -d --name flink-jm --network {network} "
-                f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
-                f"-p 8081:8081 {image} jobmanager"
-                ),
+            command=(
+                # Recreate if existing JM lacks --privileged.
+                f"if docker inspect flink-jm >/dev/null 2>&1; then "
+                f"priv=$(docker inspect -f '{{{{.HostConfig.Privileged}}}}' flink-jm); "
+                f"if [ \"$priv\" != \"true\" ]; then "
+                f"echo 'Recreating flink-jm with --privileged'; "
+                f"docker rm -f flink-jm; fi; fi && "
+                + _docker_reconcile_container(
+                    name="flink-jm",
+                    image=image,
+                    run_args=jm_run_args,
+                )
             ),
             description=f"Start JobManager container on {host_alias}",
             mutatesHost=True,
