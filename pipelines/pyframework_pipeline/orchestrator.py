@@ -129,6 +129,29 @@ class PipelineRunState:
 
 
 # ---------------------------------------------------------------------------
+# Orchestrator helpers
+# ---------------------------------------------------------------------------
+
+def _init_submodules(repo_root: Path) -> None:
+    """Initialise git submodules if vendor directories are missing."""
+    gitmodules = repo_root / ".gitmodules"
+    if not gitmodules.exists():
+        return
+    import subprocess
+    try:
+        subprocess.run(
+            ["git", "submodule", "update", "--init"],
+            cwd=str(repo_root),
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        logger.info("Initialised git submodules in %s", repo_root)
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        logger.warning("Failed to init git submodules: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -869,6 +892,8 @@ def _run_perf_kits_on_remote(
         repo_root = Path(__file__).resolve().parents[2]
     kits_local = repo_root / "vendor" / "python-performance-kits"
     scripts_dir = kits_local / "scripts" / "perf_insights"
+    if not scripts_dir.exists():
+        _init_submodules(repo_root)
     if not scripts_dir.exists():
         logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
         return
