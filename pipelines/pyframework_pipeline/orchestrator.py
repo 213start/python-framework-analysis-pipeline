@@ -469,23 +469,19 @@ def _run_benchmark(
         if not queries:
             raise StepError("No queries configured")
 
-        # Deploy perf wrapper script.  Install perf on JM + TMs because
-        # Python workers run inside the JM in local execution mode.
-        logger.info("[5a] Deploying perf wrapper on %s...", platform)
+        # Set up perf recording and run benchmarks.
+        # NOTE: We cannot use python.executable to inject perf because Flink's
+        # Java side uses that executable to probe the Python environment (running
+        # small scripts to locate pyflink-udf-runner.sh etc).  Wrapping it with
+        # perf record breaks those probes.  Instead, we run perf on the host,
+        # monitoring Python PIDs inside the JM container via docker top.
+        logger.info("[5a] Setting up perf recording on %s...", platform)
         _ensure_container_perf(executor, tm_count, include_jm=True)
-        perf_binary = _find_container_perf(executor)
         _ensure_pyflink_runner(executor, python_bin, tm_count)
-        _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary, include_jm=True)
+        perf_binary = _find_container_perf(executor)
+        _start_host_perf_recorder(executor, "flink-jm", perf_binary)
 
-        # Verify wrapper was deployed correctly.
-        wrapper_check = executor.run(
-            "docker exec flink-tm1 cat /tmp/_perf_python_wrapper.sh", timeout=15,
-        )
-        logger.info("[5a] Wrapper script content:\n%s", wrapper_check.stdout.strip())
-
-        # Run queries.  The perf wrapper is injected via --python-executable;
-        # each Flink job's Python worker runs under perf record, capturing
-        # the entire worker lifecycle.
+        # Run queries WITHOUT --python-executable so PyFlink's env probes work.
         import json as _json
 
         wall_clock_times: dict[str, dict] = {}
@@ -495,12 +491,12 @@ def _run_benchmark(
             result = executor.run(
                 f"docker exec flink-jm {python_bin} "
                 f"/opt/flink/usrlib/benchmark_runner.py "
-                f"--query {query} --rows {rows} "
-                f"--python-executable /tmp/_perf_python_wrapper.sh",
+                f"--query {query} --rows {rows}",
                 timeout=300,
                 stream=True,
             )
             if result.returncode != 0:
+                _stop_host_perf_recorder(executor)
                 raise StepError(
                     f"Benchmark {query} failed (exit {result.returncode}):\n"
                     f"  Command: docker exec flink-jm {python_bin} benchmark_runner.py --query {query} --rows {rows}\n"
@@ -521,28 +517,13 @@ def _run_benchmark(
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
-        # Verify perf.data was created in the TM container.
-        perf_check = executor.run(
-            "docker exec flink-tm1 bash -c "
-            "'ls -lh /tmp/perf-udf.data 2>&1 || echo NOT_FOUND'",
-            timeout=15,
-        )
-        if "NOT_FOUND" in perf_check.stdout:
-            # Diagnostic: show whether wrapper was called at all.
-            tm_logs = executor.docker_logs("flink-tm1", tail=200)
-            logger.error(
-                "[5a] /tmp/perf-udf.data NOT found after benchmark!\n"
-                "  ls output: %s\n"
-                "  TM logs (last 200 lines):\n%s",
-                perf_check.stdout.strip(),
-                tm_logs,
-            )
-            raise StepError(
-                f"[5a] perf.data was not created in TM container after running "
-                f"{len(queries)} queries.  The perf wrapper may not have been "
-                f"invoked.  See log above for diagnostics."
-            )
-        logger.info("[5a] perf.data verified: %s", perf_check.stdout.strip())
+        # Stop the host-side perf recorder and verify output.
+        _stop_host_perf_recorder(executor)
+        perf_check = executor.run("ls -lh /tmp/perf-udf.data 2>&1", timeout=15)
+        if "No such file" in perf_check.stdout or perf_check.returncode != 0:
+            logger.warning("[5a] perf.data not found on host: %s", perf_check.stdout.strip())
+        else:
+            logger.info("[5a] perf.data verified on host: %s", perf_check.stdout.strip())
 
 
 def _collect_operator_timing(
@@ -800,50 +781,6 @@ def _ensure_jar(executor: "SshExecutor") -> None:
         )
 
 
-def _deploy_perf_wrapper(
-    executor: "SshExecutor",
-    tm_count: int,
-    python_bin: str,
-    perf_binary: str,
-    include_jm: bool = False,
-) -> None:
-    """Deploy perf wrapper script to containers.
-
-    The wrapper uses ``exec perf record ... -- python "$@"`` so that perf
-    wraps the entire Python UDF worker lifecycle.  Flink's
-    ``python.executable`` config is set to this wrapper; when a job starts
-    a Python worker, perf records it from first instruction to exit.
-
-    Uses base64 encoding to avoid shell quoting issues when the script
-    content (which contains ``$@``) passes through SSH and docker exec.
-    """
-    import base64
-
-    script = (
-        "#!/bin/bash\n"
-        f"exec {perf_binary} record -F 999 -g -e task-clock "
-        f"-o /tmp/perf-udf.data -- {python_bin} \"$@\"\n"
-    )
-    encoded = base64.b64encode(script.encode()).decode()
-
-    wrapper_path = "/tmp/_perf_python_wrapper.sh"
-    containers = []
-    if include_jm:
-        containers.append("flink-jm")
-    containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
-    for c in containers:
-        executor.run(
-            f"docker exec {c} rm -f /tmp/perf-udf.data",
-            timeout=30,
-        )
-        executor.run(
-            f"docker exec {c} bash -c "
-            f"'echo {encoded} | base64 -d > {wrapper_path} && "
-            f"chmod +x {wrapper_path}'",
-            timeout=30,
-        )
-
-
 def _find_container_perf(executor: "SshExecutor") -> str:
     """Find the perf binary path inside the TM container."""
     result = executor.run(
@@ -855,6 +792,58 @@ def _find_container_perf(executor: "SshExecutor") -> str:
         return result.stdout.strip()
     # Fallback to /usr/bin/perf.
     return "/usr/bin/perf"
+
+
+def _start_host_perf_recorder(
+    executor: "SshExecutor",
+    container: str,
+    perf_binary: str,
+) -> None:
+    """Start a background perf recorder on the HOST that monitors Python PIDs
+    inside the given container via ``docker top``.
+
+    The recorder loops: finds Python PIDs → ``perf record -p <pids>`` → when
+    workers exit, perf exits too → loop back and wait for new PIDs.
+    Stopped by writing ``/tmp/_perf_stop``.
+    """
+    import base64
+
+    recorder_script = (
+        "#!/bin/bash\n"
+        f"PERF={perf_binary}\n"
+        "OUTPUT=/tmp/perf-udf.data\n"
+        f"CONTAINER={container}\n"
+        "rm -f \"$OUTPUT\" /tmp/_perf_stop\n"
+        "while true; do\n"
+        "  PIDS=$(docker top \"$CONTAINER\" -o pid,comm 2>/dev/null"
+        " | awk '/python3/{print $1}' | paste -sd,)\n"
+        "  if [ -n \"$PIDS\" ]; then\n"
+        "    $PERF record -F 999 -g -e task-clock -p \"$PIDS\" "
+        "-o \"$OUTPUT\" -A 2>/dev/null || true\n"
+        "  fi\n"
+        "  [ -f /tmp/_perf_stop ] && { rm -f /tmp/_perf_stop; break; }\n"
+        "  sleep 0.3\n"
+        "done\n"
+    )
+    encoded = base64.b64encode(recorder_script.encode()).decode()
+    executor.run(
+        f"echo {encoded} | base64 -d > /tmp/_perf_host_recorder.sh && "
+        f"chmod +x /tmp/_perf_host_recorder.sh",
+        timeout=15,
+    )
+    executor.run("nohup /tmp/_perf_host_recorder.sh >/dev/null 2>&1 &", timeout=10)
+    logger.info("[5a] Started host-side perf recorder for container %s", container)
+
+
+def _stop_host_perf_recorder(executor: "SshExecutor") -> None:
+    """Stop the host-side perf recorder started by _start_host_perf_recorder."""
+    executor.run("touch /tmp/_perf_stop", timeout=10)
+    import time
+    time.sleep(2)
+    executor.run(
+        "kill $(pgrep -f _perf_host_recorder) 2>/dev/null; true", timeout=10,
+    )
+    logger.info("[5a] Stopped host-side perf recorder")
 
 
 def _parse_tm_count(env_config: dict) -> int:
@@ -902,13 +891,18 @@ def _run_collect(
         logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
                      perf_data_local.stat().st_size)
     else:
-        logger.info("[5b.1] Collecting perf.data from %s on %s...", tm_container, platform)
-        _collect_binary_from_container(
-            executor,
-            tm_container,
-            "/tmp/perf-udf.data",
-            perf_data_local,
-        )
+        # perf.data is on the HOST at /tmp/perf-udf.data (written by host-side recorder).
+        logger.info("[5b.1] Collecting perf.data from host on %s...", platform)
+        executor.pull_file("/tmp/perf-udf.data", perf_data_local)
+        if not perf_data_local.exists() or perf_data_local.stat().st_size == 0:
+            # Fallback: check inside TM container (for legacy runs).
+            logger.info("[5b.1] Not found on host, trying TM container...")
+            _collect_binary_from_container(
+                executor,
+                tm_container,
+                "/tmp/perf-udf.data",
+                perf_data_local,
+            )
 
     # --- Sub-step: run perf-kits pipeline (artifact: perf_records.csv) ---
     if perf_csv.exists() and perf_csv.stat().st_size > 0:

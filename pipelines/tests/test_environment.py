@@ -143,29 +143,27 @@ class EnvironmentPlanTest(unittest.TestCase):
         plan = json.loads(result.stdout)
         step_ids = [s["id"] for s in plan["steps"]]
 
-        # Profiling tool installation steps
-        self.assertIn("install-profiling-tools-flink-jm", step_ids)
-        self.assertIn("install-profiling-tools-flink-tm1", step_ids)
-        self.assertIn("install-profiling-tools-flink-tm2", step_ids)
+        # Profiling tool verification steps (tools baked into image)
+        self.assertIn("verify-profiling-tools-flink-jm", step_ids)
+        self.assertIn("verify-profiling-tools-flink-tm1", step_ids)
+        self.assertIn("verify-profiling-tools-flink-tm2", step_ids)
         self.assertIn("verify-profiling-tools", step_ids)
         self.assertIn("enable-perf-paranoid", step_ids)
 
-        # Verify the install step mentions profiling packages
-        install_step = next(
+        # Verify steps check dpkg (read-only), not install
+        verify_jm_step = next(
             s for s in plan["steps"]
-            if s["id"] == "install-profiling-tools-flink-jm"
+            if s["id"] == "verify-profiling-tools-flink-jm"
         )
-        verify_step = next(
+        verify_all_step = next(
             s for s in plan["steps"]
             if s["id"] == "verify-profiling-tools"
         )
-        self.assertIn("docker exec -u root", install_step["command"])
-        self.assertIn("flink-jm", install_step["command"])
-        self.assertIn("perf --version", verify_step["command"])
-        self.assertIn("strace", install_step["command"])
-        self.assertIn("binutils", install_step["command"])
-        self.assertTrue(install_step["mutatesHost"])
-        self.assertTrue(install_step["requiresApproval"])
+        self.assertIn("dpkg -s", verify_jm_step["command"])
+        self.assertIn("flink-jm", verify_jm_step["command"])
+        self.assertIn("perf --version", verify_all_step["command"])
+        # Verification steps don't mutate the host
+        self.assertFalse(verify_jm_step.get("mutatesHost", False))
 
     def test_plan_sets_perf_paranoid_to_zero(self) -> None:
         result = CliInvoker.run(
