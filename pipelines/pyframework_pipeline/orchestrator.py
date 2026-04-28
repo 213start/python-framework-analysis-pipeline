@@ -898,7 +898,8 @@ def _run_collect(
         logger.info("[5b.1] Collecting perf.data on %s...", platform)
         # Try JM first (local mode), then TMs (cluster mode).
         collected = False
-        for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]:
+        _tm_count = _parse_tm_count(env_config)
+        for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, _tm_count + 1)]:
             check = executor.run(
                 f"docker exec {c} bash -c "
                 "'ls /tmp/perf-udf.data 2>/dev/null && test -s /tmp/perf-udf.data'",
