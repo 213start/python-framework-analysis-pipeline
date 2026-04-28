@@ -472,7 +472,13 @@ if [ "$TM_COUNT_ACTUAL" -lt "$TM_COUNT" ]; then
     echo "  WARNING: Only $TM_COUNT_ACTUAL/$TM_COUNT TMs registered!"
 fi
 
-curl -sf http://localhost:8081/overview | python3 -c 'import sys,json; d=json.load(sys.stdin); print("  Slots: %s, TMs: %s" % (d["slots-number"], d["taskmanagers"]))'
+curl -sf http://localhost:8081/overview | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+slots = d.get("slots-number") or d.get("slotsNumber") or "?"
+tms = d.get("taskmanagers") or d.get("taskManagers") or "?"
+print(f"  Slots: {slots}, TMs: {tms}")
+' || true
 
 echo ""
 echo "=== BUILD COMPLETE ==="
