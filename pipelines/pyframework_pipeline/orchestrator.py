@@ -277,6 +277,15 @@ def _execute_step(
     if step_id == "3":
         from .environment.deploy import deploy_plan
         plan_path = run_dir / platform / "environment-plan.json"
+        # On resume/force, clear old deploy record so all sub-steps re-run.
+        if force:
+            for old_record in [
+                run_dir / platform / "deploy-record.json",
+                run_dir / platform / "environment-record.json",
+            ]:
+                if old_record.exists():
+                    old_record.unlink()
+                    logger.info("Cleared old deploy record: %s", old_record.name)
         result = deploy_plan(project_path, platform, plan_path, yes=yes)
         # Save record.
         record = result.get("record", {})
