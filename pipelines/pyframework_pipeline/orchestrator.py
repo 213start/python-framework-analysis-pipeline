@@ -348,6 +348,9 @@ def _run_workload_deploy(
 
     # Upload workload to remote host staging.
     remote_dir = "/tmp/pyframework-workload"
+    # Remove stale remote directory so scp -r doesn't create a nested
+    # sub-directory when the target already exists.
+    executor.run(f"rm -rf {remote_dir}", timeout=15)
     logger.info("Uploading %s to %s:%s", local_dir, host_ref, remote_dir)
     ok = executor.push_dir(local_dir, remote_dir)
     if not ok:
