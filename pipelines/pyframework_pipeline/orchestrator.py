@@ -947,7 +947,7 @@ def _find_so_in_container(
     # Try exact match in common paths.
     search_dirs = f"{lib_dirs} {bin_dirs}" if not is_so else lib_dirs
     find_result = executor.run(
-        f"docker exec {container} find {search_dirs} -name '{so_name}' -type f 2>/dev/null | head -1",
+        f"docker exec {container} find {search_dirs} -name '{so_name}' 2>/dev/null | head -1",
         timeout=15,
     )
     if find_result.returncode == 0 and find_result.stdout.strip():
@@ -958,13 +958,13 @@ def _find_so_in_container(
     if is_so:
         # .so files: match with .so suffix to avoid false positives.
         find_result = executor.run(
-            f"docker exec {container} find {lib_dirs} -name '*{stem}*.so*' -type f 2>/dev/null | head -3",
+            f"docker exec {container} find {lib_dirs} -name '*{stem}*.so*' 2>/dev/null | head -3",
             timeout=15,
         )
     else:
         # Non-.so (e.g. python3.14 static binary): search bin + lib + pyenv paths.
         find_result = executor.run(
-            f"docker exec {container} find {lib_dirs} {bin_dirs} -name '*{stem}*' -type f 2>/dev/null | head -3",
+            f"docker exec {container} find {lib_dirs} {bin_dirs} -name '*{stem}*' 2>/dev/null | head -3",
             timeout=30,
         )
     if find_result.returncode == 0 and find_result.stdout.strip():
