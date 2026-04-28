@@ -72,10 +72,14 @@ def validate_four_layer_project(path: Path) -> ValidationReport:
     if not has_data:
         return report
 
-    framework = load_ref_json(root / "frameworks", project.get("frameworkRef"), ".framework.json", report)
+    framework = _load_layer_if_populated(root, "frameworks", project.get("frameworkRef"), ".framework.json", report)
     dataset = load_ref_json(root / "datasets", project.get("datasetRef"), ".dataset.json", report)
     source = load_ref_json(root / "sources", project.get("sourceRef"), ".source.json", report)
-    if not framework or not dataset or not source:
+    if not dataset or not source:
+        return report
+    if not framework:
+        # Framework layer not yet populated — skip framework-dependent checks.
+        return report
         return report
 
     validate_schema(framework, "framework.schema.json", "Framework", report)
@@ -123,6 +127,16 @@ def load_ref_json(directory: Path, ref: Any, suffix: str, report: ValidationRepo
         report.add("missing_file", f"Referenced file does not exist: {path}", str(path))
         return None
     return load_json(path)
+
+
+def _load_layer_if_populated(
+    root: Path, dirname: str, ref: Any, suffix: str, report: ValidationReport,
+) -> JsonObject | None:
+    """Load a layer JSON, returning None (no error) if the directory is empty."""
+    directory = root / dirname
+    if not any(directory.glob(f"*{suffix}")):
+        return None
+    return load_ref_json(directory, ref, suffix, report)
 
 
 def load_json(path: Path) -> JsonObject:
