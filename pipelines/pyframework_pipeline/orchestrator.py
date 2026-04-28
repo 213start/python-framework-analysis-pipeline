@@ -191,6 +191,7 @@ def run_pipeline(
     # Determine start point.
     step_ids = [d["step"] for d in STEP_DEFS]
     start_idx = 0
+    is_resume = bool(resume_from)
     if resume_from:
         if resume_from in step_ids:
             start_idx = step_ids.index(resume_from)
@@ -221,13 +222,15 @@ def run_pipeline(
                     continue
 
                 state.mark_running(step_id, plat)
-                logger.info("[S%s/%s] %s", step_id, plat, step_name)
+                logger.info("[S%s/%s] >> ENTER %s", step_id, plat, step_name)
 
                 try:
                     _execute_step(
-                        step_id, project_path, run_dir, plat, yes=yes,
+                        step_id, project_path, run_dir, plat,
+                        yes=yes, force=is_resume,
                     )
                     state.mark_completed(step_id, plat)
+                    logger.info("[S%s/%s] << EXIT %s (ok)", step_id, plat, step_name)
                 except StepError as exc:
                     state.mark_failed(step_id, plat, str(exc))
                     _print_resume_hint(step_id, plat, project_path, error=str(exc))
@@ -239,13 +242,15 @@ def run_pipeline(
                 continue
 
             state.mark_running(step_id)
-            logger.info("[S%s] %s", step_id, step_name)
+            logger.info("[S%s] >> ENTER %s", step_id, step_name)
 
             try:
                 _execute_step(
-                    step_id, project_path, run_dir, None, yes=yes,
+                    step_id, project_path, run_dir, None,
+                    yes=yes, force=is_resume,
                 )
                 state.mark_completed(step_id)
+                logger.info("[S%s] << EXIT %s (ok)", step_id, step_name)
             except StepError as exc:
                 state.mark_failed(step_id, error=str(exc))
                 _print_resume_hint(step_id, None, project_path, error=str(exc))
@@ -266,6 +271,7 @@ def _execute_step(
     platform: str | None,
     *,
     yes: bool = False,
+    force: bool = False,
 ) -> None:
     """Execute a single pipeline step."""
     if step_id == "3":
@@ -302,16 +308,16 @@ def _execute_step(
         _run_workload_deploy(project_path, run_dir, platform, yes=yes)
 
     elif step_id == "5a":
-        _run_benchmark(project_path, run_dir, platform)
+        _run_benchmark(project_path, run_dir, platform, force=force)
 
     elif step_id == "5b":
-        _run_collect(project_path, run_dir, platform)
+        _run_collect(project_path, run_dir, platform, force=force)
 
     elif step_id == "5c":
-        _run_acquire_all(project_path, run_dir)
+        _run_acquire_all(project_path, run_dir, force=force)
 
     elif step_id == "6":
-        _run_backfill(project_path, run_dir)
+        _run_backfill(project_path, run_dir, force=force)
 
     elif step_id == "7":
         _run_bridge_publish(project_path)
@@ -391,6 +397,7 @@ def _run_workload_deploy(
 
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
+    *, force: bool = False,
 ) -> None:
     import time
 
@@ -413,6 +420,20 @@ def _run_benchmark(
     timing_path = platform_run_dir / "timing" / "timing-normalized.json"
 
     tm_count = _parse_tm_count(env_config)
+
+    # When resuming, remove old artifacts so the step actually re-runs.
+    if force:
+        removed = []
+        for old in [
+            platform_run_dir / "timing" / "timing-normalized.json",
+            platform_run_dir / "timing" / "timing-raw.json",
+            platform_run_dir / "perf" / "data" / f"perf-{platform}.data",
+        ]:
+            if old.exists():
+                old.unlink()
+                removed.append(old.relative_to(run_dir))
+        if removed:
+            logger.info("[5a] Force: removed old artifacts: %s", removed)
 
     # --- Sub-step: run benchmark with perf (artifact: timing-normalized.json) ---
     if timing_path.exists() and timing_path.stat().st_size > 0:
@@ -773,6 +794,7 @@ def _parse_tm_count(env_config: dict) -> int:
 
 def _run_collect(
     project_path: Path, run_dir: Path, platform: str,
+    *, force: bool = False,
 ) -> None:
     import json as _json
 
@@ -1230,7 +1252,7 @@ def _collect_binary_from_container(
     return ok
 
 
-def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
+def _run_acquire_all(project_path: Path, run_dir: Path, *, force: bool = False) -> None:
     from .acquisition.timing import collect_timing
     from .acquisition.perf_profile import collect_perf
     from .acquisition.machine_code import collect_asm
@@ -1270,7 +1292,7 @@ def _run_acquire_all(project_path: Path, run_dir: Path) -> None:
         logger.info("ASM %s: %s", plat, asm_result.get("status", "unknown"))
 
 
-def _run_backfill(project_path: Path, run_dir: Path) -> None:
+def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> None:
     from .backfill.pipeline import run_backfill
     from .config import get_run_config
 
