@@ -327,6 +327,13 @@ def _cmd_config_validate(args) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_run(args) -> int:
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
     from .config import get_run_config, load_project_config, validate_pipeline_config
 
     project_path = Path(args.project)
