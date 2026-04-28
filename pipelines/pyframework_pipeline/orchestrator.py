@@ -389,25 +389,6 @@ def _run_workload_deploy(
             )
 
 
-_PERF_RECORDER_SCRIPT = r"""#!/bin/bash
-# Record perf targeting Python worker processes only.
-# Loops to re-discover PIDs when workers restart between queries.
-OUTPUT=${1:-/tmp/perf-udf.data}
-PERF=${2:-perf}
-FREQ=${3:-999}
-rm -f "$OUTPUT"
-while true; do
-    PIDS=$(pgrep -d',' 'python3' 2>/dev/null)
-    if [ -n "$PIDS" ]; then
-        $PERF record -F "$FREQ" -g -e task-clock -p "$PIDS" \
-            -o "$OUTPUT" -A 2>/dev/null || true
-    fi
-    [ -f /tmp/_perf_stop ] && { rm -f /tmp/_perf_stop; break; }
-    sleep 0.3
-done
-"""
-
-
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
 ) -> None:
@@ -440,7 +421,22 @@ def _run_benchmark(
         if not queries:
             raise StepError("No queries configured")
 
-        # Phase 1: Run all queries WITHOUT perf to collect timing.
+        # Ensure perf + start recording.
+        logger.info("[5a] Ensuring perf and starting recording on %s...", platform)
+        _ensure_container_perf(executor, tm_count)
+        for i in range(1, tm_count + 1):
+            executor.run(
+                f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
+                timeout=30,
+            )
+        perf_binary = _find_container_perf(executor)
+        executor.run(
+            f"docker exec -d flink-tm1 {perf_binary} record "
+            f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data",
+            timeout=30,
+        )
+
+        # Run queries.
         import json as _json
 
         wall_clock_times: dict[str, dict] = {}
@@ -475,57 +471,13 @@ def _run_benchmark(
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
-        # Phase 2: Re-run the query with the biggest wall-clock time
-        # with targeted perf recording (Python workers only).
-        target_query = max(
-            wall_clock_times,
-            key=lambda q: wall_clock_times[q].get("wallClockSeconds", 0),
-        )
-        logger.info(
-            "[5a] Re-running %s with targeted perf recording (Python workers only)",
-            target_query,
-        )
-
-        _ensure_container_perf(executor, tm_count)
-        for i in range(1, tm_count + 1):
-            executor.run(
-                f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data /tmp/_perf_stop",
-                timeout=30,
-            )
-        perf_binary = _find_container_perf(executor)
-
-        # Deploy the PID-monitoring wrapper script via base64.
-        import base64
-        script_b64 = base64.b64encode(_PERF_RECORDER_SCRIPT.encode()).decode()
-        executor.run(
-            f"docker exec flink-tm1 bash -c "
-            f"'echo {script_b64} | base64 -d > /tmp/_perf_recorder.sh "
-            f"&& chmod +x /tmp/_perf_recorder.sh'",
-            timeout=15,
-        )
-        executor.run(
-            f"docker exec -d flink-tm1 /tmp/_perf_recorder.sh /tmp/perf-udf.data {perf_binary} 999",
-            timeout=10,
-        )
-
-        # Re-run the target query.
-        result = executor.run(
-            f"docker exec flink-jm {python_bin} "
-            f"/opt/flink/usrlib/benchmark_runner.py "
-            f"--query {target_query} --rows {rows}",
-            timeout=300,
-            stream=True,
-        )
-
-        # Stop the recorder.
+        # Stop perf.
         logger.info("[5a] Stopping perf record on %s...", platform)
-        executor.run("docker exec flink-tm1 touch /tmp/_perf_stop", timeout=10)
-        time.sleep(2)
         executor.run(
-            "docker exec flink-tm1 bash -c 'kill $(pidof perf) 2>/dev/null; "
-            "kill $(pgrep -f _perf_recorder) 2>/dev/null; true'",
-            timeout=15,
+            "docker exec flink-tm1 bash -c 'kill -INT \\$(pidof perf) || true'",
+            timeout=30,
         )
+        time.sleep(2)
 
 
 def _collect_operator_timing(
