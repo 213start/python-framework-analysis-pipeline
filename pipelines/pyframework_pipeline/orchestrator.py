@@ -832,8 +832,8 @@ def _start_host_perf_recorder(
         timeout=15,
     )
     executor.run(
-        "nohup /tmp/_perf_host_recorder.sh </dev/null >/dev/null 2>&1 & disown",
-        timeout=15,
+        "( /tmp/_perf_host_recorder.sh </dev/null >/dev/null 2>&1 & ); sleep 0.1",
+        timeout=30,
     )
     logger.info("[5a] Started host-side perf recorder for container %s", container)
 
