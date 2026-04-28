@@ -427,6 +427,12 @@ def _run_benchmark(
         perf_binary = _find_container_perf(executor)
         _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary)
 
+        # Verify wrapper was deployed correctly.
+        wrapper_check = executor.run(
+            "docker exec flink-tm1 cat /tmp/_perf_python_wrapper.sh", timeout=15,
+        )
+        logger.info("[5a] Wrapper script content:\n%s", wrapper_check.stdout.strip())
+
         # Run queries.  The perf wrapper is injected via --python-executable;
         # each Flink job's Python worker runs under perf record, capturing
         # the entire worker lifecycle.
@@ -464,6 +470,29 @@ def _run_benchmark(
             _collect_operator_timing(executor, tm_count, query, wall_clock_times)
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
+
+        # Verify perf.data was created in the TM container.
+        perf_check = executor.run(
+            "docker exec flink-tm1 bash -c "
+            "'ls -lh /tmp/perf-udf.data 2>&1 || echo NOT_FOUND'",
+            timeout=15,
+        )
+        if "NOT_FOUND" in perf_check.stdout:
+            # Diagnostic: show whether wrapper was called at all.
+            tm_logs = executor.docker_logs("flink-tm1", tail=200)
+            logger.error(
+                "[5a] /tmp/perf-udf.data NOT found after benchmark!\n"
+                "  ls output: %s\n"
+                "  TM logs (last 200 lines):\n%s",
+                perf_check.stdout.strip(),
+                tm_logs,
+            )
+            raise StepError(
+                f"[5a] perf.data was not created in TM container after running "
+                f"{len(queries)} queries.  The perf wrapper may not have been "
+                f"invoked.  See log above for diagnostics."
+            )
+        logger.info("[5a] perf.data verified: %s", perf_check.stdout.strip())
 
 
 def _collect_operator_timing(
