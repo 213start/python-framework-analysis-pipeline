@@ -446,21 +446,11 @@ def _run_benchmark(
 
     tm_count = _parse_tm_count(env_config)
 
-    # When resuming, remove old artifacts and re-deploy workload so
-    # the latest benchmark_runner.py is in the container.
+    # When resuming, re-deploy workload so the latest benchmark_runner.py
+    # is in the container.  Don't remove old artifacts — the step-level
+    # existence checks handle skipping completed work.
     if force:
         _run_workload_deploy(project_path, run_dir, platform)
-        removed = []
-        for old in [
-            platform_run_dir / "timing" / "timing-normalized.json",
-            platform_run_dir / "timing" / "timing-raw.json",
-            platform_run_dir / "perf" / "data" / f"perf-{platform}.data",
-        ]:
-            if old.exists():
-                old.unlink()
-                removed.append(old.relative_to(run_dir))
-        if removed:
-            logger.info("[5a] Force: removed old artifacts: %s", removed)
 
     # --- Sub-step: run benchmark with perf (artifact: timing-normalized.json) ---
     if timing_path.exists() and timing_path.stat().st_size > 0:
