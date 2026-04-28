@@ -879,11 +879,22 @@ def _run_collect(
 
     platform_run_dir = run_dir / platform
 
-    # Find which TM is running the task via JM REST API.
-    tm_container = _find_task_tm(executor)
-    if not tm_container:
-        tm_container = "flink-tm1"
-        logger.warning("Could not determine task TM via JM, falling back to %s", tm_container)
+    # Find which container has perf.data (JM for local mode, TM for cluster mode).
+    _tm_count = _parse_tm_count(env_config)
+    perf_container = None
+    for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, _tm_count + 1)]:
+        check = executor.run(
+            f"docker exec {c} bash -c "
+            "'test -s /tmp/perf-udf.data && echo found'",
+            timeout=15,
+        )
+        if "found" in check.stdout:
+            perf_container = c
+            logger.info("[5b] perf.data found in %s", c)
+            break
+    if not perf_container:
+        perf_container = "flink-jm"
+        logger.warning("[5b] Could not locate perf.data in any container, using JM as fallback")
 
     perf_dir = platform_run_dir / "perf" / "data"
     perf_dir.mkdir(parents=True, exist_ok=True)
@@ -895,30 +906,17 @@ def _run_collect(
         logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
                      perf_data_local.stat().st_size)
     else:
-        logger.info("[5b.1] Collecting perf.data on %s...", platform)
-        # Try JM first (local mode), then TMs (cluster mode).
-        collected = False
-        _tm_count = _parse_tm_count(env_config)
-        for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, _tm_count + 1)]:
-            check = executor.run(
-                f"docker exec {c} bash -c "
-                "'ls /tmp/perf-udf.data 2>/dev/null && test -s /tmp/perf-udf.data'",
-                timeout=15,
-            )
-            if check.returncode == 0:
-                logger.info("[5b.1] Found perf.data in %s, collecting...", c)
-                _collect_binary_from_container(executor, c, "/tmp/perf-udf.data", perf_data_local)
-                collected = True
-                break
-        if not collected:
-            logger.warning("[5b.1] perf.data not found in any container on %s", platform)
+        logger.info("[5b.1] Collecting perf.data from %s on %s...", perf_container, platform)
+        _collect_binary_from_container(
+            executor, perf_container, "/tmp/perf-udf.data", perf_data_local,
+        )
 
     # --- Sub-step: run perf-kits pipeline (artifact: perf_records.csv) ---
     if perf_csv.exists() and perf_csv.stat().st_size > 0:
         logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
     else:
         logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
-        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path)
+        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path, perf_container)
 
     # --- Sub-step: collect ASM (artifact: *.s files) ---
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
@@ -928,7 +926,7 @@ def _run_collect(
                      len(list(asm_dir.glob("*.s"))), platform)
     else:
         logger.info("[5b.3] Collecting objdump for hotspot symbols on %s...", platform)
-        _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform)
+        _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform, perf_container)
 
     logger.info("Collection complete for %s", platform)
 
@@ -1006,6 +1004,7 @@ def _collect_asm_from_all_libs(
     perf_dir: Path,
     asm_dir: Path,
     platform: str,
+    container: str = "flink-jm",
 ) -> None:
     """Collect objdump for top hotspot symbols from ALL shared libraries.
 
@@ -1042,8 +1041,6 @@ def _collect_asm_from_all_libs(
         counts = Counter(syms)
         top = [s for s, _ in counts.most_common(30)]
         so_to_syms[so] = top
-
-    container = "flink-tm1"
 
     for so, syms in sorted(so_to_syms.items()):
         # Find the shared library inside the container.
@@ -1120,8 +1117,9 @@ def _run_perf_kits_on_remote(
     perf_dir: Path,
     platform: str,
     project_path: Path | None = None,
+    container: str = "flink-jm",
 ) -> None:
-    """Run python-performance-kits pipeline inside the TM container.
+    """Run python-performance-kits pipeline inside the container.
 
     Running inside the container gives perf report access to the exact
     binaries (libpython3.14.so, etc.) so symbols resolve correctly.
@@ -1169,23 +1167,23 @@ def _run_perf_kits_on_remote(
 
     # Copy scripts into container.
     executor.run(
-        f"docker exec flink-tm1 rm -rf {container_kits}",
+        f"docker exec {container} rm -rf {container_kits}",
         timeout=30,
     )
     executor.run(
-        f"docker cp {host_staging}/. flink-tm1:{container_kits}",
+        f"docker cp {host_staging}/. {container}:{container_kits}",
         timeout=30,
     )
     executor.run(
-        f"docker exec -u root flink-tm1 chown -R flink:flink {container_kits}",
+        f"docker exec -u root {container} chown -R flink:flink {container_kits}",
         timeout=15,
     )
     executor.run(f"rm -rf {host_staging}", timeout=30)
 
     # Run the pipeline inside the container.
-    logger.info("Running python-performance-kits pipeline inside TM container (%s)...", platform)
+    logger.info("Running python-performance-kits pipeline inside %s (%s)...", container, platform)
     result = executor.run(
-        f"docker exec flink-tm1 {python_bin} "
+        f"docker exec {container} {python_bin} "
         f"{container_kits}/run_single_platform_pipeline.py "
         f"{perf_data_container} -o {container_output} "
         f"--benchmark tpch --platform {platform} "
@@ -1196,7 +1194,7 @@ def _run_perf_kits_on_remote(
     )
     if result.returncode != 0:
         raise StepError(
-            f"perf-kits pipeline failed inside TM container (exit {result.returncode}):\n"
+            f"perf-kits pipeline failed inside {container} (exit {result.returncode}):\n"
             f"  Command: {python_bin} {container_kits}/run_single_platform_pipeline.py ...\n"
             f"  stderr: {result.stderr[:500]}\n"
             f"  stdout: {result.stdout[:500]}"
@@ -1206,7 +1204,7 @@ def _run_perf_kits_on_remote(
     host_output = "/tmp/pyframework-perf-kits-output"
     executor.run(f"rm -rf {host_output}", timeout=30)
     executor.run(
-        f"docker cp flink-tm1:{container_output}/ {host_output}",
+        f"docker cp {container}:{container_output}/ {host_output}",
         timeout=60,
         stream=True,
     )
@@ -1224,7 +1222,7 @@ def _run_perf_kits_on_remote(
         logger.info("Collected %s", remote_rel)
 
     # Cleanup.
-    executor.run(f"docker exec flink-tm1 rm -rf {container_kits} {container_output}", timeout=30)
+    executor.run(f"docker exec {container} rm -rf {container_kits} {container_output}", timeout=30)
     executor.run(f"rm -rf {host_output}", timeout=30)
 
 
