@@ -342,13 +342,15 @@ rm -rf /tmp/pip-* /tmp/python-build.* /tmp/*.whl /tmp/pyarrow-src /tmp/fix_pip*.
 $PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip cache purge
 echo '  Cleaned up build artifacts'
 
-# Install perf (linux-tools) into the image so containers don't
-# need to install it on every restart.  Also create a symlink at
-# /usr/local/bin/perf so the binary is on PATH.
-apt-get update -qq && apt-get install -y -qq linux-tools-common linux-tools-generic 2>&1 | tail -1
+# Install profiling tools into the image so containers don't
+# need to install them on every restart.  Also create a symlink
+# at /usr/local/bin/perf so the binary is on PATH.
+apt-get update -qq && apt-get install -y -qq \
+    linux-tools-common linux-tools-generic \
+    strace binutils gdb 2>&1 | tail -1
 perf_real=\$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1)
 if [ -n \"\$perf_real\" ]; then ln -sf \$perf_real /usr/local/bin/perf; fi
-echo '  perf (linux-tools) installed into image'
+echo '  Profiling tools (perf, strace, objdump, gdb, readelf) installed into image'
 "
 
 # Commit the image
