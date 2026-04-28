@@ -830,7 +830,7 @@ def _deploy_perf_wrapper(
     script = (
         "#!/bin/bash\n"
         f"exec {perf_binary} record -F 999 -g -e task-clock "
-        f"-o /tmp/perf-udf.data -- {python_bin} \"$@\"\n"
+        f"-o /tmp/perf-udf.data -- {python_bin} \"$@\" 2>/dev/null\n"
     )
     encoded = base64.b64encode(script.encode()).decode()
 
