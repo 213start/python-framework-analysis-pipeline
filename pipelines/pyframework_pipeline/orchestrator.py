@@ -764,16 +764,16 @@ def _deploy_perf_wrapper(
     encoded = base64.b64encode(script.encode()).decode()
 
     wrapper_path = "/tmp/_perf_python_wrapper.sh"
-    for i in range(1, tm_count + 1):
+    # Deploy to JM (where Python workers run in local execution mode)
+    # and all TMs (where workers run in remote/cluster mode).
+    containers = ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]
+    for container in containers:
         executor.run(
-            f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
+            f"docker exec {container} rm -f /tmp/perf-udf.data",
             timeout=30,
         )
-        # base64 avoids all quoting issues: $@ is preserved through
-        # encode/decode, and the single-quoted bash -c argument passes
-        # through SSH and docker exec without shell expansion.
         executor.run(
-            f"docker exec flink-tm{i} bash -c "
+            f"docker exec {container} bash -c "
             f"'echo {encoded} | base64 -d > {wrapper_path} && "
             f"chmod +x {wrapper_path}'",
             timeout=30,
