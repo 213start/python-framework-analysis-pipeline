@@ -127,12 +127,10 @@ class TestSubStepLogging(unittest.TestCase):
         content = SRC
         self.assertIn("[5a] timing-normalized.json exists", content,
                       "Missing [5a] artifact check label")
-        self.assertIn("[5a] Ensuring perf", content,
-                      "Missing [5a] perf start label")
+        self.assertIn("[5a] Deploying perf wrapper", content,
+                      "Missing [5a] perf wrapper label")
         self.assertIn("[5a] Running query", content,
                       "Missing [5a] query run label")
-        self.assertIn("[5a] Stopping perf", content,
-                      "Missing [5a] perf stop label")
 
     def test_collect_has_step_labels(self):
         """_run_collect must log key sub-steps with [5b.N] prefix."""

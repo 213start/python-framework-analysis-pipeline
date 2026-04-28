@@ -261,7 +261,8 @@ def setup_env(args):
     t_env = StreamTableEnvironment.create(env, environment_settings=settings)
 
     cfg = t_env.get_config().get_configuration()
-    cfg.set_string("python.executable", sys.executable)
+    python_exe = args.python_executable or sys.executable
+    cfg.set_string("python.executable", python_exe)
     cfg.set_string("python.client.executable", sys.executable)
     cfg.set_string("pipeline.jars", jar_uri)
 
@@ -303,6 +304,9 @@ def main():
     parser.add_argument("--bundle-size", type=int, default=10000)
     parser.add_argument("--bundle-time", type=int, default=1000, help="Bundle time in ms")
     parser.add_argument("--execution-mode", choices=["process", "thread"], default="process")
+    parser.add_argument("--python-executable", default=None,
+                        help="Override python.executable for UDF worker. "
+                             "Used to inject perf recording wrapper.")
     parser.add_argument("--dry-run", action="store_true", help="Print SQL without executing")
     parser.add_argument("--build-jar", action="store_true",
                         help="Build the Java UDF JAR before running (requires javac and FLINK_HOME)")

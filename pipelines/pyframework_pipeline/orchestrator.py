@@ -421,22 +421,15 @@ def _run_benchmark(
         if not queries:
             raise StepError("No queries configured")
 
-        # Ensure perf + start recording.
-        logger.info("[5a] Ensuring perf and starting recording on %s...", platform)
+        # Deploy perf wrapper script to TM containers.
+        logger.info("[5a] Deploying perf wrapper to TM containers on %s...", platform)
         _ensure_container_perf(executor, tm_count)
-        for i in range(1, tm_count + 1):
-            executor.run(
-                f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
-                timeout=30,
-            )
         perf_binary = _find_container_perf(executor)
-        executor.run(
-            f"docker exec -d flink-tm1 {perf_binary} record "
-            f"-F 999 -g -e task-clock -a -o /tmp/perf-udf.data",
-            timeout=30,
-        )
+        _deploy_perf_wrapper(executor, tm_count, python_bin, perf_binary)
 
-        # Run queries.
+        # Run queries.  The perf wrapper is injected via --python-executable;
+        # each Flink job's Python worker runs under perf record, capturing
+        # the entire worker lifecycle.
         import json as _json
 
         wall_clock_times: dict[str, dict] = {}
@@ -446,7 +439,8 @@ def _run_benchmark(
             result = executor.run(
                 f"docker exec flink-jm {python_bin} "
                 f"/opt/flink/usrlib/benchmark_runner.py "
-                f"--query {query} --rows {rows}",
+                f"--query {query} --rows {rows} "
+                f"--python-executable /tmp/_perf_python_wrapper.sh",
                 timeout=300,
                 stream=True,
             )
@@ -470,14 +464,6 @@ def _run_benchmark(
             _collect_operator_timing(executor, tm_count, query, wall_clock_times)
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
-
-        # Stop perf.
-        logger.info("[5a] Stopping perf record on %s...", platform)
-        executor.run(
-            "docker exec flink-tm1 bash -c 'kill -INT \\$(pidof perf) || true'",
-            timeout=30,
-        )
-        time.sleep(2)
 
 
 def _collect_operator_timing(
@@ -684,6 +670,44 @@ def _ensure_jar(executor: "SshExecutor") -> None:
         raise StepError(
             f"JAR build failed (exit {result.returncode}):\n"
             f"  output: {result.stdout[-2000:]}"
+        )
+
+
+def _deploy_perf_wrapper(
+    executor: "SshExecutor",
+    tm_count: int,
+    python_bin: str,
+    perf_binary: str,
+) -> None:
+    """Deploy perf wrapper script to TM containers.
+
+    The wrapper uses ``exec perf record ... -- python "$@"`` so that perf
+    wraps the entire Python UDF worker lifecycle.  Flink's
+    ``python.executable`` config is set to this wrapper; when a job starts
+    a Python worker, perf records it from first instruction to exit.
+    """
+    wrapper_path = "/tmp/_perf_python_wrapper.sh"
+    for i in range(1, tm_count + 1):
+        executor.run(
+            f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
+            timeout=30,
+        )
+        # Write wrapper script line-by-line to avoid heredoc quoting issues.
+        lines = [
+            "#!/bin/bash",
+            f"exec {perf_binary} record -F 999 -g -e task-clock "
+            f"-o /tmp/perf-udf.data -- {python_bin} \"$@\"",
+        ]
+        for line in lines:
+            escaped = line.replace("'", "'\\''")
+            executor.run(
+                f"docker exec flink-tm{i} bash -c "
+                f"\"echo '{escaped}' >> {wrapper_path}\"",
+                timeout=30,
+            )
+        executor.run(
+            f"docker exec flink-tm{i} chmod +x {wrapper_path}",
+            timeout=30,
         )
 
 
