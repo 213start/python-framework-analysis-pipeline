@@ -685,28 +685,32 @@ def _deploy_perf_wrapper(
     wraps the entire Python UDF worker lifecycle.  Flink's
     ``python.executable`` config is set to this wrapper; when a job starts
     a Python worker, perf records it from first instruction to exit.
+
+    Uses base64 encoding to avoid shell quoting issues when the script
+    content (which contains ``$@``) passes through SSH and docker exec.
     """
+    import base64
+
+    script = (
+        "#!/bin/bash\n"
+        f"exec {perf_binary} record -F 999 -g -e task-clock "
+        f"-o /tmp/perf-udf.data -- {python_bin} \"$@\"\n"
+    )
+    encoded = base64.b64encode(script.encode()).decode()
+
     wrapper_path = "/tmp/_perf_python_wrapper.sh"
     for i in range(1, tm_count + 1):
         executor.run(
             f"docker exec flink-tm{i} rm -f /tmp/perf-udf.data",
             timeout=30,
         )
-        # Write wrapper script line-by-line to avoid heredoc quoting issues.
-        lines = [
-            "#!/bin/bash",
-            f"exec {perf_binary} record -F 999 -g -e task-clock "
-            f"-o /tmp/perf-udf.data -- {python_bin} \"$@\"",
-        ]
-        for line in lines:
-            escaped = line.replace("'", "'\\''")
-            executor.run(
-                f"docker exec flink-tm{i} bash -c "
-                f"\"echo '{escaped}' >> {wrapper_path}\"",
-                timeout=30,
-            )
+        # base64 avoids all quoting issues: $@ is preserved through
+        # encode/decode, and the single-quoted bash -c argument passes
+        # through SSH and docker exec without shell expansion.
         executor.run(
-            f"docker exec flink-tm{i} chmod +x {wrapper_path}",
+            f"docker exec flink-tm{i} bash -c "
+            f"'echo {encoded} | base64 -d > {wrapper_path} && "
+            f"chmod +x {wrapper_path}'",
             timeout=30,
         )
 
