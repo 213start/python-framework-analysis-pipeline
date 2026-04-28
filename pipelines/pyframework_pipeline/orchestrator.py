@@ -593,29 +593,44 @@ def _ensure_container_perf(
     include_jm: bool = False,
 ) -> str:
     """Install linux-tools inside containers if perf is not available."""
-    # Check if perf already exists inside TM1.
-    check = executor.run(
+    # Check if perf already exists on TM1.
+    tm_check = executor.run(
         "docker exec flink-tm1 bash -c "
         "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
         timeout=30,
     )
-    if check.returncode == 0 and check.stdout.strip():
-        return check.stdout.strip()
+    tm_ok = tm_check.returncode == 0 and tm_check.stdout.strip()
 
-    containers = []
+    # Check JM separately if needed.
+    jm_ok = True
     if include_jm:
-        containers.append("flink-jm")
-    containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
-
-    logger.info("Installing linux-tools inside %s...", ", ".join(containers))
-    for c in containers:
-        executor.run(
-            f"docker exec -u root {c} bash -c "
-            f"'apt-get update -qq && apt-get install -y -qq "
-            f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
-            timeout=120,
-            stream=True,
+        jm_check = executor.run(
+            "docker exec flink-jm bash -c "
+            "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
+            timeout=30,
         )
+        jm_ok = jm_check.returncode == 0 and jm_check.stdout.strip()
+
+    if tm_ok and jm_ok:
+        return tm_check.stdout.strip()
+
+    # Install on containers that need it.
+    containers = []
+    if include_jm and not jm_ok:
+        containers.append("flink-jm")
+    if not tm_ok:
+        containers.extend(f"flink-tm{i}" for i in range(1, tm_count + 1))
+
+    if containers:
+        logger.info("Installing linux-tools inside %s...", ", ".join(containers))
+        for c in containers:
+            executor.run(
+                f"docker exec -u root {c} bash -c "
+                f"'apt-get update -qq && apt-get install -y -qq "
+                f"linux-tools-common linux-tools-generic 2>&1 | tail -1'",
+                timeout=120,
+                stream=True,
+            )
 
     # Verify.
     check = executor.run(
