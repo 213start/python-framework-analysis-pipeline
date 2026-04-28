@@ -127,8 +127,8 @@ class TestSubStepLogging(unittest.TestCase):
         content = SRC
         self.assertIn("[5a] timing-normalized.json exists", content,
                       "Missing [5a] artifact check label")
-        self.assertIn("[5a] Ensuring perf", content,
-                      "Missing [5a] perf start label")
+        self.assertIn("[5a] Re-running", content,
+                      "Missing [5a] perf re-run label")
         self.assertIn("[5a] Running query", content,
                       "Missing [5a] query run label")
         self.assertIn("[5a] Stopping perf", content,
