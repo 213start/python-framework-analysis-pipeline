@@ -831,7 +831,10 @@ def _start_host_perf_recorder(
         f"chmod +x /tmp/_perf_host_recorder.sh",
         timeout=15,
     )
-    executor.run("nohup /tmp/_perf_host_recorder.sh >/dev/null 2>&1 &", timeout=10)
+    executor.run(
+        "nohup /tmp/_perf_host_recorder.sh </dev/null >/dev/null 2>&1 & disown",
+        timeout=15,
+    )
     logger.info("[5a] Started host-side perf recorder for container %s", container)
 
 
