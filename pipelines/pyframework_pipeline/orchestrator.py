@@ -772,6 +772,54 @@ def _run_collect(
     logger.info("Collection complete for %s", platform)
 
 
+def _find_so_in_container(
+    executor: "SshExecutor", container: str, so_name: str,
+) -> str:
+    """Locate a shared library or binary inside a container.
+
+    Handles both shared libraries (.so) and static-linked binaries
+    (e.g. python3.14 built without --enable-shared).
+    """
+    import os
+    base = os.path.basename(so_name)
+    is_so = base.endswith(".so") or ".so." in base
+    lib_dirs = "/usr/lib /usr/local/lib /opt /lib"
+    bin_dirs = "/usr/local/bin /usr/bin /opt"
+
+    # Try exact match in common paths.
+    search_dirs = f"{lib_dirs} {bin_dirs}" if not is_so else lib_dirs
+    find_result = executor.run(
+        f"docker exec {container} find {search_dirs} -name '{so_name}' -type f 2>/dev/null | head -1",
+        timeout=15,
+    )
+    if find_result.returncode == 0 and find_result.stdout.strip():
+        return find_result.stdout.strip()
+
+    # Substring match.
+    stem = base.split(".")[0] if "." in base else base
+    if is_so:
+        # .so files: match with .so suffix to avoid false positives.
+        find_result = executor.run(
+            f"docker exec {container} find {lib_dirs} -name '*{stem}*.so*' -type f 2>/dev/null | head -3",
+            timeout=15,
+        )
+    else:
+        # Non-.so (e.g. python3.14 static binary): search bin + lib paths.
+        find_result = executor.run(
+            f"docker exec {container} find {lib_dirs} {bin_dirs} -name '*{stem}*' -type f 2>/dev/null | head -3",
+            timeout=15,
+        )
+    if find_result.returncode == 0 and find_result.stdout.strip():
+        candidates = [p.strip() for p in find_result.stdout.strip().splitlines() if p.strip()]
+        for c in candidates:
+            if so_name in c:
+                return c
+        return candidates[0]
+
+    logger.warning("Shared library %s not found in container %s, skipping", so_name, container)
+    return ""
+
+
 def _load_symbol_map(asm_dir: Path) -> dict[str, str]:
     """Load hash→symbol mapping from symbol_map.json."""
     map_path = asm_dir / "symbol_map.json"
@@ -838,33 +886,37 @@ def _collect_asm_from_all_libs(
 
     for so, syms in sorted(so_to_syms.items()):
         # Find the shared library inside the container.
-        find_result = executor.run(
-            f"docker exec {container} find / -name '{so}' -type f 2>/dev/null | head -1",
-            timeout=30,
-        )
-        so_path = find_result.stdout.strip() if find_result.returncode == 0 else ""
+        # Use substring match — Python .so names may have platform suffixes
+        # or be located under versioned paths that differ from what perf reports.
+        so_path = _find_so_in_container(executor, container, so)
         if not so_path:
-            logger.warning("Shared library %s not found in container %s, skipping", so, container)
             continue
 
         logger.info("Collecting objdump from %s (%d symbols)", so, len(syms))
 
-        # Batch objdump: extract all symbols from this library in one pass,
-        # then split per-symbol with awk.  Much faster than one objdump per symbol.
-        objdump_result = executor.run(
+        # Redirect objdump stdout to file (avoid terminal spam),
+        # let stderr through so errors are visible.
+        tmp_dump = "/tmp/_pyframework_objdump.tmp"
+        executor.run(
             f"docker exec {container} bash -c "
-            f"'objdump -d -C {so_path} 2>/dev/null'",
+            f"'objdump -d -C {so_path} > {tmp_dump}'",
             timeout=120,
             stream=True,
         )
-        if objdump_result.returncode != 0 or not objdump_result.stdout:
+        cat_result = executor.run(
+            f"docker exec {container} cat {tmp_dump}",
+            timeout=30,
+        )
+        executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=10)
+        if cat_result.returncode != 0 or not cat_result.stdout:
             logger.warning("objdump failed for %s", so_path)
             continue
 
-        full_dump = objdump_result.stdout
+        full_dump = cat_result.stdout
 
         # Extract each symbol's disassembly from the full dump.
         symbol_map = _load_symbol_map(asm_dir)
+        collected_count = 0
         for sym in syms:
             import hashlib as _hashlib
             sym_hash = _hashlib.md5(sym.encode()).hexdigest()[:8]
@@ -892,7 +944,10 @@ def _collect_asm_from_all_libs(
             if content.strip():
                 (asm_dir / safe_name).write_text(content, encoding="utf-8")
                 symbol_map[sym_hash] = sym
-                logger.info("  Collected %s (%d lines)", sym, len(lines))
+                collected_count += 1
+
+        if collected_count:
+            logger.info("  %s: collected %d/%d symbols", so, collected_count, len(syms))
 
     _save_symbol_map(asm_dir, symbol_map)
     logger.info("ASM collection: %d files in %s", len(list(asm_dir.glob("*.s"))), asm_dir)
