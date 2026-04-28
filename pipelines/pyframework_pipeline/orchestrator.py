@@ -517,27 +517,25 @@ def _run_benchmark(
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
-        # Verify perf.data was created in the TM container.
-        perf_check = executor.run(
-            "docker exec flink-tm1 bash -c "
-            "'ls -lh /tmp/perf-udf.data 2>&1 || echo NOT_FOUND'",
-            timeout=15,
-        )
-        if "NOT_FOUND" in perf_check.stdout:
-            tm_logs = executor.docker_logs("flink-tm1", tail=200)
-            logger.error(
-                "[5a] /tmp/perf-udf.data NOT found after benchmark!\n"
-                "  ls output: %s\n"
-                "  TM logs (last 200 lines):\n%s",
-                perf_check.stdout.strip(),
-                tm_logs,
+        # Verify perf.data was created (check JM first for local mode, then TMs).
+        perf_check = None
+        perf_container = None
+        for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]:
+            check = executor.run(
+                f"docker exec {c} bash -c "
+                "'ls -lh /tmp/perf-udf.data 2>&1'",
+                timeout=15,
             )
+            if check.returncode == 0 and "No such file" not in check.stdout:
+                perf_check = check
+                perf_container = c
+                break
+        if perf_check is None:
             raise StepError(
-                f"[5a] perf.data was not created in TM container after running "
-                f"{len(queries)} queries.  The perf wrapper may not have been "
-                f"invoked.  See log above for diagnostics."
+                f"[5a] perf.data was not found in any container (JM + TMs) after "
+                f"running {len(queries)} queries.  Last check: {check.stdout.strip()}"
             )
-        logger.info("[5a] perf.data verified: %s", perf_check.stdout.strip())
+        logger.info("[5a] perf.data verified in %s: %s", perf_container, perf_check.stdout.strip())
 
 
 def _collect_operator_timing(
@@ -897,13 +895,22 @@ def _run_collect(
         logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
                      perf_data_local.stat().st_size)
     else:
-        logger.info("[5b.1] Collecting perf.data from %s on %s...", tm_container, platform)
-        _collect_binary_from_container(
-            executor,
-            tm_container,
-            "/tmp/perf-udf.data",
-            perf_data_local,
-        )
+        logger.info("[5b.1] Collecting perf.data on %s...", platform)
+        # Try JM first (local mode), then TMs (cluster mode).
+        collected = False
+        for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]:
+            check = executor.run(
+                f"docker exec {c} bash -c "
+                "'ls /tmp/perf-udf.data 2>/dev/null && test -s /tmp/perf-udf.data'",
+                timeout=15,
+            )
+            if check.returncode == 0:
+                logger.info("[5b.1] Found perf.data in %s, collecting...", c)
+                _collect_binary_from_container(executor, c, "/tmp/perf-udf.data", perf_data_local)
+                collected = True
+                break
+        if not collected:
+            logger.warning("[5b.1] perf.data not found in any container on %s", platform)
 
     # --- Sub-step: run perf-kits pipeline (artifact: perf_records.csv) ---
     if perf_csv.exists() and perf_csv.stat().st_size > 0:
