@@ -18,7 +18,7 @@ from typing import Any
 
 from .manifest import AcquisitionManifest, AcquisitionSection
 
-DEFAULT_KITS_DIR = Path(__file__).resolve().parents[4] / "vendor" / "python-performance-kits"
+DEFAULT_KITS_DIR = Path(__file__).resolve().parents[3] / "vendor" / "python-performance-kits"
 
 # Directories to search for shared libraries on the local system.
 _LIB_SEARCH_DIRS = [

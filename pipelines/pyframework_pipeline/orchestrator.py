@@ -509,6 +509,9 @@ def _run_benchmark(
                 logger.info("  %s: wall-clock %.3fs, throughput %s rows/s",
                             query, wc["wallClockSeconds"], wc.get("throughputRowsPerSec", "-"))
 
+            # Collect JM logs (Python workers run in JM for local mini-cluster mode).
+            jm_logs = executor.docker_logs("flink-jm", tail=200)
+            (platform_run_dir / "tm-stdout-jm.log").write_text(jm_logs, encoding="utf-8")
             for i in range(1, tm_count + 1):
                 logs = executor.docker_logs(f"flink-tm{i}", tail=50)
                 (platform_run_dir / f"tm-stdout-tm{i}.log").write_text(logs, encoding="utf-8")
@@ -556,24 +559,18 @@ def _collect_operator_timing(
     """
     import json as _json
 
-    for i in range(1, tm_count + 1):
-        # Try Flink log4j log files (wildcard to match container-specific names).
+    # Check JM first (local mini-cluster: Python workers in JM),
+    # then TMs (cluster mode: Python workers in TMs).
+    containers = ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]
+    for c in containers:
+        label = "JM" if c == "flink-jm" else c.replace("flink-", "").upper()
         result = executor.run(
-            f"docker exec flink-tm{i} bash -c "
-            f"'grep BENCHMARK_SUMMARY /opt/flink/log/flink--taskexecutor-*.log "
-            f"2>/dev/null | tail -1'",
+            f"docker logs {c} --tail 500 2>&1 | "
+            f"grep BENCHMARK_SUMMARY | tail -1",
             timeout=60,
         )
-        # Fallback: grep docker container logs (System.out destination).
-        if result.returncode != 0 or "BENCHMARK_SUMMARY" not in (result.stdout or ""):
-            result = executor.run(
-                f"docker logs flink-tm{i} --tail 500 2>&1 | "
-                f"grep BENCHMARK_SUMMARY | tail -1",
-                timeout=60,
-            )
         if result.returncode == 0 and "BENCHMARK_SUMMARY" in (result.stdout or ""):
             try:
-                # Extract JSON after [BENCHMARK_SUMMARY] marker
                 line = result.stdout.strip()
                 json_str = line.split("BENCHMARK_SUMMARY] ", 1)[1].strip()
                 stats = _json.loads(json_str)
@@ -585,10 +582,11 @@ def _collect_operator_timing(
                     + stats.get("totalFrameworkOverheadNs", 0)
                 )
                 wall_clock_times[query_id] = wc
-                logger.info("  %s TM%d: %d records, py=%d ns, fw=%d ns",
-                            query_id, i, stats.get("recordCount", 0),
+                logger.info("  %s %s: %d records, py=%d ns, fw=%d ns",
+                            query_id, label, stats.get("recordCount", 0),
                             stats.get("totalPyDurationNs", 0),
                             stats.get("totalFrameworkOverheadNs", 0))
+                break
             except (_json.JSONDecodeError, IndexError):
                 pass
 
@@ -1380,20 +1378,30 @@ def _run_acquire_all(project_path: Path, run_dir: Path, *, force: bool = False) 
                 perf_data_files = [legacy]
         primary_perf = perf_data_files[0] if perf_data_files else None
 
-        perf_result = collect_perf(
-            plat_dir, plat,
-            primary_perf,
-            None,
-        )
-        logger.info("Perf %s: %s", plat, perf_result.get("status", "unknown"))
+        # Perf-kits already ran on remote in step 5b; skip if CSV exists.
+        perf_csv = perf_data_dir / "perf_records.csv"
+        if perf_csv.exists() and perf_csv.stat().st_size > 0:
+            logger.info("Perf %s: already collected (perf_records.csv exists)", plat)
+        else:
+            perf_result = collect_perf(
+                plat_dir, plat,
+                primary_perf,
+                None,
+            )
+            logger.info("Perf %s: %s", plat, perf_result.get("status", "unknown"))
 
-        asm_result = collect_asm(
-            plat_dir, plat,
-            primary_perf,
-            None,
-            [],
-        )
-        logger.info("ASM %s: %s", plat, asm_result.get("status", "unknown"))
+        # ASM already collected via objdump on remote in step 5b; skip if .s files exist.
+        asm_dir = plat_dir / "asm" / ("arm64" if plat == "arm" else "x86_64")
+        if asm_dir.exists() and list(asm_dir.glob("*.s")):
+            logger.info("ASM %s: already collected (%d .s files)", plat, len(list(asm_dir.glob("*.s"))))
+        else:
+            asm_result = collect_asm(
+                plat_dir, plat,
+                primary_perf,
+                None,
+                [],
+            )
+            logger.info("ASM %s: %s", plat, asm_result.get("status", "unknown"))
 
 
 def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> None:

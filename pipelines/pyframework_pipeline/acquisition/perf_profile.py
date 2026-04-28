@@ -14,7 +14,7 @@ from typing import Any
 from .manifest import AcquisitionManifest, AcquisitionSection
 
 # Default path to python-performance-kits (as git submodule)
-DEFAULT_KITS_DIR = Path(__file__).resolve().parents[4] / "vendor" / "python-performance-kits"
+DEFAULT_KITS_DIR = Path(__file__).resolve().parents[3] / "vendor" / "python-performance-kits"
 
 # Category mapping: python-performance-kits 14 top-level -> framework L1
 CATEGORY_MAP = {
