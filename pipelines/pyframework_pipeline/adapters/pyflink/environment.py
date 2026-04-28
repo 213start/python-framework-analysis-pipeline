@@ -198,10 +198,9 @@ class PyFlinkEnvironmentAdapter:
             timeout=60,
         ))
 
-        # Step 7: Install profiling tools inside containers
+        # Step 7: Verify profiling tools (installed during image build)
         profiling_tools = software.get("profilingTools", [])
         if profiling_tools:
-            # Map tool names to package names
             tool_packages = {
                 "perf": "linux-tools-generic",
                 "strace": "strace",
@@ -214,21 +213,16 @@ class PyFlinkEnvironmentAdapter:
 
             for name in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]:
                 steps.append(PlanStep(
-                    id=f"install-profiling-tools-{name}",
-                    kind="prepare",
+                    id=f"verify-profiling-tools-{name}",
+                    kind="framework-readiness",
                     hostRef=host,
                     command=(
-                        f"docker exec -u root {docker_proxy_flags} {name} bash -c "
+                        f"docker exec {name} bash -c "
                         f"'dpkg -s {pkg_str} >/dev/null 2>&1 "
-                        f"|| (apt-get install -y {pkg_str}); "
-                        f"perf_real=\\$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1); "
-                        f"if [ -n \"\\$perf_real\" ]; then "
-                        f"ln -sf \\$perf_real /usr/local/bin/perf; fi'"
+                        f"|| echo WARNING: profiling tools not in image, rebuild needed'"
                     ),
-                    description=f"Install profiling tools ({', '.join(packages)}) in {name} on {host_alias}",
-                    mutatesHost=True,
-                    requiresApproval=True,
-                    rollbackHint=f"docker exec -u root {name} apt-get remove -y {pkg_str}",
+                    description=f"Verify profiling tools in {name} on {host_alias}",
+                    required=False,
                 ))
 
             # Step 8: Verify profiling tools
