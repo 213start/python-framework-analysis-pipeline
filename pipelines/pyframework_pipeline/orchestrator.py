@@ -1052,25 +1052,38 @@ def _collect_asm_from_all_libs(
 
         logger.info("Collecting objdump from %s (%d symbols)", so, len(syms))
 
-        # Redirect objdump stdout to file (avoid terminal spam),
-        # let stderr through so errors are visible.
+        # Run objdump inside container, redirect to file.
         tmp_dump = "/tmp/_pyframework_objdump.tmp"
-        executor.run(
+        objdump_result = executor.run(
             f"docker exec {container} bash -c "
-            f"'objdump -d -C {so_path} > {tmp_dump}'",
+            f"'objdump -d -C {so_path} > {tmp_dump} 2>&1'",
+            timeout=180,
+            stream=True,
+        )
+        if objdump_result.returncode != 0:
+            logger.warning("objdump failed for %s: %s", so_path, objdump_result.stdout[-200:])
+            continue
+
+        # Pull dump file via docker cp + scp (avoids cat-through-SSH timeout).
+        host_tmp = f"/tmp/_pyframework_objdump_{so.replace('/', '_')}.tmp"
+        executor.run(f"docker exec -u root {container} chmod 644 {tmp_dump}", timeout=30)
+        cp_result = executor.run(
+            f"docker cp {container}:{tmp_dump} {host_tmp}",
             timeout=120,
             stream=True,
         )
-        cat_result = executor.run(
-            f"docker exec {container} cat {tmp_dump}",
-            timeout=30,
-        )
-        executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=10)
-        if cat_result.returncode != 0 or not cat_result.stdout:
-            logger.warning("objdump failed for %s", so_path)
+        if cp_result.returncode != 0:
+            logger.warning("docker cp objdump failed for %s: %s", so_path, cp_result.stderr)
+            executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=30)
             continue
 
-        full_dump = cat_result.stdout
+        # Read locally via scp.
+        local_dump = asm_dir / f"_objdump_{so.replace('/', '_')}.tmp"
+        executor.fetch_file(host_tmp, local_dump)
+        executor.run(f"rm -f {host_tmp}", timeout=30)
+        executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=30)
+
+        full_dump = local_dump.read_text(encoding="utf-8", errors="replace")
 
         # Extract each symbol's disassembly from the full dump.
         symbol_map = _load_symbol_map(asm_dir)
@@ -1106,6 +1119,9 @@ def _collect_asm_from_all_libs(
 
         if collected_count:
             logger.info("  %s: collected %d/%d symbols", so, collected_count, len(syms))
+        # Clean up local dump file.
+        if local_dump.exists():
+            local_dump.unlink()
 
     _save_symbol_map(asm_dir, symbol_map)
     logger.info("ASM collection: %d files in %s", len(list(asm_dir.glob("*.s"))), asm_dir)
@@ -1319,7 +1335,7 @@ def _collect_binary_from_container(
     # docker cp from container to host filesystem.
     cp_result = executor.run(
         f"docker cp {container}:{staging} {host_tmp}",
-        timeout=60,
+        timeout=120,
         stream=True,
     )
     if cp_result.returncode != 0:
