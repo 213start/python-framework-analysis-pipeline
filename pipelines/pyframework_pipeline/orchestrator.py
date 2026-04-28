@@ -1356,8 +1356,6 @@ def _collect_binary_from_container(
 
 def _run_acquire_all(project_path: Path, run_dir: Path, *, force: bool = False) -> None:
     from .acquisition.timing import collect_timing
-    from .acquisition.perf_profile import collect_perf
-    from .acquisition.machine_code import collect_asm
 
     config = load_project_config(project_path)
     run_config = get_run_config(project_path)
@@ -1369,39 +1367,17 @@ def _run_acquire_all(project_path: Path, run_dir: Path, *, force: bool = False) 
         timing_result = collect_timing(plat_dir, plat, stdout_files or None)
         logger.info("Timing %s: %d cases", plat, len(timing_result.get("cases", [])))
 
-        # Discover perf data files (perf-{platform}.data or perf-tm*.data).
+        # Perf-kits and objdump already ran on remote in step 5b.
+        # The local collect_perf/collect_asm would fail because the binaries
+        # (libpython3.14.so, etc.) live inside the Docker container, not locally.
         perf_data_dir = plat_dir / "perf" / "data"
-        perf_data_files = sorted(perf_data_dir.glob("perf-*.data"))
-        if not perf_data_files:
-            legacy = perf_data_dir / "perf.data"
-            if legacy.exists():
-                perf_data_files = [legacy]
-        primary_perf = perf_data_files[0] if perf_data_files else None
-
-        # Perf-kits already ran on remote in step 5b; skip if CSV exists.
-        perf_csv = perf_data_dir / "perf_records.csv"
-        if perf_csv.exists() and perf_csv.stat().st_size > 0:
-            logger.info("Perf %s: already collected (perf_records.csv exists)", plat)
-        else:
-            perf_result = collect_perf(
-                plat_dir, plat,
-                primary_perf,
-                None,
-            )
-            logger.info("Perf %s: %s", plat, perf_result.get("status", "unknown"))
-
-        # ASM already collected via objdump on remote in step 5b; skip if .s files exist.
         asm_dir = plat_dir / "asm" / ("arm64" if plat == "arm" else "x86_64")
-        if asm_dir.exists() and list(asm_dir.glob("*.s")):
-            logger.info("ASM %s: already collected (%d .s files)", plat, len(list(asm_dir.glob("*.s"))))
-        else:
-            asm_result = collect_asm(
-                plat_dir, plat,
-                primary_perf,
-                None,
-                [],
-            )
-            logger.info("ASM %s: %s", plat, asm_result.get("status", "unknown"))
+        perf_csv = perf_data_dir / "perf_records.csv"
+        asm_files = list(asm_dir.glob("*.s")) if asm_dir.exists() else []
+        logger.info("Perf %s: %s", plat,
+                     "collected" if perf_csv.exists() and perf_csv.stat().st_size > 0 else "missing")
+        logger.info("ASM %s: %s", plat,
+                     f"{len(asm_files)} files" if asm_files else "missing")
 
 
 def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> None:
