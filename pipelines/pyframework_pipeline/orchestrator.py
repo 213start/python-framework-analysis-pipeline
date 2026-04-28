@@ -354,6 +354,8 @@ def _run_workload_deploy(
         raise StepError(f"Failed to upload workload to {host_ref}:\n  Local: {local_dir}\n  Remote: {remote_dir}")
 
     # Distribute to containers via docker cp.
+    # docker cp writes as root; chown to the container user so subsequent
+    # operations (build.sh, perf-kits, etc.) can access the files.
     jm_result = executor.run(f"docker cp {remote_dir}/. flink-jm:/opt/flink/usrlib")
     if jm_result.returncode != 0:
         raise StepError(
@@ -362,6 +364,10 @@ def _run_workload_deploy(
             f"  stdout: {jm_result.stdout[:500]}\n"
             f"  stderr: {jm_result.stderr[:500]}"
         )
+    executor.run(
+        "docker exec -u root flink-jm chown -R flink:flink /opt/flink/usrlib",
+        timeout=15,
+    )
 
     for i in range(1, 3):  # tm1, tm2
         tm_result = executor.run(
@@ -374,6 +380,10 @@ def _run_workload_deploy(
                 f"  stdout: {tm_result.stdout[:500]}\n"
                 f"  stderr: {tm_result.stderr[:500]}"
             )
+        executor.run(
+            f"docker exec -u root flink-tm{i} chown -R flink:flink /opt/flink/usrlib",
+            timeout=15,
+        )
 
     # Build JAR inside container if missing (after docker cp so source files are in place).
     build_sh = local_dir / "java-udf" / "build.sh"
@@ -1095,6 +1105,10 @@ def _run_perf_kits_on_remote(
     executor.run(
         f"docker cp {host_staging}/. flink-tm1:{container_kits}",
         timeout=30,
+    )
+    executor.run(
+        f"docker exec -u root flink-tm1 chown -R flink:flink {container_kits}",
+        timeout=15,
     )
     executor.run(f"rm -rf {host_staging}", timeout=30)
 
