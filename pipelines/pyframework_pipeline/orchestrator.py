@@ -31,6 +31,7 @@ STEP_DEFS: list[dict[str, str]] = [
     {"step": "5b.3",   "name": "collect objdump ASM"},
     {"step": "5c",     "name": "acquire all"},
     {"step": "6",      "name": "backfill run"},
+    {"step": "6b",     "name": "platform compare"},
     {"step": "7",      "name": "bridge publish"},
 ]
 
@@ -38,7 +39,7 @@ STEP_DEFS: list[dict[str, str]] = [
 PER_PLATFORM_STEPS = {"3", "4", "5a", "5b.1", "5b.2", "5b.2b", "5b.3"}
 
 # Steps that run once after all platforms.
-GLOBAL_STEPS = {"5c", "6", "7"}
+GLOBAL_STEPS = {"5c", "6", "6b", "7"}
 
 # Mapping from old "5b" to its sub-steps (for resume-from backward compat).
 _STEP_ALIASES: dict[str, list[str]] = {
@@ -356,6 +357,9 @@ def _execute_step(
 
     elif step_id == "6":
         _run_backfill(project_path, run_dir, force=force)
+
+    elif step_id == "6b":
+        _run_compare(project_path, run_dir)
 
     elif step_id == "7":
         _run_bridge_publish(project_path)
@@ -1620,6 +1624,24 @@ def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> 
             f"  ARM dir: {arm_dir}\n"
             f"  x86 dir: {x86_dir}"
         )
+
+
+def _run_compare(project_path: Path, run_dir: Path) -> None:
+    """Step 6b: run cross-platform comparison using python-performance-kits."""
+    from .compare.pipeline import run_compare
+
+    arm_dir = run_dir / "arm"
+    x86_dir = run_dir / "x86"
+
+    if not arm_dir.is_dir():
+        raise StepError(f"ARM run directory not found: {arm_dir}")
+    if not x86_dir.is_dir():
+        raise StepError(f"x86 run directory not found: {x86_dir}")
+
+    result = run_compare(project_path, arm_dir, x86_dir)
+    if result.get("status") != "completed":
+        raise StepError(f"Compare failed: {result}")
+    logger.info("[S6b] Compare complete: %s", result.get("output_dir", ""))
 
 
 def _run_bridge_publish(project_path: Path) -> None:

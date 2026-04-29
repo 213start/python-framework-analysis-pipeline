@@ -258,6 +258,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="[S7] 查看桥接状态。",
     ).add_argument("project")
 
+    # --- compare (Step 6b) ---
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="[Step 6b] 双平台性能对比。",
+    )
+    compare_parser.add_argument("project", help="project.yaml 路径")
+    compare_parser.add_argument("--arm-run-dir", type=Path, help="ARM run 目录")
+    compare_parser.add_argument("--x86-run-dir", type=Path, help="x86 run 目录")
+    compare_parser.add_argument("--output-dir", type=Path, help="输出目录")
+    compare_parser.add_argument("--top-n", type=int, default=20, help="报告展示前 N 条")
+
     return parser
 
 
@@ -296,6 +307,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "bridge":
         return _handle_bridge(args)
+
+    if args.command == "compare":
+        return _cmd_compare(args)
 
     parser.print_help(sys.stderr)
     return 2
@@ -901,3 +915,47 @@ def _cmd_bridge_status(args) -> int:
     result = status(project_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
+
+
+# ---------------------------------------------------------------------------
+# compare (Step 6b)
+# ---------------------------------------------------------------------------
+
+def _cmd_compare(args) -> int:
+    from .compare.pipeline import run_compare
+
+    project_path = Path(args.project)
+    if not project_path.exists():
+        print(f"Error: {project_path} not found", file=sys.stderr)
+        return 1
+
+    arm_dir = args.arm_run_dir
+    x86_dir = args.x86_run_dir
+
+    # Auto-detect run dirs from latest run.
+    if not arm_dir or not x86_dir:
+        runs_dir = project_path.parent / "runs"
+        if not runs_dir.is_dir():
+            print("Error: no runs/ directory found, specify --arm-run-dir and --x86-run-dir",
+                  file=sys.stderr)
+            return 1
+        latest = max(runs_dir.iterdir(), key=lambda p: p.name)
+        if not arm_dir:
+            arm_dir = latest / "arm"
+        if not x86_dir:
+            x86_dir = latest / "x86"
+
+    if not arm_dir.is_dir():
+        print(f"Error: ARM run directory not found: {arm_dir}", file=sys.stderr)
+        return 1
+    if not x86_dir.is_dir():
+        print(f"Error: x86 run directory not found: {x86_dir}", file=sys.stderr)
+        return 1
+
+    result = run_compare(
+        project_path, arm_dir, x86_dir,
+        output_dir=args.output_dir,
+        top_n=args.top_n,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("status") == "completed" else 1
