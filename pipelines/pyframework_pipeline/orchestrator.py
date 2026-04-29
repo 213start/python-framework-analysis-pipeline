@@ -1273,7 +1273,7 @@ def _collect_asm_from_all_libs(
             sorted_addrs = sorted(set(addr_map.values()))
 
             collected = 0
-            no_addr = 0
+            no_addr_syms = []
             for sym in syms:
                 h = hashlib.md5(sym.encode()).hexdigest()[:8]
                 if h in collected_hashes:
@@ -1281,7 +1281,7 @@ def _collect_asm_from_all_libs(
 
                 addr = addr_map.get(sym)
                 if addr is None:
-                    no_addr += 1
+                    no_addr_syms.append(sym)
                     continue
 
                 # Find stop address (next symbol boundary).
@@ -1323,8 +1323,9 @@ def _collect_asm_from_all_libs(
                 collected += 1
 
             status = f"collected={collected}"
-            if no_addr:
-                status += f",no_addr={no_addr}"
+            if no_addr_syms:
+                status += f",no_addr={len(no_addr_syms)}"
+                print(f"{so_name}: no_addr symbols: {no_addr_syms}")
             print(f"{so_name}: {status}/{len(syms)}")
             total_collected += collected
 
