@@ -1249,6 +1249,9 @@ def _collect_asm_from_all_libs(
 
             # objdump -d (no -S) + awk extracts each function's disassembly
             cmd = 'objdump -d ' + so_path + ' | awk -f ' + awk_file
+            print(f"CMD:{so_name}: {cmd}")
+            with open(awk_file) as af:
+                print(f"AWK_SCRIPT:{so_name}:\n{af.read()}")
             subprocess.run(cmd, shell=True, timeout=300)
 
             # Check results
