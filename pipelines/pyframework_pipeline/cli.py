@@ -54,8 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_p.add_argument("project", help="project.yaml 路径")
     run_p.add_argument("--run-dir", help="运行输出目录")
-    run_p.add_argument("--resume-from", help="从指定步骤恢复（如 5a）")
-    run_p.add_argument("--stop-before", help="在指定步骤前停止")
+    run_p.add_argument("--resume-from", help="从指定步骤恢复（如 5b.2b）")
+    run_p.add_argument("--stop-before", help="在指定步骤前停止（如 5b.3）")
     run_p.add_argument("--force", action="store_true", help="清空状态重新跑")
     run_p.add_argument("--yes", action="store_true", help="跳过确认提示")
 

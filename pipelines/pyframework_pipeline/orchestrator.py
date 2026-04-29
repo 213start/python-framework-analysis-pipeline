@@ -22,20 +22,35 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 STEP_DEFS: list[dict[str, str]] = [
-    {"step": "3",  "name": "environment deploy"},
-    {"step": "4",  "name": "workload deploy"},
-    {"step": "5a", "name": "benchmark run"},
-    {"step": "5b", "name": "collect"},
-    {"step": "5c", "name": "acquire all"},
-    {"step": "6",  "name": "backfill run"},
-    {"step": "7",  "name": "bridge publish"},
+    {"step": "3",      "name": "environment deploy"},
+    {"step": "4",      "name": "workload deploy"},
+    {"step": "5a",     "name": "benchmark run"},
+    {"step": "5b.1",   "name": "collect perf.data"},
+    {"step": "5b.2",   "name": "run perf-kits"},
+    {"step": "5b.2b",  "name": "extract CPython source"},
+    {"step": "5b.3",   "name": "collect objdump ASM"},
+    {"step": "5c",     "name": "acquire all"},
+    {"step": "6",      "name": "backfill run"},
+    {"step": "7",      "name": "bridge publish"},
 ]
 
 # Steps that run per-platform (need --platform).
-PER_PLATFORM_STEPS = {"3", "4", "5a", "5b"}
+PER_PLATFORM_STEPS = {"3", "4", "5a", "5b.1", "5b.2", "5b.2b", "5b.3"}
 
 # Steps that run once after all platforms.
 GLOBAL_STEPS = {"5c", "6", "7"}
+
+# Mapping from old "5b" to its sub-steps (for resume-from backward compat).
+_STEP_ALIASES: dict[str, list[str]] = {
+    "5b": ["5b.1", "5b.2", "5b.2b", "5b.3"],
+}
+
+
+def _resolve_step_alias(step: str) -> str:
+    """Resolve step aliases to their first sub-step (e.g. '5b' -> '5b.1')."""
+    if step in _STEP_ALIASES:
+        return _STEP_ALIASES[step][0]
+    return step
 
 
 # ---------------------------------------------------------------------------
@@ -111,9 +126,11 @@ class PipelineRunState:
     def clear_from(self, step: str) -> None:
         """Remove state entries for *step* and all subsequent steps."""
         step_ids = [d["step"] for d in STEP_DEFS]
-        if step not in step_ids:
+        # Resolve aliases (e.g. "5b" -> "5b.1").
+        resolved = _resolve_step_alias(step)
+        if resolved not in step_ids:
             return
-        cutoff = step_ids.index(step)
+        cutoff = step_ids.index(resolved)
         clear_ids = set(step_ids[cutoff:])
         self.data["steps"] = [
             s for s in self.data.get("steps", [])
@@ -194,8 +211,9 @@ def run_pipeline(
     start_idx = 0
     is_resume = bool(resume_from)
     if resume_from:
-        if resume_from in step_ids:
-            start_idx = step_ids.index(resume_from)
+        resolved = _resolve_step_alias(resume_from)
+        if resolved in step_ids:
+            start_idx = step_ids.index(resolved)
             state.clear_from(resume_from)
             logger.info("Resuming from step %s — cleared downstream state", resume_from)
         else:
@@ -204,8 +222,9 @@ def run_pipeline(
 
     stop_idx = len(STEP_DEFS)
     if stop_before:
-        if stop_before in step_ids:
-            stop_idx = step_ids.index(stop_before)
+        resolved_stop = _resolve_step_alias(stop_before)
+        if resolved_stop in step_ids:
+            stop_idx = step_ids.index(resolved_stop)
         else:
             logger.error("Unknown step: %s. Valid: %s", stop_before, step_ids)
             return 1
@@ -323,8 +342,14 @@ def _execute_step(
     elif step_id == "5a":
         _run_benchmark(project_path, run_dir, platform, force=force)
 
-    elif step_id == "5b":
-        _run_collect(project_path, run_dir, platform, force=force)
+    elif step_id == "5b.1":
+        _run_collect_substep(project_path, run_dir, platform, "5b.1")
+    elif step_id == "5b.2":
+        _run_collect_substep(project_path, run_dir, platform, "5b.2")
+    elif step_id == "5b.2b":
+        _run_collect_substep(project_path, run_dir, platform, "5b.2b")
+    elif step_id == "5b.3":
+        _run_collect_substep(project_path, run_dir, platform, "5b.3")
 
     elif step_id == "5c":
         _run_acquire_all(project_path, run_dir, force=force)
@@ -864,12 +889,15 @@ def _parse_tm_count(env_config: dict) -> int:
     return 2  # fallback
 
 
-def _run_collect(
+def _run_collect_substep(
     project_path: Path, run_dir: Path, platform: str,
-    *, force: bool = False,
+    substep: str,
 ) -> None:
-    import json as _json
+    """Execute a single 5b sub-step.
 
+    Sub-steps: 5b.1 (perf.data), 5b.2 (perf-kits), 5b.2b (source extraction),
+    5b.3 (objdump ASM).  Each checks its own output artifact and skips if present.
+    """
     from .config import load_environment_config
     from .remote import build_executor, get_platform_host_ref
 
@@ -878,10 +906,68 @@ def _run_collect(
     executor = build_executor(host_ref, env_config)
 
     platform_run_dir = run_dir / platform
+    perf_dir = platform_run_dir / "perf" / "data"
+    perf_dir.mkdir(parents=True, exist_ok=True)
+    perf_data_local = perf_dir / f"perf-{platform}.data"
+    perf_csv = perf_dir / "perf_records.csv"
 
-    # Find which container has perf.data (JM for local mode, TM for cluster mode).
+    if substep == "5b.1":
+        if perf_data_local.exists() and perf_data_local.stat().st_size > 0:
+            logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
+                         perf_data_local.stat().st_size)
+            return
+        perf_container = _find_perf_container(executor, env_config)
+        logger.info("[5b.1] Collecting perf.data from %s on %s...", perf_container, platform)
+        _collect_binary_from_container(
+            executor, perf_container, "/tmp/perf-udf.data", perf_data_local,
+        )
+        return
+
+    # Sub-steps 5b.2+ need perf.data to exist.
+    if not perf_data_local.exists() or perf_data_local.stat().st_size == 0:
+        raise StepError(f"[{substep}] perf.data not found — run 5b.1 first")
+
+    if substep == "5b.2":
+        if perf_csv.exists() and perf_csv.stat().st_size > 0:
+            logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
+            return
+        perf_container = _find_perf_container(executor, env_config)
+        logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
+        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path, perf_container)
+        return
+
+    # Sub-steps 5b.2b+ need perf_records.csv.
+    if not perf_csv.exists() or perf_csv.stat().st_size == 0:
+        raise StepError(f"[{substep}] perf_records.csv not found — run 5b.2 first")
+
+    if substep == "5b.2b":
+        source_map_path = perf_dir / "symbol_source_map.json"
+        if source_map_path.exists() and source_map_path.stat().st_size > 10:
+            logger.info("[5b.2b] CPython source map exists, skipping extraction on %s", platform)
+            return
+        perf_container = _find_perf_container(executor, env_config)
+        logger.info("[5b.2b] Extracting CPython source for hotspot symbols on %s...", platform)
+        _extract_cpython_sources(executor, perf_csv, source_map_path, perf_container)
+        return
+
+    if substep == "5b.3":
+        asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
+        asm_dir.mkdir(parents=True, exist_ok=True)
+        if list(asm_dir.glob("*.s")):
+            logger.info("[5b.3] ASM files exist (%d), skipping objdump on %s",
+                         len(list(asm_dir.glob("*.s"))), platform)
+            return
+        perf_container = _find_perf_container(executor, env_config)
+        logger.info("[5b.3] Collecting objdump for hotspot symbols on %s...", platform)
+        _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform, perf_container)
+        return
+
+    raise StepError(f"Unknown 5b sub-step: {substep}")
+
+
+def _find_perf_container(executor: "SshExecutor", env_config: dict) -> str:
+    """Find which container has perf.data."""
     _tm_count = _parse_tm_count(env_config)
-    perf_container = None
     for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, _tm_count + 1)]:
         check = executor.run(
             f"docker exec {c} bash -c "
@@ -889,54 +975,10 @@ def _run_collect(
             timeout=15,
         )
         if "found" in check.stdout:
-            perf_container = c
-            logger.info("[5b] perf.data found in %s", c)
-            break
-    if not perf_container:
-        perf_container = "flink-jm"
-        logger.warning("[5b] Could not locate perf.data in any container, using JM as fallback")
-
-    perf_dir = platform_run_dir / "perf" / "data"
-    perf_dir.mkdir(parents=True, exist_ok=True)
-    perf_data_local = perf_dir / f"perf-{platform}.data"
-    perf_csv = perf_dir / "perf_records.csv"
-
-    # --- Sub-step: collect perf.data (artifact: perf-{platform}.data) ---
-    if perf_data_local.exists() and perf_data_local.stat().st_size > 0:
-        logger.info("[5b.1] perf.data already exists (%d bytes), skipping",
-                     perf_data_local.stat().st_size)
-    else:
-        logger.info("[5b.1] Collecting perf.data from %s on %s...", perf_container, platform)
-        _collect_binary_from_container(
-            executor, perf_container, "/tmp/perf-udf.data", perf_data_local,
-        )
-
-    # --- Sub-step: run perf-kits pipeline (artifact: perf_records.csv) ---
-    if perf_csv.exists() and perf_csv.stat().st_size > 0:
-        logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
-    else:
-        logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
-        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path, perf_container)
-
-    # --- Sub-step: extract C source for hotspot symbols from container ---
-    source_map_path = perf_dir / "symbol_source_map.json"
-    if source_map_path.exists() and source_map_path.stat().st_size > 10:
-        logger.info("[5b.2b] CPython source map exists, skipping extraction on %s", platform)
-    elif perf_csv.exists():
-        logger.info("[5b.2b] Extracting CPython source for hotspot symbols on %s...", platform)
-        _extract_cpython_sources(executor, perf_csv, source_map_path, perf_container)
-
-    # --- Sub-step: collect ASM (artifact: *.s files) ---
-    asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
-    asm_dir.mkdir(parents=True, exist_ok=True)
-    if list(asm_dir.glob("*.s")):
-        logger.info("[5b.3] ASM files exist (%d), skipping objdump on %s",
-                     len(list(asm_dir.glob("*.s"))), platform)
-    else:
-        logger.info("[5b.3] Collecting objdump for hotspot symbols on %s...", platform)
-        _collect_asm_from_all_libs(executor, perf_dir, asm_dir, platform, perf_container)
-
-    logger.info("Collection complete for %s", platform)
+            logger.info("perf.data found in %s", c)
+            return c
+    logger.warning("Could not locate perf.data in any container, using JM as fallback")
+    return "flink-jm"
 
 
 
