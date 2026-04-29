@@ -1212,7 +1212,7 @@ def _collect_asm_from_all_libs(
 
         def find_so(so_name):
             base = os.path.basename(so_name)
-            stem = base.split('.')[0]
+            stem = base.split('.so')[0]
             for d in search_dirs:
                 for root, dirs, files in os.walk(d):
                     for fn in files:

@@ -252,7 +252,7 @@ class LibSearchLogicTest(unittest.TestCase):
         """
         import os
         base = os.path.basename(so_name)
-        stem = base.split(".")[0]
+        stem = base.split(".so")[0]
         search_dirs = list(fake_fs.keys())
         for d in search_dirs:
             for fn in fake_fs[d]:
@@ -317,6 +317,17 @@ class LibSearchLogicTest(unittest.TestCase):
         fake_fs = {"/usr/lib": ["libc.so.6"]}
         result = self._run_find("libnonexistent.so", fake_fs)
         self.assertIsNone(result)
+
+    def test_version_specific_match_ignores_wrong_version(self):
+        """libpython3.14 must NOT match libpython3.12."""
+        fake_fs = {
+            "/usr/lib/aarch64-linux-gnu": ["libpython3.12.so.1.0"],
+            "/root/.pyenv/versions/3.14.3/lib": ["libpython3.14.so.1.0"],
+        }
+        result = self._run_find("libpython3.14.so.1.0", fake_fs)
+        self.assertIsNotNone(result)
+        self.assertIn("3.14", result)
+        self.assertNotIn("3.12", result)
 
 
 class AwkPatternTest(unittest.TestCase):
