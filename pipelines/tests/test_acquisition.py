@@ -323,13 +323,12 @@ class NmParseTest(unittest.TestCase):
     """Test nm output parsing for symbol address extraction."""
 
     def _parse_nm(self, nm_output: str) -> dict[str, int]:
-        """Simulate nm parsing from the in-container script."""
+        """Simulate _parse_nm_output from the in-container script."""
         result = {}
         for line in nm_output.splitlines():
             parts = line.split()
             if len(parts) < 3:
                 continue
-            # nm output: addr TYPE name  (no -S) or addr size TYPE name (-S)
             typ_idx = 1 if len(parts) == 3 else 2
             typ = parts[typ_idx]
             if typ not in ("T", "t", "W", "w"):
@@ -353,7 +352,7 @@ class NmParseTest(unittest.TestCase):
         self.assertIn("deduce_unreachable", result)
         self.assertEqual(result["deduce_unreachable"], 0xabc0)
         self.assertIn("_Py_dict_lookup", result)
-        self.assertNotIn("malloc", result)  # U = undefined, not text
+        self.assertNotIn("malloc", result)
 
     def test_parse_lowercase_t(self):
         nm_out = "00000000000abc0 t _Py_dict_lookup\n"
@@ -364,6 +363,33 @@ class NmParseTest(unittest.TestCase):
         nm_out = "00000000000abc0 W __gmon_start__\n"
         result = self._parse_nm(nm_out)
         self.assertIn("__gmon_start__", result)
+
+    def test_dynamic_and_full_merge(self):
+        """nm -C and nm -D -C results should merge, dynamic wins on conflict."""
+        nm_full = (
+            "00000000000abc0 T _Py_dict_lookup\n"
+            "00000000000abd0 t local_helper\n"
+        )
+        nm_dyn = (
+            "00000000000abc0 T _Py_dict_lookup\n"
+            "00000000000c000 T exported_only\n"
+        )
+        # Simulate: full first, then dynamic updates.
+        result = {}
+        result.update(self._parse_nm(nm_full))
+        result.update(self._parse_nm(nm_dyn))
+        self.assertEqual(len(result), 3)
+        self.assertIn("local_helper", result)
+        self.assertIn("exported_only", result)
+
+    def test_stripped_library_only_dynamic(self):
+        """Stripped .so: nm -C returns nothing, nm -D -C has symbols."""
+        nm_empty = ""
+        nm_dyn = "00000000000abc0 T deduce_unreachable\n"
+        result = {}
+        result.update(self._parse_nm(nm_empty))
+        result.update(self._parse_nm(nm_dyn))
+        self.assertIn("deduce_unreachable", result)
 
 
 class SymbolExtractionTest(unittest.TestCase):

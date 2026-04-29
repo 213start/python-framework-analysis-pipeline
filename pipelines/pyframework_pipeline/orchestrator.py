@@ -1222,23 +1222,12 @@ def _collect_asm_from_all_libs(
                             return os.path.join(root, fn)
             return None
 
-        def nm_symbols(so_path):
-            # Get {name: address} for text symbols via nm.
-            try:
-                r = subprocess.run(
-                    ['nm', '-C', so_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-            except Exception:
-                return None
-            if r.returncode != 0:
-                return None
+        def _parse_nm_output(text):
             result = {}
-            for line in r.stdout.splitlines():
+            for line in text.splitlines():
                 parts = line.split()
                 if len(parts) < 3:
                     continue
-                # nm output: addr TYPE name  (no -S) or addr size TYPE name (-S)
                 typ_idx = 1 if len(parts) == 3 else 2
                 typ = parts[typ_idx]
                 if typ not in ('T', 't', 'W', 'w'):
@@ -1250,6 +1239,23 @@ def _collect_asm_from_all_libs(
                 name = parts[-1]
                 result[name] = addr
             return result
+
+        def nm_symbols(so_path):
+            # Try nm -C (full symtab) and nm -D -C (dynamic symbols).
+            # Stripped libraries only have dynamic symbols.
+            result = {}
+            for flags in [['-C'], ['-D', '-C']]:
+                try:
+                    r = subprocess.run(
+                        ['nm'] + flags + [so_path],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                except Exception:
+                    continue
+                if r.returncode != 0:
+                    continue
+                result.update(_parse_nm_output(r.stdout))
+            return result if result else None
 
         for so_name, syms in sorted(so_to_syms.items()):
             so_path = find_so(so_name)
