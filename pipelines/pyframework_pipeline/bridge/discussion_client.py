@@ -8,18 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
-import ssl
 import urllib.error
 import urllib.request
 from typing import Any
 
+from . import PERMISSIVE_SSL_CONTEXT
+
 logger = logging.getLogger(__name__)
 
-_SSL_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-_SSL_CONTEXT.check_hostname = False
-_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
-_SSL_CONTEXT.set_ciphers("DEFAULT:@SECLEVEL=0")
-_SSL_CONTEXT.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+_SSL_CONTEXT = PERMISSIVE_SSL_CONTEXT
 
 _GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 _REQUEST_TIMEOUT = 30  # seconds
