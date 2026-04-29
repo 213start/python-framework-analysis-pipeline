@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 _GITHUB_DEFAULT_BASE = "https://api.github.com"
 _REQUEST_TIMEOUT = 30  # seconds
+
+_SSL_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+_SSL_CONTEXT.check_hostname = False
+_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+_SSL_CONTEXT.set_ciphers("DEFAULT:@SECLEVEL=0")
 
 
 class GitHubClient:
@@ -172,7 +178,7 @@ class GitHubClient:
         """Issue a request and return parsed JSON.  Raises on HTTP errors."""
         req = self._build_request(method, url, payload)
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT, context=_SSL_CONTEXT) as resp:
                 self._check_rate_limit(resp)
                 raw = resp.read()
                 return json.loads(raw.decode("utf-8")) if raw else {}
@@ -200,7 +206,7 @@ class GitHubClient:
         """
         req = self._build_request("GET", url)
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT, context=_SSL_CONTEXT) as resp:
                 self._check_rate_limit(resp)
                 link_header: str = resp.headers.get("Link", "")
                 raw = resp.read()
