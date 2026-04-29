@@ -149,8 +149,12 @@ def deploy_plan(
 
         logger.info("[Step %s] %s", step_id, description)
 
-        # Skip already-passed steps from previous run.
-        if step_id in passed_ids:
+        # Skip already-passed steps from previous run, except container
+        # start/readiness steps which must always re-run (containers may have
+        # stopped due to host reboot, docker restart policy, etc.).
+        kind = step.get("kind", "")
+        always_run = kind in ("framework-start", "framework-readiness")
+        if step_id in passed_ids and not always_run:
             logger.info("[Step %s] Already passed, skipping", step_id)
             record_steps.append({"id": step_id, "status": "passed", "note": "resumed"})
             passed += 1
