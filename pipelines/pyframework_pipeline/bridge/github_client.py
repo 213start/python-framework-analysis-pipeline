@@ -78,6 +78,19 @@ class GitHubClient:
         logger.info("Fetched %d comments for issue #%s", len(comments), issue_number)
         return comments
 
+    def create_comment(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        body: str,
+    ) -> dict[str, Any]:
+        """Create a comment on an issue. Returns ``{"id": ...}``."""
+        url = f"{self._base}/repos/{owner}/{repo}/issues/{issue_number}/comments"
+        data = self._request("POST", url, {"body": body})
+        logger.info("Created comment on issue #%s", issue_number)
+        return {"id": data.get("id")}
+
     def update_issue(
         self,
         owner: str,

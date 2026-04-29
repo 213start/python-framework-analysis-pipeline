@@ -281,6 +281,7 @@ def publish(
             continue
 
         existing_remote = remote_map.get(issue["title"])
+        asm_comments = issue.get("comments", [])
 
         try:
             if existing_remote:
@@ -293,11 +294,21 @@ def publish(
                     discussion_client.update_discussion_body(
                         owner, repo_name, number, issue["body"],
                     )
+                    # Re-post ASM comments (updateDiscussion doesn't touch comments).
+                    node_id = discussion_client._get_discussion_node_id(
+                        owner, repo_name, number,
+                    )
+                    for comment_body in asm_comments:
+                        discussion_client.add_comment(node_id, comment_body)
                 else:
                     assert issue_client is not None
                     issue_client.update_issue(
                         owner, repo_name, number, issue["body"],
                     )
+                    for comment_body in asm_comments:
+                        issue_client.create_comment(
+                            owner, repo_name, number, comment_body,
+                        )
                 _upsert_manifest_entry(
                     manifest, func_id, platform, repo, number, url,
                 )
@@ -309,6 +320,7 @@ def publish(
                 updated += 1
             else:
                 # Create new discussion/issue.
+                discussion_node_id = None
                 if use_discussion:
                     assert discussion_client is not None
                     assert repo_id is not None
@@ -323,6 +335,10 @@ def publish(
                     )
                     number = result.get("number", 0)
                     url = result.get("url", "")
+                    # Post ASM as comments to avoid body size limits.
+                    discussion_node_id = discussion_client._get_discussion_node_id(
+                        owner, repo_name, number,
+                    )
                 else:
                     assert issue_client is not None
                     result = issue_client.create_issue(
@@ -334,6 +350,27 @@ def publish(
                     )
                     number = result.get("number", 0)
                     url = result.get("html_url", "")
+
+                # Post assembly code as separate comments.
+                for comment_body in asm_comments:
+                    try:
+                        if use_discussion:
+                            assert discussion_client is not None
+                            assert discussion_node_id is not None
+                            discussion_client.add_comment(
+                                discussion_node_id, comment_body,
+                            )
+                        else:
+                            assert issue_client is not None
+                            issue_client.create_comment(
+                                owner, repo_name, number, comment_body,
+                            )
+                    except Exception as comment_exc:
+                        logger.warning(
+                            "Failed to post ASM comment for %s: %s",
+                            symbol, comment_exc,
+                        )
+
                 _upsert_manifest_entry(
                     manifest, func_id, platform, repo, number, url,
                 )

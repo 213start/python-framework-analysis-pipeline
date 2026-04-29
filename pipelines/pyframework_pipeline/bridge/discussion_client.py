@@ -212,6 +212,37 @@ class DiscussionClient:
             f"No discussion categories found (looking for {category_name!r})"
         )
 
+    def add_comment(
+        self,
+        discussion_node_id: str,
+        body: str,
+    ) -> str:
+        """Add a top-level comment to a Discussion.
+
+        Returns the comment's GraphQL node ID.
+        """
+        query = """
+        mutation($discussionId: ID!, $body: String!) {
+          addDiscussionComment(input: {
+            discussionId: $discussionId,
+            body: $body
+          }) {
+            comment {
+              id
+            }
+          }
+        }
+        """
+        variables = {"discussionId": discussion_node_id, "body": body}
+        data = self._graphql(query, variables)
+        comment_id = (
+            data.get("addDiscussionComment", {})
+            .get("comment", {})
+            .get("id", "")
+        )
+        logger.info("Added comment to discussion (comment id: %s)", comment_id[:12] + "...")
+        return comment_id
+
     def update_discussion_body(
         self,
         owner: str,

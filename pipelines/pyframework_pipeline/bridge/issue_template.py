@@ -44,26 +44,13 @@ def _truncate_asm(asm: str, max_lines: int) -> str:
     lines = asm.splitlines()
     total = len(lines)
     if total <= max_lines:
-        result = asm
-    else:
-        shown = lines[:max_lines]
-        shown.append(
-            f"; [截断: 共{total}行，已展示前{max_lines}行]"
-        )
-        result = "\n".join(shown)
+        return asm
 
-    # GitHub Discussion body limit is 65536 chars.  Each side of the
-    # diff gets roughly half, so cap at 25000 chars (leaving room for
-    # the Markdown template around the ASM block).
-    CHAR_LIMIT = 25000
-    if len(result) > CHAR_LIMIT:
-        trunc_lines = result[:CHAR_LIMIT].splitlines()
-        trunc_lines.append(
-            f"; [字符截断: 原始{len(result)}字符，已展示前{CHAR_LIMIT}字符]"
-        )
-        result = "\n".join(trunc_lines)
-
-    return result
+    shown = lines[:max_lines]
+    shown.append(
+        f"; [截断: 共{total}行，已展示前{max_lines}行]"
+    )
+    return "\n".join(shown)
 
 
 def _resolve_component_display(component: str) -> str:
@@ -173,16 +160,20 @@ def _build_dual_body(
     component: str,
     category_l1: str,
     max_lines: int,
-) -> str:
-    """Build the full issue body for a dual-platform function."""
-    # Truncate long assembly
-    arm_truncated = _truncate_asm(arm_asm, max_lines)
-    x86_truncated = _truncate_asm(x86_asm, max_lines)
+) -> tuple[str, list[str]]:
+    """Build the issue body and ASM comments for a dual-platform function.
 
+    Returns (body, comments) where body contains the prompt and source code,
+    and comments is a list of Markdown strings to post as separate comments
+    (one per platform's assembly).
+    """
     prompt = _build_dual_prompt(symbol, framework)
     source_section = _build_source_section(source_code)
 
-    parts = [
+    arm_truncated = _truncate_asm(arm_asm, max_lines)
+    x86_truncated = _truncate_asm(x86_asm, max_lines)
+
+    body = "\n".join([
         f"## 提示词\n\n{prompt}",
         "",
         f"## 组件\n\n- {component}",
@@ -190,23 +181,14 @@ def _build_dual_body(
         f"## 分类\n\n- {category_l1}",
         "",
         source_section,
-        "",
-        "## 机器码",
-        "",
-        f"### Kunpeng",
-        "",
-        "```",
-        arm_truncated,
-        "```",
-        "",
-        f"### Zen4",
-        "",
-        "```",
-        x86_truncated,
-        "```",
+    ])
+
+    comments = [
+        f"## 机器码 — Kunpeng\n\n```\n{arm_truncated}\n```",
+        f"## 机器码 — Zen4\n\n```\n{x86_truncated}\n```",
     ]
 
-    return "\n".join(parts)
+    return body, comments
 
 
 def _build_single_body(
@@ -219,8 +201,11 @@ def _build_single_body(
     component: str,
     category_l1: str,
     max_lines: int,
-) -> str:
-    """Build the full issue body for a single-platform function."""
+) -> tuple[str, list[str]]:
+    """Build the issue body and ASM comment for a single-platform function.
+
+    Returns (body, comments).
+    """
     truncated = _truncate_asm(asm, max_lines)
 
     prompt = _build_single_prompt(symbol, framework, platform)
@@ -231,7 +216,7 @@ def _build_single_body(
         else _PLATFORM_LABEL_X86
     )
 
-    parts = [
+    body = "\n".join([
         f"## 提示词\n\n{prompt}",
         "",
         f"## 组件\n\n- {component}",
@@ -239,17 +224,13 @@ def _build_single_body(
         f"## 分类\n\n- {category_l1}",
         "",
         source_section,
-        "",
-        "## 机器码",
-        "",
-        f"### {platform_label}",
-        "",
-        "```",
-        truncated,
-        "```",
+    ])
+
+    comments = [
+        f"## 机器码 — {platform_label}\n\n```\n{truncated}\n```",
     ]
 
-    return "\n".join(parts)
+    return body, comments
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +245,8 @@ def build_asm_diff_issue(
     framework_name: str = "CPython 3.14",
     binary_path: str = "",
     max_lines: int = 2000,
-) -> dict[str, str]:
-    """Build issue title and body for one hotspot function.
+) -> dict[str, Any]:
+    """Build issue title, body, and ASM comments for one hotspot function.
 
     Parameters
     ----------
@@ -287,8 +268,10 @@ def build_asm_diff_issue(
 
     Returns
     -------
-    dict[str, str]
-        ``{'title': str, 'body': str}`` ready for issue creation.
+    dict[str, Any]
+        ``{'title': str, 'body': str, 'comments': list[str]}``
+        Body contains prompt + source code; comments contain per-platform
+        assembly to be posted as separate comments on the issue/discussion.
 
     Raises
     ------
@@ -310,9 +293,8 @@ def build_asm_diff_issue(
 
     # Determine mode: dual or single-platform
     if arm_asm is not None and x86_asm is not None:
-        # Dual-platform analysis
         title = f"{symbol}跨平台机器码差异分析"
-        body = _build_dual_body(
+        body, comments = _build_dual_body(
             symbol=symbol,
             arm_asm=arm_asm,
             x86_asm=x86_asm,
@@ -324,9 +306,8 @@ def build_asm_diff_issue(
             max_lines=max_lines,
         )
     elif arm_asm is not None:
-        # ARM-only
         title = f"{symbol} ({_PLATFORM_LABEL_ARM} only) 机器码分析"
-        body = _build_single_body(
+        body, comments = _build_single_body(
             symbol=symbol,
             asm=arm_asm,
             platform="arm",
@@ -338,9 +319,8 @@ def build_asm_diff_issue(
             max_lines=max_lines,
         )
     else:
-        # x86-only
         title = f"{symbol} ({_PLATFORM_LABEL_X86} only) 机器码分析"
-        body = _build_single_body(
+        body, comments = _build_single_body(
             symbol=symbol,
             asm=x86_asm,  # type: ignore[arg-type]
             platform="x86",
@@ -352,7 +332,7 @@ def build_asm_diff_issue(
             max_lines=max_lines,
         )
 
-    return {"title": title, "body": body}
+    return {"title": title, "body": body, "comments": comments}
 
 
 def check_chunking(body: str, max_chars: int = 60000) -> dict[str, Any]:
