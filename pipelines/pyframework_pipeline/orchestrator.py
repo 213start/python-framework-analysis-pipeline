@@ -1167,7 +1167,7 @@ def _collect_asm_from_all_libs(
         logger.warning("perf_records.csv not found, skipping multi-lib ASM collection")
         return
 
-    # Group symbols by shared_object, filtering to meaningful ones.
+    # Group symbols by shared_object, filtering to self >= 0.5%.
     so_to_syms: dict[str, list[str]] = {}
     try:
         with open(perf_csv, newline="", encoding="utf-8") as f:
@@ -1180,6 +1180,12 @@ def _collect_asm_from_all_libs(
                     continue
                 if so == "[kernel.kallsyms]":
                     continue
+                try:
+                    self_pct = float(row.get("self", 0))
+                except (ValueError, TypeError):
+                    continue
+                if self_pct < 0.5:
+                    continue
                 so_to_syms.setdefault(so, []).append(sym)
     except Exception as e:
         logger.warning("Failed to read perf_records.csv: %s", e)
@@ -1187,7 +1193,7 @@ def _collect_asm_from_all_libs(
 
     for so, syms in so_to_syms.items():
         counts = Counter(syms)
-        so_to_syms[so] = [s for s, _ in counts.most_common(30)]
+        so_to_syms[so] = [s for s, _ in counts.most_common()]
 
     # Load existing symbol_map so the in-container script can skip collected symbols.
     existing_map = _load_symbol_map(asm_dir)
