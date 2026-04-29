@@ -44,13 +44,26 @@ def _truncate_asm(asm: str, max_lines: int) -> str:
     lines = asm.splitlines()
     total = len(lines)
     if total <= max_lines:
-        return asm
+        result = asm
+    else:
+        shown = lines[:max_lines]
+        shown.append(
+            f"; [截断: 共{total}行，已展示前{max_lines}行]"
+        )
+        result = "\n".join(shown)
 
-    shown = lines[:max_lines]
-    shown.append(
-        f"; [截断: 共{total}行，已展示前{max_lines}行]"
-    )
-    return "\n".join(shown)
+    # GitHub Discussion body limit is 65536 chars.  Each side of the
+    # diff gets roughly half, so cap at 25000 chars (leaving room for
+    # the Markdown template around the ASM block).
+    CHAR_LIMIT = 25000
+    if len(result) > CHAR_LIMIT:
+        trunc_lines = result[:CHAR_LIMIT].splitlines()
+        trunc_lines.append(
+            f"; [字符截断: 原始{len(result)}字符，已展示前{CHAR_LIMIT}字符]"
+        )
+        result = "\n".join(trunc_lines)
+
+    return result
 
 
 def _resolve_component_display(component: str) -> str:
