@@ -405,10 +405,19 @@ def backfill_asm(
     # ------------------------------------------------------------------
     funcs_by_symbol = _functions_by_symbol(dataset)
 
+    # Pre-load source map for sourceAnchors enrichment.
+    source_map = _load_symbol_source_map()
+
     arm_only_count = 0
     x86_only_count = 0
     both_count = 0
     new_func_count = 0
+
+    # Build sourceAnchors index so step 7 can find source code.
+    existing_source_anchors = {
+        a.get("functionId"): a for a in source.get("sourceAnchors", [])
+        if a.get("functionId")
+    }
 
     for symbol in all_symbols:
         has_arm = symbol in arm_files
@@ -440,6 +449,19 @@ def backfill_asm(
                 existing_ids_list = func.get("artifactIds", [])
                 merged = list(dict.fromkeys(new_ids + existing_ids_list))
                 func["artifactIds"] = merged
+            # Write source code snippet to source layer so step 7 can find it.
+            func_id = func.get("id", "")
+            known_src = source_map.get(symbol, {})
+            src_snippet = known_src.get("snippet", "")
+            if func_id and src_snippet and func_id not in existing_source_anchors:
+                anchor = {
+                    "functionId": func_id,
+                    "symbol": symbol,
+                    "sourceFile": known_src.get("sourceFile", func.get("sourceFile", "")),
+                    "snippet": src_snippet,
+                }
+                source.setdefault("sourceAnchors", []).append(anchor)
+                existing_source_anchors[func_id] = anchor
         else:
             # New function — add with minimal metadata.
             _add_new_function(
@@ -454,7 +476,6 @@ def backfill_asm(
     # 4. Annotate functions without usable ASM
     # ------------------------------------------------------------------
     no_asm_count = 0
-    source_map = _load_symbol_source_map()
     for func in dataset.get("functions", []):
         dv = func.get("diffView")
         has_blocks = dv and dv.get("analysisBlocks")
