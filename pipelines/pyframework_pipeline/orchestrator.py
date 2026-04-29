@@ -1258,7 +1258,7 @@ def _collect_asm_from_all_libs(
             # Stream objdump, extracting target symbols in single pass.
             try:
                 proc = subprocess.Popen(
-                    ['objdump', '-d', '-C', so_path],
+                    ['objdump', '-S', '-d', so_path],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                     text=True, bufsize=1,
                 )
@@ -1355,7 +1355,7 @@ def _collect_asm_from_all_libs(
     result = executor.run(
         f"docker exec {container} python3 /tmp/_asm_collect/_asm_collect.py "
         f"/tmp/_asm_collect/_manifest.json /tmp/_asm_output",
-        timeout=300,
+        timeout=600,
         stream=True,
     )
     if result.stdout:
