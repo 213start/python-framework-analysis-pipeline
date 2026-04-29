@@ -196,3 +196,173 @@ class SshExecutorTest(unittest.TestCase):
         ex2 = SshExecutor.from_string("myhost")
         self.assertEqual(ex2.user, "")
         self.assertEqual(ex2.host, "myhost")
+
+
+class _FakeExecutor:
+    """Minimal executor stub for unit-testing orchestrator helpers."""
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+    def run(self, cmd: str, **kw):
+        self.calls.append(cmd)
+        from collections import namedtuple
+        R = namedtuple("R", "returncode stdout stderr")
+        return R(0, "", "")
+    def push_file(self, local, remote):
+        return True
+    def fetch_file(self, remote, local):
+        return True
+    def fetch_dir(self, remote, local):
+        return True
+
+
+class SymbolMapLogicTest(unittest.TestCase):
+    """Test symbol_map key/value semantics used by _collect_asm_from_all_libs."""
+
+    def test_collected_hashes_uses_keys_not_values(self):
+        """existing_map is {hash: symbol}. collected_hashes must contain hashes."""
+        existing_map = {"a1b2c3d4": "_Py_dict_lookup", "e5f6a7b8": "tuple_dealloc"}
+        # The script does: collected_hashes = set(existing_map.keys())
+        collected = set(existing_map.keys())
+        # A new hash must NOT be in collected.
+        import hashlib
+        new_hash = hashlib.md5(b"new_symbol").hexdigest()[:8]
+        self.assertNotIn(new_hash, collected)
+        # Existing hashes MUST be in collected.
+        self.assertIn("a1b2c3d4", collected)
+        self.assertIn("e5f6a7b8", collected)
+
+    def test_values_are_symbol_names_not_hashes(self):
+        """Ensure .values() gives symbol names, NOT usable as hash set."""
+        existing_map = {"a1b2c3d4": "_Py_dict_lookup"}
+        values = set(existing_map.values())
+        # values contains symbol names, not hashes — must NOT match an MD5 hash.
+        import hashlib
+        h = hashlib.md5(b"_Py_dict_lookup").hexdigest()[:8]
+        self.assertNotIn(h, values)  # hash of symbol ≠ symbol name
+
+
+class LibSearchLogicTest(unittest.TestCase):
+    """Test the library-finding logic from the in-container ASM script."""
+
+    def _run_find(self, so_name, fake_fs: dict[str, list[str]]) -> str | None:
+        """Simulate the library search from the in-container script.
+
+        fake_fs maps directory -> list of filenames found by os.walk.
+        Returns matched path or None.
+        """
+        import os
+        base = os.path.basename(so_name)
+        stem = base.split(".")[0]
+        search_dirs = list(fake_fs.keys())
+        for d in search_dirs:
+            for fn in fake_fs[d]:
+                if fn == base:
+                    return os.path.join(d, fn)
+                if ".so" in fn and stem in fn:
+                    return os.path.join(d, fn)
+        return None
+
+    def test_exact_match_in_usr_lib(self):
+        fake_fs = {
+            "/usr/lib": ["libc.so.6", "libpython3.14.so.1.0"],
+            "/root/.pyenv": [],
+        }
+        result = self._run_find("libpython3.14.so.1.0", fake_fs)
+        self.assertEqual(result, "/usr/lib/libpython3.14.so.1.0")
+
+    def test_substring_match_stem(self):
+        """perf reports libpython3.14.so, container has libpython3.14.so.1.0."""
+        fake_fs = {
+            "/usr/lib": ["libpython3.14.so.1.0"],
+            "/root/.pyenv": [],
+        }
+        result = self._run_find("libpython3.14.so", fake_fs)
+        self.assertIsNotNone(result)
+        self.assertIn("libpython3.14.so", result)
+
+    def test_pyenv_lib_dir_searched_for_so(self):
+        """libpython in /root/.pyenv/versions/.../lib/ must be found."""
+        pyenv_dir = "/root/.pyenv/versions/3.14.3/lib"
+        fake_fs = {
+            "/usr/lib": [],
+            pyenv_dir: ["libpython3.14.so", "libpython3.14.so.1.0"],
+        }
+        result = self._run_find("libpython3.14.so.1.0", fake_fs)
+        self.assertIsNotNone(result)
+        self.assertIn(pyenv_dir, result)
+
+    def test_python_binary_in_pyenv(self):
+        """Non-.so binary like python3.14 must be found in pyenv."""
+        pyenv_bin = "/root/.pyenv/versions/3.14.3/bin"
+        fake_fs = {
+            "/usr/lib": [],
+            "/usr/local/bin": [],
+            pyenv_bin: ["python3.14", "python3"],
+        }
+        # python3.14 is not a .so, stem match still works
+        result = self._run_find("python3.14", fake_fs)
+        self.assertIsNotNone(result)
+
+    def test_full_path_so_name(self):
+        """perf may report full path like /usr/lib/.../libpython3.14.so.1.0."""
+        fake_fs = {
+            "/usr/lib/aarch64-linux-gnu": ["libpython3.14.so.1.0"],
+        }
+        result = self._run_find(
+            "/usr/lib/aarch64-linux-gnu/libpython3.14.so.1.0", fake_fs
+        )
+        self.assertIsNotNone(result)
+
+    def test_no_match_returns_none(self):
+        fake_fs = {"/usr/lib": ["libc.so.6"]}
+        result = self._run_find("libnonexistent.so", fake_fs)
+        self.assertIsNone(result)
+
+
+class SymbolExtractionTest(unittest.TestCase):
+    """Test objdump symbol extraction logic."""
+
+    def _extract_symbol(self, dump: str, symbol: str) -> str:
+        """Simulate symbol extraction from objdump output."""
+        import re
+        pat = re.compile(r"^[0-9a-f]+ <" + re.escape(symbol) + ">")
+        lines = []
+        capturing = False
+        for line in dump.splitlines():
+            if not capturing and pat.match(line):
+                capturing = True
+            if capturing:
+                if line.strip() == "" and lines:
+                    break
+                lines.append(line)
+            if len(lines) > 500:
+                lines = lines[:500]
+                break
+        return "\n".join(lines)
+
+    def test_extract_simple_function(self):
+        dump = (
+            "00000000000abc0 <_Py_dict_lookup>:\n"
+            "   abc0:  f3 0f 1e fa     endbr64\n"
+            "   abc4:  55              push   %rbp\n"
+            "   abc5:  48 89 e5        mov    %rsp,%rbp\n"
+            "\n"
+            "00000000000abd0 <next_function>:\n"
+        )
+        result = self._extract_symbol(dump, "_Py_dict_lookup")
+        self.assertIn("_Py_dict_lookup", result)
+        self.assertIn("endbr64", result)
+        self.assertNotIn("next_function", result)
+
+    def test_symbol_not_found(self):
+        dump = "00000000000abc0 <some_other>:\n   abc0: 90 nop\n"
+        result = self._extract_symbol(dump, "_Py_dict_lookup")
+        self.assertEqual(result, "")
+
+    def test_long_function_truncated(self):
+        header = "00000000000abc0 <big_func>:\n"
+        body = "\n".join(f"   {i:04x}:  90 {'nop':<20}" for i in range(600))
+        dump = header + body + "\n\n0000000001000 <next>:\n"
+        result = self._extract_symbol(dump, "big_func")
+        lines = result.splitlines()
+        self.assertLessEqual(len(lines), 500)

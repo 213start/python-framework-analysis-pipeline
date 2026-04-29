@@ -1102,6 +1102,7 @@ def _extract_cpython_sources(
         "mkdir -p /tmp/cpython-src && tar xf $TB -C /tmp/cpython-src --strip-components=1 && "
         "echo extracted)'",
         timeout=60,
+        stream=True,
     )
     if "ok" not in src_prep.stdout and "extracted" not in src_prep.stdout:
         logger.warning("CPython source not available in container, skipping source extraction")
@@ -1203,29 +1204,28 @@ def _collect_asm_from_all_libs(
         so_to_syms = data['so_to_syms']
         existing_map = data.get('existing_map', {})
 
-        # Invert existing_map to get set of already-collected hashes.
-        collected_hashes = set(existing_map.values()) if existing_map else set()
+        # existing_map is {hash: symbol}. collected_hashes contains the hashes.
+        collected_hashes = set(existing_map.keys()) if existing_map else set()
 
         symbol_map = dict(existing_map)
-        lib_dirs = '/usr/lib /usr/local/lib /opt /lib'.split()
-        bin_dirs = '/usr/local/bin /usr/bin /opt /root/.pyenv /root'.split()
-        all_dirs = lib_dirs + bin_dirs
+        search_dirs = '/usr/lib /usr/local/lib /opt /lib /root/.pyenv /root'.split()
         total_collected = 0
 
         for so_name, syms in sorted(so_to_syms.items()):
             # Find the library inside the container.
             so_path = None
             base = os.path.basename(so_name)
-            is_so = base.endswith('.so') or '.so.' in base
-            search = lib_dirs if is_so else all_dirs
-            for d in search:
+            stem = base.split('.')[0]
+            for d in search_dirs:
                 for root, dirs, files in os.walk(d):
                     for fn in files:
-                        if fn == base or (is_so and base.split('.')[0] in fn and '.so' in fn):
-                            candidate = os.path.join(root, fn)
-                            if os.path.exists(candidate):
-                                so_path = candidate
-                                break
+                        if fn == base:
+                            so_path = os.path.join(root, fn)
+                            break
+                        # Substring match: stem appears in filename and has .so
+                        if '.so' in fn and stem in fn:
+                            so_path = os.path.join(root, fn)
+                            break
                     if so_path:
                         break
                 if so_path:
