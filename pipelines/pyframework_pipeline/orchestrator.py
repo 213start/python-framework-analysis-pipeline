@@ -917,6 +917,14 @@ def _run_collect(
         logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
         _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path, perf_container)
 
+    # --- Sub-step: extract C source for hotspot symbols from container ---
+    source_map_path = perf_dir / "symbol_source_map.json"
+    if source_map_path.exists() and source_map_path.stat().st_size > 10:
+        logger.info("[5b.2b] CPython source map exists, skipping extraction on %s", platform)
+    elif perf_csv.exists():
+        logger.info("[5b.2b] Extracting CPython source for hotspot symbols on %s...", platform)
+        _extract_cpython_sources(executor, perf_csv, source_map_path, perf_container)
+
     # --- Sub-step: collect ASM (artifact: *.s files) ---
     asm_dir = platform_run_dir / "asm" / ("arm64" if platform == "arm" else "x86_64")
     asm_dir.mkdir(parents=True, exist_ok=True)
@@ -987,6 +995,133 @@ def _load_symbol_map(asm_dir: Path) -> dict[str, str]:
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
+
+
+def _extract_cpython_sources(
+    executor: "SshExecutor",
+    perf_csv: Path,
+    output_path: Path,
+    container: str = "flink-jm",
+) -> None:
+    """Extract C source code for hotspot symbols from CPython source in container.
+
+    pyenv keeps the extracted source at /root/.pyenv/sources/<version>/. For each
+    symbol in perf_records.csv, grep for the function definition and extract the
+    body. Writes symbol_source_map.json for asm_backfill to consume.
+    """
+    import csv as _csv
+
+    # Read symbols from perf CSV.
+    symbols: set[str] = set()
+    try:
+        with open(perf_csv, newline="", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                sym = (row.get("symbol") or "").strip()
+                if sym and not sym.startswith("0x") and sym != "[unknown]":
+                    if len(sym) >= 8 and all(c in "0123456789abcdef" for c in sym.lower()):
+                        continue
+                    symbols.add(sym)
+    except Exception:
+        return
+
+    if not symbols:
+        return
+
+    # Find CPython source directory in container.
+    src_check = executor.run(
+        f"docker exec {container} bash -c "
+        "'ls -d /root/.pyenv/sources/*/Python-*/Objects/tupleobject.c 2>/dev/null | head -1'",
+        timeout=15,
+    )
+    if src_check.returncode != 0 or not src_check.stdout.strip():
+        logger.warning("CPython source not found in container, skipping source extraction")
+        return
+
+    # Get the source root (e.g. /root/.pyenv/sources/3.14.3/Python-3.14.3)
+    sample_file = src_check.stdout.strip()
+    cpython_src = sample_file.rsplit("/", 2)[0]  # strip Objects/tupleobject.c
+    logger.info("Found CPython source at %s", cpython_src)
+
+    # Build a Python extraction script to run inside the container.
+    # This is more reliable than chaining grep/awk through SSH.
+    extract_script = (
+        "import sys, os, re, json\n"
+        "src = sys.argv[1]\n"
+        "symbols = sys.argv[2].split(',')\n"
+        "result = {}\n"
+        "c_dirs = [os.path.join(src, d) for d in ['Objects', 'Python', 'Modules', 'Parser']]\n"
+        "c_files = []\n"
+        "for d in c_dirs:\n"
+        "    for f in os.listdir(d) if os.path.isdir(d) else []:\n"
+        "        if f.endswith('.c'):\n"
+        "            c_files.append(os.path.join(d, f))\n"
+        "for sym in symbols:\n"
+        "    for cf in c_files:\n"
+        "        try:\n"
+        "            with open(cf) as fh:\n"
+        "                lines = fh.readlines()\n"
+        "        except Exception:\n"
+        "            continue\n"
+        "        rel = os.path.relpath(cf, src)\n"
+        "        for i, line in enumerate(lines):\n"
+        "            # Match function definition: sym appears at start of a line\n"
+        "            # followed by '(' and is not inside a comment or macro.\n"
+        "            stripped = line.lstrip()\n"
+        "            if not stripped.startswith(sym):\n"
+        "                continue\n"
+        "            rest = stripped[len(sym):].lstrip()\n"
+        "            if not rest.startswith('('):\n"
+        "                continue\n"
+        "            # Extract function body: count braces from this line.\n"
+        "            depth = 0\n"
+        "            body_lines = []\n"
+        "            started = False\n"
+        "            for j in range(max(0, i-2), min(len(lines), i+200)):\n"
+        "                body_lines.append(lines[j].rstrip())\n"
+        "                depth += lines[j].count('{') - lines[j].count('}')\n"
+        "                if '{' in lines[j]:\n"
+        "                    started = True\n"
+        "                if started and depth <= 0:\n"
+        "                    break\n"
+        "            snippet = '\\n'.join(body_lines)\n"
+        "            result[sym] = {'sourceFile': rel, 'snippet': snippet}\n"
+        "            break\n"
+        "        if sym in result:\n"
+        "            break\n"
+        "print(json.dumps(result))\n"
+    )
+
+    import base64
+    encoded_script = base64.b64encode(extract_script.encode()).decode()
+    sym_list = ",".join(sorted(symbols))
+
+    result = executor.run(
+        f"docker exec {container} bash -c "
+        f"'echo {encoded_script} | base64 -d > /tmp/_extract_src.py && "
+        f"python3 /tmp/_extract_src.py {cpython_src} \"{sym_list}\"'"
+        f" 2>/dev/null",
+        timeout=120,
+        stream=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        logger.warning("CPython source extraction failed: %s", result.stderr[:200] if result.stderr else "no output")
+        return
+
+    try:
+        source_map = json.loads(result.stdout.strip())
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse source extraction output")
+        return
+
+    if source_map:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(source_map, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        logger.info("Extracted CPython source for %d/%d symbols", len(source_map), len(symbols))
+
+    executor.run(f"docker exec {container} rm -f /tmp/_extract_src.py", timeout=15)
 
 
 def _save_symbol_map(asm_dir: Path, symbol_map: dict[str, str]) -> None:
