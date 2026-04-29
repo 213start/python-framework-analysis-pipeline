@@ -1050,6 +1050,7 @@ def _extract_cpython_sources(
         executor.push_file(tmp / "_extract_src.py", f"{host_staging}/_extract_src.py")
         executor.push_file(tmp / "_symbols.txt", f"{host_staging}/_symbols.txt")
         executor.run(f"docker cp {host_staging}/. {container}:/tmp/_src_extract/", timeout=30)
+        executor.run(f"docker exec -u root {container} chown -R flink:flink /tmp/_src_extract", timeout=15)
 
     # Ensure CPython source is available (extract from pyenv cache if needed).
     src_prep = executor.run(
@@ -1258,10 +1259,14 @@ def _collect_asm_from_all_libs(
         executor.push_file(tmp / "_asm_collect.py", f"{host_staging}/_asm_collect.py")
         executor.push_file(tmp / "_manifest.json", f"{host_staging}/_manifest.json")
         executor.run(f"docker cp {host_staging}/. {container}:/tmp/_asm_collect/", timeout=30)
+        executor.run(f"docker exec -u root {container} chown -R flink:flink /tmp/_asm_collect", timeout=15)
 
     # Create output directory inside container and run the script.
     executor.run(
         f"docker exec {container} mkdir -p /tmp/_asm_output", timeout=15,
+    )
+    executor.run(
+        f"docker exec -u root {container} chown flink:flink /tmp/_asm_output", timeout=15,
     )
     result = executor.run(
         f"docker exec {container} python3 /tmp/_asm_collect/_asm_collect.py "
