@@ -366,3 +366,87 @@ class SymbolExtractionTest(unittest.TestCase):
         result = self._extract_symbol(dump, "big_func")
         lines = result.splitlines()
         self.assertLessEqual(len(lines), 500)
+
+
+class FilterPythonRowsTest(unittest.TestCase):
+    """Test _filter_python_rows keeps both CPython and third-party library symbols."""
+
+    def _make_row(self, symbol="func", shared_object="libpython3.14.so",
+                  pid_command=None, category_top="") -> dict:
+        row: dict = {
+            "symbol": symbol,
+            "shared_object": shared_object,
+            "category_top": category_top,
+        }
+        if pid_command is not None:
+            row["pid_command"] = pid_command
+        return row
+
+    def test_cpython_symbols_kept(self):
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [self._make_row("_Py_dict_lookup", "libpython3.14.so.1.0")]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 1)
+
+    def test_third_party_so_kept(self):
+        """libarrow, libopenblas etc. must NOT be filtered out."""
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [
+            self._make_row("arrow_func", "libarrow.so.1300"),
+            self._make_row("openblas_func", "libopenblas.so.0"),
+            self._make_row("glibc_func", "libc.so.6"),
+        ]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 3, "Third-party SO symbols must be kept")
+
+    def test_kernel_symbols_dropped(self):
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [
+            self._make_row("copy_page_range", "[kernel.kallsyms]"),
+        ]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 0)
+
+    def test_hex_addresses_dropped(self):
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [
+            self._make_row("0x7f1234567890", "libpython3.14.so"),
+            self._make_row("a1b2c3d4e5f6a7b8", "libpython3.14.so"),
+            self._make_row("[unknown]", "libpython3.14.so"),
+        ]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 0)
+
+    def test_kernel_idle_dropped(self):
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [self._make_row("default_idle_call", "[kernel.kallsyms]")]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 0)
+
+    def test_pid_filter_keeps_python(self):
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [
+            self._make_row("func_a", "libpython3.14.so", pid_command="python3.14"),
+            self._make_row("func_b", "libpython3.14.so", pid_command="java"),
+            self._make_row("func_c", "libpython3.14.so", pid_command="pyflink-udf-runner"),
+        ]
+        result = _filter_python_rows(rows)
+        symbols = [r["symbol"] for r in result]
+        self.assertIn("func_a", symbols)
+        self.assertNotIn("func_b", symbols)  # java process filtered
+        self.assertIn("func_c", symbols)
+
+    def test_mixed_cpython_and_third_party(self):
+        """Both CPython and third-party must survive filtering."""
+        from pipelines.pyframework_pipeline.backfill.perf_backfill import _filter_python_rows
+        rows = [
+            self._make_row("_Py_dict_lookup", "libpython3.14.so.1.0"),
+            self._make_row("arrow_batch", "libarrow.so.1300"),
+            self._make_row("_PyEval_EvalFrameDefault", "libpython3.14.so.1.0"),
+            self._make_row("cblas_dgemm", "libopenblas.so.0"),
+        ]
+        result = _filter_python_rows(rows)
+        self.assertEqual(len(result), 4)
+        symbols = {r["symbol"] for r in result}
+        self.assertEqual(symbols, {"_Py_dict_lookup", "arrow_batch",
+                                    "_PyEval_EvalFrameDefault", "cblas_dgemm"})

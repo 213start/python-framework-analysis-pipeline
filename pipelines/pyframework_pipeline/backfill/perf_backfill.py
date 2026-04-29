@@ -345,13 +345,15 @@ _KERNEL_IDLE_SYMBOLS = frozenset({
 def _filter_python_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     """Keep only rows from Python worker processes with resolved symbols.
 
-    perf record -a captures ALL processes (JVM threads, bash, perf itself).
-    When pid_command is available, filter to Python workers (python3, pyflink-udf-run).
-    When pid_command is absent, fall back to category/SO-based filtering.
+    perf record -p only records Python workers, so all rows are relevant.
+    When pid_command is present, also filter to python/pyflink processes.
+    When pid_command is absent, keep all resolved symbols (the perf data
+    was already scoped to Python workers by -p).
 
     Also drops:
     - Unresolved hex-address symbols (0x...) which provide no insight.
     - Kernel idle symbols misattributed to container processes by perf -a.
+    - Kernel symbols (shared_object = [kernel.kallsyms]).
     """
     has_pid = any("pid_command" in (r or {}) for r in rows[:100]) if rows else False
     filtered = []
@@ -364,22 +366,14 @@ def _filter_python_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             continue
         if sym in _KERNEL_IDLE_SYMBOLS:
             continue
+        # Drop kernel symbols (no userspace disassembly available).
+        so = (row.get("shared_object") or "").strip()
+        if so == "[kernel.kallsyms]":
+            continue
 
         if has_pid:
             cmd = (row.get("pid_command") or "").strip().lower()
             if "python" not in cmd and "pyflink" not in cmd:
-                continue
-        else:
-            # Fallback: category/SO-based filtering
-            cat = (row.get("category_top") or "").strip()
-            so = (row.get("shared_object") or "").strip().lower()
-            if cat in _PYTHON_CATEGORIES:
-                pass
-            elif any(kw in so for kw in _PYTHON_SO_KEYWORDS):
-                pass
-            elif ".cpython-" in so:
-                pass
-            else:
                 continue
 
         filtered.append(row)
