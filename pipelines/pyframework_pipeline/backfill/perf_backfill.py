@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -64,38 +65,18 @@ _LIB_DISPLAY: dict[str, str] = {
     "libjvm": "JVM (OpenJDK)",
 }
 
-# CPython internal symbols -> real source file paths.
-_CPYTHON_SYMBOL_SOURCES: dict[str, str] = {
-    "deduce_unreachable": "Python/gc.c",
-    "visit_decref": "Python/gc.c",
-    "visit_reachable": "Python/gc.c",
-    "untrack_tuples": "Python/gc.c",
-    "gc_collect_region": "Python/gc.c",
-    "visit_add_to_container": "Python/gc.c",
-    "_PyGC_Collect": "Python/gc.c",
-    "_PyEval_EvalFrameDefault": "Python/ceval.c",
-    "_Py_dict_lookup": "Objects/dictobject.c",
-    "dict_traverse": "Objects/dictobject.c",
-    "_PyObject_GenericGetAttrWithDict": "Objects/object.c",
-    "_PyCode_New": "Objects/codeobject.c",
-    "_Py_hashtable_get": "Python/hashtable.c",
-    "PyUnicode_FromKindAndData": "Objects/unicodeobject.c",
-    "tuple_dealloc": "Objects/tupleobject.c",
-    "r_object": "Python/marshal.c",
-    "update_one_slot": "Objects/typeobject.c",
-}
-
 _KERNEL_SYMBOLS = {"unmap_page_range", "copy_page_range", "__tlb_remove_page",
                     "free_pages_and_swap_cache", "__alloc_pages_nodemask"}
 
 
-def _resolve_source_info(symbol: str, shared_object: str) -> dict[str, str]:
-    """Derive sourceFile and origin from shared_object and symbol."""
+def _resolve_source_info(symbol: str, shared_object: str,
+                         source_map: dict[str, dict] | None = None) -> dict[str, str]:
+    """Derive sourceFile and origin from shared_object, symbol, and source map."""
     if shared_object == "[kernel.kallsyms]":
         return {"sourceFile": "Linux Kernel", "origin": "kernel"}
-    # Check for known CPython symbol first — use real source file path.
-    if symbol in _CPYTHON_SYMBOL_SOURCES:
-        return {"sourceFile": _CPYTHON_SYMBOL_SOURCES[symbol], "origin": "CPython"}
+    # Check dynamic source map first (from _extract_cpython_sources).
+    if source_map and symbol in source_map:
+        return {"sourceFile": source_map[symbol].get("sourceFile", ""), "origin": "CPython"}
     so_lower = shared_object.lower()
     for lib_prefix, display in _LIB_DISPLAY.items():
         if lib_prefix.lower() in so_lower:
@@ -645,7 +626,8 @@ def _build_functions(
     x86_total_self: float,
     arm_total_ms: float,
     x86_total_ms: float,
-    top_n: int,
+    source_map: dict[str, dict] | None = None,
+    top_n: int = 20,
 ) -> list[dict[str, Any]]:
     """Build Dataset.functions list from merged arm + x86 symbol aggregates.
 
@@ -703,7 +685,7 @@ def _build_functions(
             "component": meta["component"],
             "categoryL1": meta["l1"],
             "categoryL2": meta.get("l2", "") or meta.get("category_sub", ""),
-            **_resolve_source_info(symbol, meta.get("shared_object", "")),
+            **_resolve_source_info(symbol, meta.get("shared_object", ""), source_map),
             "sharedObject": meta.get("shared_object", ""),
             "metrics": {
                 "selfArm": _format_ms(arm_time_self),
@@ -919,6 +901,17 @@ def backfill_perf(
     arm_rows = _read_perf_csv(arm_csv)
     x86_rows = _read_perf_csv(x86_csv)
 
+    # Load symbol_source_map.json (from step 5b's _extract_cpython_sources).
+    source_map: dict[str, dict] = {}
+    for rd in (arm_run_dir, x86_run_dir):
+        for sub in ("arm64", "arm", "x86_64", "x86"):
+            p = rd / "perf" / "data" / "symbol_source_map.json"
+            if p.exists():
+                try:
+                    source_map.update(json.loads(p.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
     if not arm_rows and not x86_rows:
         logger.warning("No perf CSV data found for either platform")
         return {
@@ -962,6 +955,7 @@ def backfill_perf(
     functions = _build_functions(arm_agg, x86_agg,
                                  arm_total_self, x86_total_self,
                                  arm_total_ms, x86_total_ms,
+                                 source_map=source_map,
                                  top_n=top_n)
 
     # Nullify topFunctionId references that were cut by top_n
