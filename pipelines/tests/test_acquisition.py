@@ -319,21 +319,65 @@ class LibSearchLogicTest(unittest.TestCase):
         self.assertIsNone(result)
 
 
-class SymbolExtractionTest(unittest.TestCase):
-    """Test objdump symbol extraction logic."""
+class NmParseTest(unittest.TestCase):
+    """Test nm output parsing for symbol address extraction."""
 
-    def _extract_symbol(self, dump: str, symbol: str) -> str:
-        """Simulate symbol extraction from objdump output."""
+    def _parse_nm(self, nm_output: str) -> dict[str, int]:
+        """Simulate nm parsing from the in-container script."""
+        result = {}
+        for line in nm_output.splitlines():
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            # nm output: addr TYPE name  (no -S) or addr size TYPE name (-S)
+            typ_idx = 1 if len(parts) == 3 else 2
+            typ = parts[typ_idx]
+            if typ not in ("T", "t", "W", "w"):
+                continue
+            try:
+                addr = int(parts[0], 16)
+            except ValueError:
+                continue
+            name = parts[-1]
+            result[name] = addr
+        return result
+
+    def test_parse_text_symbols(self):
+        nm_out = (
+            "00000000000abc0 T deduce_unreachable\n"
+            "00000000000abd0 T _Py_dict_lookup\n"
+            "00000000000c000 T _PyEval_EvalFrameDefault\n"
+            "                 U malloc\n"
+        )
+        result = self._parse_nm(nm_out)
+        self.assertIn("deduce_unreachable", result)
+        self.assertEqual(result["deduce_unreachable"], 0xabc0)
+        self.assertIn("_Py_dict_lookup", result)
+        self.assertNotIn("malloc", result)  # U = undefined, not text
+
+    def test_parse_lowercase_t(self):
+        nm_out = "00000000000abc0 t _Py_dict_lookup\n"
+        result = self._parse_nm(nm_out)
+        self.assertIn("_Py_dict_lookup", result)
+
+    def test_weak_symbols_included(self):
+        nm_out = "00000000000abc0 W __gmon_start__\n"
+        result = self._parse_nm(nm_out)
+        self.assertIn("__gmon_start__", result)
+
+
+class SymbolExtractionTest(unittest.TestCase):
+    """Test objdump symbol extraction from address-range output."""
+
+    def _extract_symbol(self, dump: str) -> str:
+        """Simulate extraction from objdump --start-address/--stop-address."""
         import re
-        pat = re.compile(r"^[0-9a-f]+ <" + re.escape(symbol) + ">")
         lines = []
-        capturing = False
+        in_func = False
         for line in dump.splitlines():
-            if not capturing and pat.match(line):
-                capturing = True
-            if capturing:
-                if line.strip() == "" and lines:
-                    break
+            if not in_func and re.match(r"^[0-9a-f]+ <", line):
+                in_func = True
+            if in_func:
                 lines.append(line)
             if len(lines) > 500:
                 lines = lines[:500]
@@ -346,26 +390,47 @@ class SymbolExtractionTest(unittest.TestCase):
             "   abc0:  f3 0f 1e fa     endbr64\n"
             "   abc4:  55              push   %rbp\n"
             "   abc5:  48 89 e5        mov    %rsp,%rbp\n"
-            "\n"
-            "00000000000abd0 <next_function>:\n"
         )
-        result = self._extract_symbol(dump, "_Py_dict_lookup")
+        result = self._extract_symbol(dump)
         self.assertIn("_Py_dict_lookup", result)
         self.assertIn("endbr64", result)
-        self.assertNotIn("next_function", result)
 
-    def test_symbol_not_found(self):
-        dump = "00000000000abc0 <some_other>:\n   abc0: 90 nop\n"
-        result = self._extract_symbol(dump, "_Py_dict_lookup")
+    def test_empty_dump(self):
+        result = self._extract_symbol("")
+        self.assertEqual(result, "")
+
+    def test_header_only_dump(self):
+        dump = "Disassembly of section .text:\n"
+        result = self._extract_symbol(dump)
         self.assertEqual(result, "")
 
     def test_long_function_truncated(self):
         header = "00000000000abc0 <big_func>:\n"
         body = "\n".join(f"   {i:04x}:  90 {'nop':<20}" for i in range(600))
-        dump = header + body + "\n\n0000000001000 <next>:\n"
-        result = self._extract_symbol(dump, "big_func")
+        dump = header + body
+        result = self._extract_symbol(dump)
         lines = result.splitlines()
         self.assertLessEqual(len(lines), 500)
+
+
+class AddrRangeTest(unittest.TestCase):
+    """Test address range calculation for per-symbol objdump."""
+
+    def test_stop_is_next_symbol(self):
+        import bisect
+        sorted_addrs = [0x1000, 0x2000, 0x3000, 0x4000]
+        addr = 0x2000
+        idx = bisect.bisect_right(sorted_addrs, addr)
+        stop = sorted_addrs[idx]
+        self.assertEqual(stop, 0x3000)
+
+    def test_last_symbol_gets_default_range(self):
+        import bisect
+        sorted_addrs = [0x1000, 0x2000]
+        addr = 0x2000
+        idx = bisect.bisect_right(sorted_addrs, addr)
+        stop = addr + 4096
+        self.assertEqual(stop, 0x3000)
 
 
 class FilterPythonRowsTest(unittest.TestCase):

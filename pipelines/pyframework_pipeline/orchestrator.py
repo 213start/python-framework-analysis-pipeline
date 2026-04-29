@@ -1194,7 +1194,7 @@ def _collect_asm_from_all_libs(
 
     # Write a single Python script + JSON manifest to run inside the container.
     asm_script = textwrap.dedent("""\
-        import sys, os, re, json, subprocess, hashlib
+        import sys, os, re, json, subprocess, hashlib, bisect
 
         manifest = sys.argv[1]
         output_dir = sys.argv[2]
@@ -1204,79 +1204,124 @@ def _collect_asm_from_all_libs(
         so_to_syms = data['so_to_syms']
         existing_map = data.get('existing_map', {})
 
-        # existing_map is {hash: symbol}. collected_hashes contains the hashes.
         collected_hashes = set(existing_map.keys()) if existing_map else set()
 
         symbol_map = dict(existing_map)
         search_dirs = '/usr/lib /usr/local/lib /opt /lib /root/.pyenv /root'.split()
         total_collected = 0
 
-        for so_name, syms in sorted(so_to_syms.items()):
-            # Find the library inside the container.
-            so_path = None
+        def find_so(so_name):
             base = os.path.basename(so_name)
             stem = base.split('.')[0]
             for d in search_dirs:
                 for root, dirs, files in os.walk(d):
                     for fn in files:
                         if fn == base:
-                            so_path = os.path.join(root, fn)
-                            break
-                        # Substring match: stem appears in filename and has .so
+                            return os.path.join(root, fn)
                         if '.so' in fn and stem in fn:
-                            so_path = os.path.join(root, fn)
-                            break
-                    if so_path:
-                        break
-                if so_path:
-                    break
-            if not so_path:
-                print(f"skip:{so_name}")
-                continue
+                            return os.path.join(root, fn)
+            return None
 
-            # Run objdump.
+        def nm_symbols(so_path):
+            # Get {name: address} for text symbols via nm.
             try:
                 r = subprocess.run(
-                    ['objdump', '-d', '-C', so_path],
-                    capture_output=True, text=True, timeout=60,
+                    ['nm', '-C', so_path],
+                    capture_output=True, text=True, timeout=30,
                 )
             except Exception:
-                continue
-            if r.returncode != 0 or not r.stdout:
+                return None
+            if r.returncode != 0:
+                return None
+            result = {}
+            for line in r.stdout.splitlines():
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                # nm output: addr TYPE name  (no -S) or addr size TYPE name (-S)
+                typ_idx = 1 if len(parts) == 3 else 2
+                typ = parts[typ_idx]
+                if typ not in ('T', 't', 'W', 'w'):
+                    continue
+                try:
+                    addr = int(parts[0], 16)
+                except ValueError:
+                    continue
+                name = parts[-1]
+                result[name] = addr
+            return result
+
+        for so_name, syms in sorted(so_to_syms.items()):
+            so_path = find_so(so_name)
+            if not so_path:
+                print(f"skip:{so_name}:not_found")
                 continue
 
-            dump = r.stdout
+            # Use nm to get symbol addresses, then objdump per-symbol.
+            addr_map = nm_symbols(so_path)
+            if addr_map is None:
+                print(f"skip:{so_name}:nm_fail")
+                continue
+
+            # Build sorted address list for end-boundary calculation.
+            sorted_addrs = sorted(set(addr_map.values()))
+
             collected = 0
+            no_addr = 0
             for sym in syms:
                 h = hashlib.md5(sym.encode()).hexdigest()[:8]
                 if h in collected_hashes:
                     continue
-                pat = re.compile(r'^[0-9a-f]+ <' + re.escape(sym) + '>')
+
+                addr = addr_map.get(sym)
+                if addr is None:
+                    no_addr += 1
+                    continue
+
+                # Find stop address (next symbol boundary).
+                idx = bisect.bisect_right(sorted_addrs, addr)
+                stop = sorted_addrs[idx] if idx < len(sorted_addrs) else addr + 4096
+
+                try:
+                    r = subprocess.run(
+                        ['objdump', '-d', '-C',
+                         '--start-address=0x%x' % addr,
+                         '--stop-address=0x%x' % stop,
+                         so_path],
+                        capture_output=True, text=True, timeout=15,
+                    )
+                except Exception:
+                    continue
+                if r.returncode != 0 or not r.stdout:
+                    continue
+
+                # Extract just the function body from objdump output.
                 lines = []
-                capturing = False
-                for line in dump.splitlines():
-                    if not capturing and pat.match(line):
-                        capturing = True
-                    if capturing:
-                        if line.strip() == '' and lines:
-                            break
+                in_func = False
+                for line in r.stdout.splitlines():
+                    if not in_func and re.match(r'^[0-9a-f]+ <', line):
+                        in_func = True
+                    if in_func:
                         lines.append(line)
                     if len(lines) > 500:
                         lines = lines[:500]
                         break
                 if not lines:
                     continue
+
                 out_file = os.path.join(output_dir, f'{h}.s')
                 with open(out_file, 'w') as f:
                     f.write('\\n'.join(lines))
                 symbol_map[h] = sym
                 collected_hashes.add(h)
                 collected += 1
-            if collected:
-                print(f"collected:{so_name}:{collected}/{len(syms)}")
-                total_collected += collected
 
-        # Write symbol_map.json.
+            status = f"collected={collected}"
+            if no_addr:
+                status += f",no_addr={no_addr}"
+            print(f"{so_name}: {status}/{len(syms)}")
+            total_collected += collected
+
         map_path = os.path.join(output_dir, 'symbol_map.json')
         with open(map_path, 'w') as f:
             json.dump(symbol_map, f, ensure_ascii=False, indent=2)
