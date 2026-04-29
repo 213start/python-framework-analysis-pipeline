@@ -1194,7 +1194,7 @@ def _collect_asm_from_all_libs(
 
     # Write a single Python script + JSON manifest to run inside the container.
     asm_script = textwrap.dedent("""\
-        import sys, os, re, json, subprocess, hashlib
+        import sys, os, json, subprocess, hashlib
 
         manifest = sys.argv[1]
         output_dir = sys.argv[2]
@@ -1222,23 +1222,12 @@ def _collect_asm_from_all_libs(
                             return os.path.join(root, fn)
             return None
 
-        def _save_func(sym, h, lines):
-            out_file = os.path.join(output_dir, f'{h}.s')
-            with open(out_file, 'w') as f:
-                f.write('\\n'.join(lines))
-            symbol_map[h] = sym
-            collected_hashes.add(h)
-            return 1
-
-        header_pat = re.compile(r'^[0-9a-f]+ <(.+?)>:')
-
         for so_name, syms in sorted(so_to_syms.items()):
             so_path = find_so(so_name)
             if not so_path:
                 print(f"skip:{so_name}:not_found")
                 continue
 
-            # Build target set for this .so.
             remaining = {}
             for sym in syms:
                 h = hashlib.md5(sym.encode()).hexdigest()[:8]
@@ -1249,71 +1238,36 @@ def _collect_asm_from_all_libs(
                 print(f"{so_name}: already_collected/{len(syms)}")
                 continue
 
-            # Build match patterns: sym -> (hash, compiled_re)
-            sym_pats = {}
-            for sym, h in remaining.items():
-                pat = re.compile(r'^' + re.escape(sym) + r'(?:[^a-zA-Z0-9_]|$)')
-                sym_pats[sym] = (h, pat)
+            # Generate awk script to extract all target symbols in one pass.
+            awk_file = os.path.join(output_dir, '_extract.awk')
+            with open(awk_file, 'w') as f:
+                for sym, h in remaining.items():
+                    f.write('/<' + sym + '.*>:/ { file="' + output_dir + '/' + h + '.s"; printing=1 }\\n')
+                f.write('/^$/ { if (printing) { close(file); printing=0 }; next }\\n')
+                f.write('printing { print > file }\\n')
+                f.write('END { if (printing) close(file) }\\n')
 
-            # Stream objdump, extracting target symbols in single pass.
-            try:
-                proc = subprocess.Popen(
-                    ['objdump', '-S', '-d', so_path],
-                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True, bufsize=1,
-                )
-            except Exception:
-                print(f"skip:{so_name}:objdump_fail")
-                continue
+            cmd = 'objdump -S -d ' + so_path + ' | awk -f ' + awk_file
+            subprocess.run(cmd, shell=True, timeout=300)
 
             collected = 0
-            cap_sym = None
-            cap_hash = None
-            cap_lines = []
+            no_addr_syms = []
+            for sym, h in remaining.items():
+                out_file = os.path.join(output_dir, h + '.s')
+                if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
+                    symbol_map[h] = sym
+                    collected_hashes.add(h)
+                    collected += 1
+                else:
+                    no_addr_syms.append(sym)
+                # Clean up awk output if empty
+                if os.path.exists(out_file) and os.path.getsize(out_file) == 0:
+                    os.unlink(out_file)
 
-            for line in proc.stdout:
-                hdr = header_pat.match(line)
+            # Clean up awk script
+            if os.path.exists(awk_file):
+                os.unlink(awk_file)
 
-                if cap_sym is not None:
-                    if hdr or line.strip() == '':
-                        collected += _save_func(cap_sym, cap_hash, cap_lines)
-                        del remaining[cap_sym]
-                        cap_sym = None
-                        cap_lines = []
-                        # Fall through to check hdr as new function.
-                    else:
-                        cap_lines.append(line.rstrip())
-                        if len(cap_lines) > 500:
-                            cap_lines = cap_lines[:500]
-                            collected += _save_func(cap_sym, cap_hash, cap_lines)
-                            del remaining[cap_sym]
-                            cap_sym = None
-                            cap_lines = []
-                        continue
-
-                # Check if this header matches a target symbol.
-                if hdr:
-                    func_name = hdr.group(1)
-                    for sym, (h, pat) in sym_pats.items():
-                        if sym in remaining and pat.match(func_name):
-                            cap_sym = sym
-                            cap_hash = h
-                            cap_lines = [line.rstrip()]
-                            break
-
-                if not remaining:
-                    proc.terminate()
-                    break
-
-            proc.wait()
-
-            # Handle last function (file ends without trailing blank line).
-            if cap_sym is not None:
-                collected += _save_func(cap_sym, cap_hash, cap_lines)
-                if cap_sym in remaining:
-                    del remaining[cap_sym]
-
-            no_addr_syms = list(remaining.keys())
             if no_addr_syms:
                 print(f"{so_name}: no_addr symbols: {no_addr_syms}")
             print(f"{so_name}: collected={collected},no_addr={len(no_addr_syms)}/{len(syms)}")
