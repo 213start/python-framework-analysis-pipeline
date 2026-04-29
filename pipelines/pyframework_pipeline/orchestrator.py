@@ -856,6 +856,10 @@ def _deploy_perf_wrapper(
 
     script = (
         "#!/bin/bash\n"
+        "export OPENBLAS_NUM_THREADS=1\n"
+        "export OMP_NUM_THREADS=1\n"
+        "export MKL_NUM_THREADS=1\n"
+        "export NUMEXPR_NUM_THREADS=1\n"
         f"exec {perf_binary} record -F 999 -g -e task-clock "
         f"-o /tmp/perf-udf.data -- {python_bin} \"$@\" 2>/dev/null\n"
     )
