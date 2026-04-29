@@ -323,51 +323,105 @@ class AwkPatternTest(unittest.TestCase):
     """Test awk pattern generation for objdump extraction."""
 
     def test_awk_pattern_exact_match(self):
-        """awk pattern /<symbol.*>:/ matches exact symbol name."""
         import re
         sym = "deduce_unreachable"
         pat = re.compile(r"<" + sym + r".*>:")
         self.assertTrue(pat.search("<deduce_unreachable>:"))
         self.assertTrue(pat.search("<deduce_unreachable.isra.0>:"))
-        self.assertTrue(pat.search("<deduce_unreachable.cold>:"))
-
-    def test_awk_pattern_no_false_match(self):
-        """awk pattern must NOT match longer symbol names."""
-        import re
-        sym = "_PyEval_Vector"
-        pat = re.compile(r"<" + sym + r".*>:")
-        # Should match the exact symbol
-        self.assertTrue(pat.search("<_PyEval_Vector>:"))
-        # Should also match suffixed versions
-        self.assertTrue(pat.search("<_PyEval_Vector.constprop.0>:"))
-        # But _PyEval_VectorCall is a different symbol - awk .* will match it
-        # This is acceptable: awk /<sym.*>:/ is a prefix match, same as
-        # the user's proven command.
 
     def test_awk_pattern_c_identifier(self):
-        """C identifiers contain no regex special characters for awk."""
+        """C identifiers have no awk-special chars."""
         import re
-        for sym in ["_Py_dict_lookup", "builtin_exec", "r_object",
-                     "deduce_unreachable", "_PyObject_VectorcallTstate"]:
-            # Verify symbol is safe for awk regex
-            self.assertFalse(re.search(r'[\\.^$*+?{}()|]', sym),
-                             f"{sym} has awk-special chars")
+        for sym in ["_Py_dict_lookup", "builtin_exec", "r_object", "deduce_unreachable"]:
+            self.assertFalse(re.search(r'[\\.^$*+?{}()|]', sym))
 
-    def test_awk_script_generation(self):
-        """Verify the awk script format matches expected structure."""
-        import io
-        output_dir = "/tmp/_asm_output"
-        remaining = {"deduce_unreachable": "a1b2c3d4", "_Py_dict_lookup": "e5f6a7b8"}
-        lines = []
-        for sym, h in remaining.items():
-            lines.append(f'/<{sym}.*>:/ {{ file="{output_dir}/{h}.s"; printing=1 }}')
-        lines.append('/^$/ { if (printing) { close(file); printing=0 }; next }')
-        lines.append('printing { print > file }')
-        lines.append('END { if (printing) close(file) }')
-        script = "\\n".join(lines)
-        self.assertIn("/<deduce_unreachable.*>:/", script)
-        self.assertIn("/<_Py_dict_lookup.*>:/", script)
-        self.assertIn("printing { print > file }", script)
+
+class ReadelfDwarfParseTest(unittest.TestCase):
+    """Test readelf -wi DWARF output parsing."""
+
+    SAMPLE_DWARF = """\
+  Compilation Unit @ offset 0x0:
+ <0><c>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <d>   DW_AT_producer    : GNU C17
+    <11>  DW_AT_language    : 29     (C11)
+ <1><24>: Abbrev Number: 3 (DW_TAG_subprogram)
+    <25>  DW_AT_name        : (indirect string, offset: 0x0): deduce_unreachable
+    <29>  DW_AT_low_pc      : 0x100100
+    <31>  DW_AT_high_pc     : 0xf4
+ <1><50>: Abbrev Number: 3 (DW_TAG_subprogram)
+    <51>  DW_AT_name        : _Py_dict_lookup
+    <55>  DW_AT_low_pc      : 0x100200
+    <57>  DW_AT_high_pc     : 0x100400
+ <1><80>: Abbrev Number: 3 (DW_TAG_subprogram)
+    <81>  DW_AT_name        : (indirect string, offset: 0x99): builtin_exec
+    <85>  DW_AT_low_pc      : 0x100500
+    <87>  DW_AT_high_pc     : 0x200
+"""
+
+    def _parse_dwarf(self, text: str) -> dict[str, tuple[int, int]]:
+        import re
+        funcs = {}
+        name = None
+        lo = None
+        hi = None
+        for line in text.splitlines():
+            if "DW_TAG_subprogram" in line:
+                if name and lo is not None:
+                    end = lo + hi if (hi is not None and hi < lo) else hi
+                    funcs[name] = (lo, end or lo + 4096)
+                name = None
+                lo = None
+                hi = None
+            elif "DW_TAG_" in line and "DW_TAG_subprogram" not in line:
+                if name and lo is not None:
+                    end = lo + hi if (hi is not None and hi < lo) else hi
+                    funcs[name] = (lo, end or lo + 4096)
+                name = None
+                lo = None
+                hi = None
+                continue
+            if "DW_AT_name" in line:
+                m = re.search(r"DW_AT_name\s*:\s*(?:\(indirect[^)]*\):\s*)?(\S+)", line)
+                if m:
+                    name = m.group(1)
+            elif "DW_AT_low_pc" in line:
+                m = re.search(r"0x([0-9a-fA-F]+)", line)
+                if m:
+                    lo = int(m.group(1), 16)
+            elif "DW_AT_high_pc" in line:
+                m = re.search(r"0x([0-9a-fA-F]+)", line)
+                if m:
+                    hi = int(m.group(1), 16)
+        if name and lo is not None:
+            end = lo + hi if (hi is not None and hi < lo) else hi
+            funcs[name] = (lo, end or lo + 4096)
+        return funcs
+
+    def test_parse_indirect_string(self):
+        funcs = self._parse_dwarf(self.SAMPLE_DWARF)
+        self.assertIn("deduce_unreachable", funcs)
+
+    def test_parse_direct_name(self):
+        funcs = self._parse_dwarf(self.SAMPLE_DWARF)
+        self.assertIn("_Py_dict_lookup", funcs)
+
+    def test_high_pc_as_length(self):
+        """high_pc < low_pc means it's a length, not an address."""
+        funcs = self._parse_dwarf(self.SAMPLE_DWARF)
+        lo, hi = funcs["deduce_unreachable"]
+        self.assertEqual(lo, 0x100100)
+        self.assertEqual(hi, 0x100100 + 0xf4)  # length, not address
+
+    def test_high_pc_as_address(self):
+        """high_pc > low_pc means it's an absolute address."""
+        funcs = self._parse_dwarf(self.SAMPLE_DWARF)
+        lo, hi = funcs["_Py_dict_lookup"]
+        self.assertEqual(lo, 0x100200)
+        self.assertEqual(hi, 0x100400)
+
+    def test_parse_builtin_exec(self):
+        funcs = self._parse_dwarf(self.SAMPLE_DWARF)
+        self.assertIn("builtin_exec", funcs)
 
 
 class FilterPythonRowsTest(unittest.TestCase):

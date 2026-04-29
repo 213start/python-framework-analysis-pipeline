@@ -1194,7 +1194,7 @@ def _collect_asm_from_all_libs(
 
     # Write a single Python script + JSON manifest to run inside the container.
     asm_script = textwrap.dedent("""\
-        import sys, os, json, subprocess, hashlib
+        import sys, os, re, json, subprocess, hashlib
 
         manifest = sys.argv[1]
         output_dir = sys.argv[2]
@@ -1222,6 +1222,54 @@ def _collect_asm_from_all_libs(
                             return os.path.join(root, fn)
             return None
 
+        def dwarf_addr_map(so_path):
+            # Get function name -> (start, end) from DWARF via readelf.
+            try:
+                r = subprocess.run(
+                    ['readelf', '-wi', so_path],
+                    capture_output=True, text=True, timeout=60,
+                )
+            except Exception:
+                return {}
+            if r.returncode != 0:
+                return {}
+            funcs = {}
+            name = None
+            lo = None
+            hi = None
+            for line in r.stdout.splitlines():
+                if 'DW_TAG_subprogram' in line:
+                    if name and lo is not None:
+                        end = lo + hi if (hi is not None and hi < lo) else hi
+                        funcs[name] = (lo, end or lo + 4096)
+                    name = None
+                    lo = None
+                    hi = None
+                elif 'DW_TAG_' in line and 'DW_TAG_subprogram' not in line:
+                    if name and lo is not None:
+                        end = lo + hi if (hi is not None and hi < lo) else hi
+                        funcs[name] = (lo, end or lo + 4096)
+                    name = None
+                    lo = None
+                    hi = None
+                    continue
+                if 'DW_AT_name' in line:
+                    m = re.search(r'DW_AT_name\\s*:\\s*(?:\\(indirect[^)]*\\):\\s*)?(\\S+)', line)
+                    if m:
+                        name = m.group(1)
+                elif 'DW_AT_low_pc' in line:
+                    m = re.search(r'0x([0-9a-fA-F]+)', line)
+                    if m:
+                        lo = int(m.group(1), 16)
+                elif 'DW_AT_high_pc' in line:
+                    m = re.search(r'0x([0-9a-fA-F]+)', line)
+                    if m:
+                        hi = int(m.group(1), 16)
+            if name and lo is not None:
+                end = lo + hi if (hi is not None and hi < lo) else hi
+                funcs[name] = (lo, end or lo + 4096)
+            return funcs
+
         for so_name, syms in sorted(so_to_syms.items()):
             so_path = find_so(so_name)
             if not so_path:
@@ -1238,7 +1286,7 @@ def _collect_asm_from_all_libs(
                 print(f"{so_name}: already_collected/{len(syms)}")
                 continue
 
-            # Generate awk script to extract all target symbols in one pass.
+            # Phase 1: objdump -d (no -S, safe) + awk for ELF symbols.
             awk_file = os.path.join(output_dir, '_extract.awk')
             with open(awk_file, 'w') as f:
                 for sym, h in remaining.items():
@@ -1247,30 +1295,60 @@ def _collect_asm_from_all_libs(
                 f.write('printing { print > file }\\n')
                 f.write('END { if (printing) close(file) }\\n')
 
-            cmd = 'objdump -S -d ' + so_path + ' | awk -f ' + awk_file + ' || true'
+            cmd = 'objdump -d ' + so_path + ' | awk -f ' + awk_file
             subprocess.run(cmd, shell=True, timeout=300)
 
-            collected = 0
-            no_addr_syms = []
+            # Phase 2: resolve remaining symbols from DWARF, objdump per-function.
+            still_missing = {}
             for sym, h in remaining.items():
                 out_file = os.path.join(output_dir, h + '.s')
                 if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
                     symbol_map[h] = sym
                     collected_hashes.add(h)
-                    collected += 1
                 else:
-                    no_addr_syms.append(sym)
-                # Clean up awk output if empty
-                if os.path.exists(out_file) and os.path.getsize(out_file) == 0:
-                    os.unlink(out_file)
+                    if os.path.exists(out_file):
+                        os.unlink(out_file)
+                    still_missing[sym] = h
 
-            # Clean up awk script
+            if still_missing:
+                dwarfs = dwarf_addr_map(so_path)
+                for sym, h in still_missing.items():
+                    if sym not in dwarfs:
+                        continue
+                    start, end = dwarfs[sym]
+                    try:
+                        r = subprocess.run(
+                            ['objdump', '-d', so_path,
+                             '--start-address=0x%x' % start,
+                             '--stop-address=0x%x' % end],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                    except Exception:
+                        continue
+                    if r.returncode != 0 or not r.stdout:
+                        continue
+                    lines = [l for l in r.stdout.splitlines()
+                             if re.match(r'^[0-9a-f]+ <|\\s+[0-9a-f]+:', l)]
+                    if not lines:
+                        continue
+                    if len(lines) > 500:
+                        lines = lines[:500]
+                    out_file = os.path.join(output_dir, h + '.s')
+                    with open(out_file, 'w') as f:
+                        f.write('\\n'.join(lines))
+                    symbol_map[h] = sym
+                    collected_hashes.add(h)
+
             if os.path.exists(awk_file):
                 os.unlink(awk_file)
 
-            if no_addr_syms:
-                print(f"{so_name}: no_addr symbols: {no_addr_syms}")
-            print(f"{so_name}: collected={collected},no_addr={len(no_addr_syms)}/{len(syms)}")
+            collected = sum(1 for s in syms
+                           if hashlib.md5(s.encode()).hexdigest()[:8] in collected_hashes)
+            no_addr = [s for s in remaining
+                       if hashlib.md5(s.encode()).hexdigest()[:8] not in collected_hashes]
+            if no_addr:
+                print(f"{so_name}: no_addr symbols: {no_addr}")
+            print(f"{so_name}: collected={collected},no_addr={len(no_addr)}/{len(syms)}")
             total_collected += collected
 
         map_path = os.path.join(output_dir, 'symbol_map.json')
