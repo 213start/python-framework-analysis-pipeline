@@ -11,6 +11,7 @@ workload/tpch/pyflink/java-udf/build/
 
 # Run output data (perf CSVs, ASM files, timing JSONs, perf.data, logs)
 projects/*/runs/
+projects/*/output/
 
 # Nested duplicate project directories
 projects/*/projects/
