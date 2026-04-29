@@ -1247,7 +1247,7 @@ def _collect_asm_from_all_libs(
                 f.write('printing { print > file }\\n')
                 f.write('END { if (printing) close(file) }\\n')
 
-            cmd = 'objdump -S -d ' + so_path + ' 2>/dev/null | awk -f ' + awk_file + ' || true'
+            cmd = 'objdump -S -d ' + so_path + ' | awk -f ' + awk_file + ' || true'
             subprocess.run(cmd, shell=True, timeout=300)
 
             collected = 0
