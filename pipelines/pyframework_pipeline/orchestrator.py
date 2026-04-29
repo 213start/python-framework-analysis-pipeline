@@ -1247,14 +1247,17 @@ def _collect_asm_from_all_libs(
                 f.write('printing { print > file }\\n')
                 f.write('END { if (printing) close(file) }\\n')
 
-            # objdump -d (no -S) + awk extracts each function's disassembly
-            cmd = 'objdump -d ' + so_path + ' | awk -f ' + awk_file
-            print(f"CMD:{so_name}: {cmd}")
-            with open(awk_file) as af:
-                awk_content = af.read()
-            print(f"AWK_SCRIPT:{so_name}:")
-            print(awk_content)
-            subprocess.run(cmd, shell=True, timeout=300)
+            # objdump -d (no -S) saves to file first (survives crash on aarch64),
+            # then awk extracts from the saved output.
+            dump_file = os.path.join(output_dir, '_objdump_raw.txt')
+            dump_cmd = 'objdump -d ' + so_path + ' > ' + dump_file + ' 2>/dev/null || true'
+            print(f"CMD:{so_name}: {dump_cmd}")
+            subprocess.run(dump_cmd, shell=True, timeout=300)
+            awk_cmd = 'awk -f ' + awk_file + ' ' + dump_file
+            print(f"AWK:{so_name}: {awk_cmd}")
+            subprocess.run(awk_cmd, shell=True, timeout=120)
+            if os.path.exists(dump_file):
+                os.unlink(dump_file)
 
             # Check results
             for sym, h in remaining.items():
