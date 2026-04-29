@@ -319,144 +319,130 @@ class LibSearchLogicTest(unittest.TestCase):
         self.assertIsNone(result)
 
 
-class NmParseTest(unittest.TestCase):
-    """Test nm output parsing for symbol address extraction."""
+class StreamingExtractionTest(unittest.TestCase):
+    """Test streaming objdump extraction (single-pass, line-by-line)."""
 
-    def _parse_nm(self, nm_output: str) -> dict[str, int]:
-        """Simulate _parse_nm_output from the in-container script."""
-        result = {}
-        for line in nm_output.splitlines():
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-            typ_idx = 1 if len(parts) == 3 else 2
-            typ = parts[typ_idx]
-            if typ not in ("T", "t", "W", "w"):
-                continue
-            try:
-                addr = int(parts[0], 16)
-            except ValueError:
-                continue
-            name = parts[-1]
-            result[name] = addr
-        return result
-
-    def test_parse_text_symbols(self):
-        nm_out = (
-            "00000000000abc0 T deduce_unreachable\n"
-            "00000000000abd0 T _Py_dict_lookup\n"
-            "00000000000c000 T _PyEval_EvalFrameDefault\n"
-            "                 U malloc\n"
-        )
-        result = self._parse_nm(nm_out)
-        self.assertIn("deduce_unreachable", result)
-        self.assertEqual(result["deduce_unreachable"], 0xabc0)
-        self.assertIn("_Py_dict_lookup", result)
-        self.assertNotIn("malloc", result)
-
-    def test_parse_lowercase_t(self):
-        nm_out = "00000000000abc0 t _Py_dict_lookup\n"
-        result = self._parse_nm(nm_out)
-        self.assertIn("_Py_dict_lookup", result)
-
-    def test_weak_symbols_included(self):
-        nm_out = "00000000000abc0 W __gmon_start__\n"
-        result = self._parse_nm(nm_out)
-        self.assertIn("__gmon_start__", result)
-
-    def test_dynamic_and_full_merge(self):
-        """nm -C and nm -D -C results should merge, dynamic wins on conflict."""
-        nm_full = (
-            "00000000000abc0 T _Py_dict_lookup\n"
-            "00000000000abd0 t local_helper\n"
-        )
-        nm_dyn = (
-            "00000000000abc0 T _Py_dict_lookup\n"
-            "00000000000c000 T exported_only\n"
-        )
-        # Simulate: full first, then dynamic updates.
-        result = {}
-        result.update(self._parse_nm(nm_full))
-        result.update(self._parse_nm(nm_dyn))
-        self.assertEqual(len(result), 3)
-        self.assertIn("local_helper", result)
-        self.assertIn("exported_only", result)
-
-    def test_stripped_library_only_dynamic(self):
-        """Stripped .so: nm -C returns nothing, nm -D -C has symbols."""
-        nm_empty = ""
-        nm_dyn = "00000000000abc0 T deduce_unreachable\n"
-        result = {}
-        result.update(self._parse_nm(nm_empty))
-        result.update(self._parse_nm(nm_dyn))
-        self.assertIn("deduce_unreachable", result)
-
-
-class SymbolExtractionTest(unittest.TestCase):
-    """Test objdump symbol extraction from address-range output."""
-
-    def _extract_symbol(self, dump: str) -> str:
-        """Simulate extraction from objdump --start-address/--stop-address."""
+    def _stream_extract(self, dump: str, targets: list[str]) -> dict[str, str]:
+        """Simulate the streaming extraction from the in-container script."""
         import re
-        lines = []
-        in_func = False
-        for line in dump.splitlines():
-            if not in_func and re.match(r"^[0-9a-f]+ <", line):
-                in_func = True
-            if in_func:
-                lines.append(line)
-            if len(lines) > 500:
-                lines = lines[:500]
-                break
-        return "\n".join(lines)
+        header_pat = re.compile(r'^[0-9a-f]+ <(.+?)>:')
+        remaining = {sym: sym for sym in targets}
+        sym_pats = {}
+        for sym in targets:
+            sym_pats[sym] = re.compile(r'^' + re.escape(sym) + r'(?:[^a-zA-Z0-9_]|$)')
 
-    def test_extract_simple_function(self):
+        found = {}
+        cap_sym = None
+        cap_lines = []
+
+        for line in dump.splitlines():
+            hdr = header_pat.match(line)
+
+            if cap_sym is not None:
+                if hdr or line.strip() == '':
+                    found[cap_sym] = "\n".join(cap_lines)
+                    del remaining[cap_sym]
+                    cap_sym = None
+                    cap_lines = []
+                else:
+                    cap_lines.append(line.rstrip())
+                    if len(cap_lines) > 500:
+                        cap_lines = cap_lines[:500]
+                        found[cap_sym] = "\n".join(cap_lines)
+                        del remaining[cap_sym]
+                        cap_sym = None
+                        cap_lines = []
+                    continue
+
+            if hdr:
+                func_name = hdr.group(1)
+                for sym, pat in sym_pats.items():
+                    if sym in remaining and pat.match(func_name):
+                        cap_sym = sym
+                        cap_lines = [line.rstrip()]
+                        break
+
+        if cap_sym is not None:
+            found[cap_sym] = "\n".join(cap_lines)
+
+        return found
+
+    def test_extract_single_function(self):
         dump = (
             "00000000000abc0 <_Py_dict_lookup>:\n"
             "   abc0:  f3 0f 1e fa     endbr64\n"
             "   abc4:  55              push   %rbp\n"
-            "   abc5:  48 89 e5        mov    %rsp,%rbp\n"
+            "\n"
+            "00000000000abd0 <next_func>:\n"
+            "   abd0:  90              nop\n"
         )
-        result = self._extract_symbol(dump)
-        self.assertIn("_Py_dict_lookup", result)
-        self.assertIn("endbr64", result)
+        found = self._stream_extract(dump, ["_Py_dict_lookup"])
+        self.assertIn("_Py_dict_lookup", found)
+        self.assertNotIn("next_func", found)
+        self.assertIn("endbr64", found["_Py_dict_lookup"])
+
+    def test_extract_multiple_functions(self):
+        dump = (
+            "00000000000abc0 <func_a>:\n"
+            "   abc0:  90              nop\n"
+            "\n"
+            "00000000000abd0 <func_b>:\n"
+            "   abd0:  c3              ret\n"
+            "\n"
+        )
+        found = self._stream_extract(dump, ["func_a", "func_b"])
+        self.assertEqual(len(found), 2)
 
     def test_empty_dump(self):
-        result = self._extract_symbol("")
-        self.assertEqual(result, "")
-
-    def test_header_only_dump(self):
-        dump = "Disassembly of section .text:\n"
-        result = self._extract_symbol(dump)
-        self.assertEqual(result, "")
+        found = self._stream_extract("", ["func_a"])
+        self.assertEqual(len(found), 0)
 
     def test_long_function_truncated(self):
         header = "00000000000abc0 <big_func>:\n"
-        body = "\n".join(f"   {i:04x}:  90 {'nop':<20}" for i in range(600))
-        dump = header + body
-        result = self._extract_symbol(dump)
-        lines = result.splitlines()
-        self.assertLessEqual(len(lines), 500)
+        body = "\n".join(f"   {i:04x}:  90 nop" for i in range(600))
+        dump = header + body + "\n"
+        found = self._stream_extract(dump, ["big_func"])
+        lines = found["big_func"].splitlines()
+        self.assertLessEqual(len(lines), 501)  # 500 + header
 
+    def test_suffix_match_isra(self):
+        """GCC .isra suffix: deduce_unreachable.isra.0 matches target."""
+        dump = (
+            "00000000000abc0 <deduce_unreachable.isra.0>:\n"
+            "   abc0:  c3              ret\n"
+            "\n"
+        )
+        found = self._stream_extract(dump, ["deduce_unreachable"])
+        self.assertIn("deduce_unreachable", found)
 
-class AddrRangeTest(unittest.TestCase):
-    """Test address range calculation for per-symbol objdump."""
+    def test_suffix_match_cold(self):
+        """GCC .cold suffix matches target."""
+        dump = (
+            "00000000000abc0 <_Py_dict_lookup.cold>:\n"
+            "   abc0:  c3              ret\n"
+            "\n"
+        )
+        found = self._stream_extract(dump, ["_Py_dict_lookup"])
+        self.assertIn("_Py_dict_lookup", found)
 
-    def test_stop_is_next_symbol(self):
-        import bisect
-        sorted_addrs = [0x1000, 0x2000, 0x3000, 0x4000]
-        addr = 0x2000
-        idx = bisect.bisect_right(sorted_addrs, addr)
-        stop = sorted_addrs[idx]
-        self.assertEqual(stop, 0x3000)
+    def test_no_false_prefix_match(self):
+        """_PyEval_Vector must NOT match _PyEval_VectorCall."""
+        dump = (
+            "00000000000abc0 <_PyEval_VectorCall>:\n"
+            "   abc0:  c3              ret\n"
+            "\n"
+        )
+        found = self._stream_extract(dump, ["_PyEval_Vector"])
+        self.assertNotIn("_PyEval_Vector", found)
 
-    def test_last_symbol_gets_default_range(self):
-        import bisect
-        sorted_addrs = [0x1000, 0x2000]
-        addr = 0x2000
-        idx = bisect.bisect_right(sorted_addrs, addr)
-        stop = addr + 4096
-        self.assertEqual(stop, 0x3000)
+    def test_file_ends_without_blank_line(self):
+        """Last function in objdump output may not have trailing blank."""
+        dump = (
+            "00000000000abc0 <func_a>:\n"
+            "   abc0:  c3              ret"
+        )
+        found = self._stream_extract(dump, ["func_a"])
+        self.assertIn("func_a", found)
 
 
 class FilterPythonRowsTest(unittest.TestCase):

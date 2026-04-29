@@ -1194,7 +1194,7 @@ def _collect_asm_from_all_libs(
 
     # Write a single Python script + JSON manifest to run inside the container.
     asm_script = textwrap.dedent("""\
-        import sys, os, re, json, subprocess, hashlib, bisect
+        import sys, os, re, json, subprocess, hashlib
 
         manifest = sys.argv[1]
         output_dir = sys.argv[2]
@@ -1222,40 +1222,15 @@ def _collect_asm_from_all_libs(
                             return os.path.join(root, fn)
             return None
 
-        def _parse_nm_output(text):
-            result = {}
-            for line in text.splitlines():
-                parts = line.split()
-                if len(parts) < 3:
-                    continue
-                typ_idx = 1 if len(parts) == 3 else 2
-                typ = parts[typ_idx]
-                if typ not in ('T', 't', 'W', 'w'):
-                    continue
-                try:
-                    addr = int(parts[0], 16)
-                except ValueError:
-                    continue
-                name = parts[-1]
-                result[name] = addr
-            return result
+        def _save_func(sym, h, lines):
+            out_file = os.path.join(output_dir, f'{h}.s')
+            with open(out_file, 'w') as f:
+                f.write('\\n'.join(lines))
+            symbol_map[h] = sym
+            collected_hashes.add(h)
+            return 1
 
-        def nm_symbols(so_path):
-            # Try nm -C (full symtab) and nm -D -C (dynamic symbols).
-            # Stripped libraries only have dynamic symbols.
-            result = {}
-            for flags in [['-C'], ['-D', '-C']]:
-                try:
-                    r = subprocess.run(
-                        ['nm'] + flags + [so_path],
-                        capture_output=True, text=True, timeout=30,
-                    )
-                except Exception:
-                    continue
-                if r.returncode != 0:
-                    continue
-                result.update(_parse_nm_output(r.stdout))
-            return result if result else None
+        header_pat = re.compile(r'^[0-9a-f]+ <(.+?)>:')
 
         for so_name, syms in sorted(so_to_syms.items()):
             so_path = find_so(so_name)
@@ -1263,70 +1238,85 @@ def _collect_asm_from_all_libs(
                 print(f"skip:{so_name}:not_found")
                 continue
 
-            # Use nm to get symbol addresses, then objdump per-symbol.
-            addr_map = nm_symbols(so_path)
-            if addr_map is None:
-                print(f"skip:{so_name}:nm_fail")
-                continue
-
-            # Build sorted address list for end-boundary calculation.
-            sorted_addrs = sorted(set(addr_map.values()))
-
-            collected = 0
-            no_addr_syms = []
+            # Build target set for this .so.
+            remaining = {}
             for sym in syms:
                 h = hashlib.md5(sym.encode()).hexdigest()[:8]
-                if h in collected_hashes:
-                    continue
+                if h not in collected_hashes:
+                    remaining[sym] = h
 
-                addr = addr_map.get(sym)
-                if addr is None:
-                    no_addr_syms.append(sym)
-                    continue
+            if not remaining:
+                print(f"{so_name}: already_collected/{len(syms)}")
+                continue
 
-                # Find stop address (next symbol boundary).
-                idx = bisect.bisect_right(sorted_addrs, addr)
-                stop = sorted_addrs[idx] if idx < len(sorted_addrs) else addr + 4096
+            # Build match patterns: sym -> (hash, compiled_re)
+            sym_pats = {}
+            for sym, h in remaining.items():
+                pat = re.compile(r'^' + re.escape(sym) + r'(?:[^a-zA-Z0-9_]|$)')
+                sym_pats[sym] = (h, pat)
 
-                try:
-                    r = subprocess.run(
-                        ['objdump', '-d', '-C',
-                         '--start-address=0x%x' % addr,
-                         '--stop-address=0x%x' % stop,
-                         so_path],
-                        capture_output=True, text=True, timeout=15,
-                    )
-                except Exception:
-                    continue
-                if r.returncode != 0 or not r.stdout:
-                    continue
+            # Stream objdump, extracting target symbols in single pass.
+            try:
+                proc = subprocess.Popen(
+                    ['objdump', '-d', '-C', so_path],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, bufsize=1,
+                )
+            except Exception:
+                print(f"skip:{so_name}:objdump_fail")
+                continue
 
-                # Extract just the function body from objdump output.
-                lines = []
-                in_func = False
-                for line in r.stdout.splitlines():
-                    if not in_func and re.match(r'^[0-9a-f]+ <', line):
-                        in_func = True
-                    if in_func:
-                        lines.append(line)
-                    if len(lines) > 500:
-                        lines = lines[:500]
-                        break
-                if not lines:
-                    continue
+            collected = 0
+            cap_sym = None
+            cap_hash = None
+            cap_lines = []
 
-                out_file = os.path.join(output_dir, f'{h}.s')
-                with open(out_file, 'w') as f:
-                    f.write('\\n'.join(lines))
-                symbol_map[h] = sym
-                collected_hashes.add(h)
-                collected += 1
+            for line in proc.stdout:
+                hdr = header_pat.match(line)
 
-            status = f"collected={collected}"
+                if cap_sym is not None:
+                    if hdr or line.strip() == '':
+                        collected += _save_func(cap_sym, cap_hash, cap_lines)
+                        del remaining[cap_sym]
+                        cap_sym = None
+                        cap_lines = []
+                        # Fall through to check hdr as new function.
+                    else:
+                        cap_lines.append(line.rstrip())
+                        if len(cap_lines) > 500:
+                            cap_lines = cap_lines[:500]
+                            collected += _save_func(cap_sym, cap_hash, cap_lines)
+                            del remaining[cap_sym]
+                            cap_sym = None
+                            cap_lines = []
+                        continue
+
+                # Check if this header matches a target symbol.
+                if hdr:
+                    func_name = hdr.group(1)
+                    for sym, (h, pat) in sym_pats.items():
+                        if sym in remaining and pat.match(func_name):
+                            cap_sym = sym
+                            cap_hash = h
+                            cap_lines = [line.rstrip()]
+                            break
+
+                if not remaining:
+                    proc.terminate()
+                    break
+
+            proc.wait()
+
+            # Handle last function (file ends without trailing blank line).
+            if cap_sym is not None:
+                collected += _save_func(cap_sym, cap_hash, cap_lines)
+                if cap_sym in remaining:
+                    del remaining[cap_sym]
+
+            no_addr_syms = list(remaining.keys())
             if no_addr_syms:
-                status += f",no_addr={len(no_addr_syms)}"
                 print(f"{so_name}: no_addr symbols: {no_addr_syms}")
-            print(f"{so_name}: {status}/{len(syms)}")
+            print(f"{so_name}: collected={collected},no_addr={len(no_addr_syms)}/{len(syms)}")
             total_collected += collected
 
         map_path = os.path.join(output_dir, 'symbol_map.json')
