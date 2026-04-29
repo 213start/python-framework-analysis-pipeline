@@ -1044,6 +1044,8 @@ def _collect_asm_from_all_libs(
         top = [s for s, _ in counts.most_common(30)]
         so_to_syms[so] = top
 
+    symbol_map = _load_symbol_map(asm_dir)
+
     for so, syms in sorted(so_to_syms.items()):
         # Find the shared library inside the container.
         # Use substring match — Python .so names may have platform suffixes
@@ -1088,7 +1090,6 @@ def _collect_asm_from_all_libs(
         full_dump = local_dump.read_text(encoding="utf-8", errors="replace")
 
         # Extract each symbol's disassembly from the full dump.
-        symbol_map = _load_symbol_map(asm_dir)
         collected_count = 0
         for sym in syms:
             import hashlib as _hashlib
