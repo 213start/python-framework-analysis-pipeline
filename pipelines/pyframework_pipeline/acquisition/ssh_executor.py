@@ -141,6 +141,21 @@ class SshExecutor:
         result = subprocess.run(args, capture_output=True, text=True, check=False)
         return result.returncode == 0
 
+    def fetch_dir(self, remote_dir: str, local_dir: Path) -> bool:
+        """Download a directory from the remote host via scp -r."""
+        local_dir.mkdir(parents=True, exist_ok=True)
+        target = f"{self.user}@{self.host}" if self.user else self.host
+        args = ["scp", "-r"]
+        if self.port != 22:
+            args.extend(["-P", str(self.port)])
+        if self.key:
+            args.extend(["-i", str(self.key)])
+        args.extend(["-o", "StrictHostKeyChecking=no"])
+        args.append(f"{target}:{remote_dir}/.")
+        args.append(str(local_dir))
+        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        return result.returncode == 0
+
     def docker_exec(self, container: str, command: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:
         """Execute a command inside a Docker container on the remote host."""
         return self.run(f"docker exec {container} {command}", timeout=timeout)

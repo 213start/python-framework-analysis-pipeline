@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import textwrap
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -938,53 +939,6 @@ def _run_collect(
     logger.info("Collection complete for %s", platform)
 
 
-def _find_so_in_container(
-    executor: "SshExecutor", container: str, so_name: str,
-) -> str:
-    """Locate a shared library or binary inside a container.
-
-    Handles both shared libraries (.so) and static-linked binaries
-    (e.g. python3.14 built without --enable-shared).
-    """
-    import os
-    base = os.path.basename(so_name)
-    is_so = base.endswith(".so") or ".so." in base
-    lib_dirs = "/usr/lib /usr/local/lib /opt /lib"
-    bin_dirs = "/usr/local/bin /usr/bin /opt /root/.pyenv /root"
-
-    # Try exact match in common paths.
-    search_dirs = f"{lib_dirs} {bin_dirs}" if not is_so else lib_dirs
-    find_result = executor.run(
-        f"docker exec {container} find {search_dirs} -name '{so_name}' 2>/dev/null | head -1",
-        timeout=15,
-    )
-    if find_result.returncode == 0 and find_result.stdout.strip():
-        return find_result.stdout.strip()
-
-    # Substring match.
-    stem = base.split(".")[0] if "." in base else base
-    if is_so:
-        # .so files: match with .so suffix to avoid false positives.
-        find_result = executor.run(
-            f"docker exec {container} find {lib_dirs} -name '*{stem}*.so*' 2>/dev/null | head -3",
-            timeout=15,
-        )
-    else:
-        # Non-.so (e.g. python3.14 static binary): search bin + lib + pyenv paths.
-        find_result = executor.run(
-            f"docker exec {container} find {lib_dirs} {bin_dirs} -name '*{stem}*' 2>/dev/null | head -3",
-            timeout=30,
-        )
-    if find_result.returncode == 0 and find_result.stdout.strip():
-        candidates = [p.strip() for p in find_result.stdout.strip().splitlines() if p.strip()]
-        for c in candidates:
-            if so_name in c:
-                return c
-        return candidates[0]
-
-    logger.warning("Shared library %s not found in container %s, skipping", so_name, container)
-    return ""
-
 
 def _load_symbol_map(asm_dir: Path) -> dict[str, str]:
     """Load hash→symbol mapping from symbol_map.json."""
@@ -1005,12 +959,12 @@ def _extract_cpython_sources(
 ) -> None:
     """Extract C source code for hotspot symbols from CPython source in container.
 
-    pyenv caches the Python source tarball at /root/.pyenv/cache/Python-$VER.tar.xz
-    but does NOT keep extracted sources after compilation.  We extract the tarball
-    to /tmp/cpython-src/ on first run, then grep for function definitions matching
-    the perf hotspot symbols.  Writes symbol_source_map.json for asm_backfill.
+    Writes a Python script + symbol list to local temp dir, transfers into the
+    container via docker cp, runs the script, and collects the result back via
+    docker cp.  Avoids base64 encoding and stdout-through-SSH issues.
     """
     import csv as _csv
+    import tempfile
 
     # Read symbols from perf CSV.
     symbols: set[str] = set()
@@ -1028,146 +982,122 @@ def _extract_cpython_sources(
     if not symbols:
         return
 
-    # Find CPython source directory in container.
-    # pyenv does NOT keep extracted sources after compilation.  The cached
-    # tarball is at /root/.pyenv/cache/Python-$VERSION.tar.xz.  We extract
-    # it to /tmp/cpython-src/ and clean up afterwards.
-    cpython_src = ""
-    # 1. Check for already-extracted source (re-run scenario)
-    src_check = executor.run(
-        f"docker exec {container} bash -c "
-        "'test -d /tmp/cpython-src/Objects && echo /tmp/cpython-src'",
-        timeout=10,
+    # Write extraction script and symbol list to a local temp directory,
+    # then docker cp into the container.
+    extract_script = textwrap.dedent("""\
+        import sys, os, re, json
+        src = sys.argv[1]
+        sym_file = sys.argv[2]
+        output = sys.argv[3]
+        with open(sym_file) as f:
+            symbols = [l.strip() for l in f if l.strip()]
+        result = {}
+        c_dirs = [os.path.join(src, d) for d in ['Objects', 'Python', 'Modules', 'Parser']]
+        c_files = []
+        for d in c_dirs:
+            if not os.path.isdir(d):
+                continue
+            for f in os.listdir(d):
+                if f.endswith('.c'):
+                    c_files.append(os.path.join(d, f))
+        sym_patterns = {s: re.compile(r'\\b' + re.escape(s) + r'\\s*\\(') for s in symbols}
+        for cf in c_files:
+            try:
+                with open(cf) as fh:
+                    lines = fh.readlines()
+            except Exception:
+                continue
+            rel = os.path.relpath(cf, src)
+            for i, line in enumerate(lines):
+                if '{' in line or line.strip().startswith('//') or line.strip().startswith('#'):
+                    continue
+                for sym, pat in list(sym_patterns.items()):
+                    if sym in result:
+                        continue
+                    if not pat.search(line):
+                        continue
+                    depth = 0
+                    body_lines = []
+                    started = False
+                    for j in range(max(0, i-2), min(len(lines), i+200)):
+                        body_lines.append(lines[j].rstrip())
+                        depth += lines[j].count('{') - lines[j].count('}')
+                        if '{' in lines[j]:
+                            started = True
+                        if started and depth <= 0:
+                            break
+                    if not started:
+                        continue
+                    result[sym] = {'sourceFile': rel, 'snippet': '\\n'.join(body_lines)}
+                    break
+                if len(result) == len(symbols):
+                    break
+            if len(result) == len(symbols):
+                break
+        with open(output, 'w') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        print(f"extracted:{len(result)}/{len(symbols)}")
+    """)
+
+    with tempfile.TemporaryDirectory(prefix="pyframework_src_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        (tmp / "_extract_src.py").write_text(extract_script, encoding="utf-8")
+        (tmp / "_symbols.txt").write_text("\n".join(sorted(symbols)) + "\n", encoding="utf-8")
+
+        # Push to remote host, then docker cp into container.
+        host_staging = "/tmp/pyframework-src-extract"
+        executor.run(f"rm -rf {host_staging} && mkdir -p {host_staging}", timeout=15)
+        executor.push_file(tmp / "_extract_src.py", f"{host_staging}/_extract_src.py")
+        executor.push_file(tmp / "_symbols.txt", f"{host_staging}/_symbols.txt")
+        executor.run(f"docker cp {host_staging}/. {container}:/tmp/_src_extract/", timeout=30)
+
+    # Ensure CPython source is available (extract from pyenv cache if needed).
+    src_prep = executor.run(
+        f"docker exec {container} bash -c '"
+        "test -d /tmp/cpython-src/Objects && echo ok || "
+        "(TB=$(ls /root/.pyenv/cache/Python-*.tar.xz 2>/dev/null | head -1) && "
+        "mkdir -p /tmp/cpython-src && tar xf $TB -C /tmp/cpython-src --strip-components=1 && "
+        "echo extracted)'",
+        timeout=60,
     )
-    if src_check.stdout.strip():
-        cpython_src = src_check.stdout.strip()
-    else:
-        # 2. Find the cached tarball and extract
-        tarball_check = executor.run(
-            f"docker exec {container} bash -c "
-            "'ls /root/.pyenv/cache/Python-*.tar.xz 2>/dev/null | head -1'",
-            timeout=10,
-        )
-        if not tarball_check.stdout.strip():
-            logger.warning("CPython source tarball not found in container, skipping source extraction")
-            return
-        tarball = tarball_check.stdout.strip()
-        logger.info("Extracting CPython source from %s", tarball)
-        extract_result = executor.run(
-            f"docker exec {container} bash -c "
-            f"'mkdir -p /tmp/cpython-src && "
-            f"tar xf {tarball} -C /tmp/cpython-src --strip-components=1'",
-            timeout=60,
-        )
-        if extract_result.returncode != 0:
-            logger.warning("Failed to extract CPython source: %s", extract_result.stderr[:200])
-            return
-        cpython_src = "/tmp/cpython-src"
-    logger.info("Using CPython source at %s", cpython_src)
+    if "ok" not in src_prep.stdout and "extracted" not in src_prep.stdout:
+        logger.warning("CPython source not available in container, skipping source extraction")
+        executor.run(f"docker exec {container} rm -rf /tmp/_src_extract", timeout=15)
+        executor.run(f"rm -rf {host_staging}", timeout=15)
+        return
 
-    # Build a Python extraction script to run inside the container.
-    # Pass symbols via a temp file to avoid shell quoting / arg-length issues.
-    extract_script = (
-        "import sys, os, re, json\n"
-        "src = sys.argv[1]\n"
-        "sym_file = sys.argv[2]\n"
-        "with open(sym_file) as f:\n"
-        "    symbols = [l.strip() for l in f if l.strip()]\n"
-        "result = {}\n"
-        "c_dirs = [os.path.join(src, d) for d in ['Objects', 'Python', 'Modules', 'Parser']]\n"
-        "c_files = []\n"
-        "for d in c_dirs:\n"
-        "    if not os.path.isdir(d):\n"
-        "        continue\n"
-        "    for f in os.listdir(d):\n"
-        "        if f.endswith('.c'):\n"
-        "            c_files.append(os.path.join(d, f))\n"
-        "# Build regex: match sym( anywhere in a line (handles 'static void sym(' etc.)\n"
-        "sym_patterns = {s: re.compile(r'\\b' + re.escape(s) + r'\\s*\\(') for s in symbols}\n"
-        "for cf in c_files:\n"
-        "    try:\n"
-        "        with open(cf) as fh:\n"
-        "            lines = fh.readlines()\n"
-        "    except Exception:\n"
-        "        continue\n"
-        "    rel = os.path.relpath(cf, src)\n"
-        "    for i, line in enumerate(lines):\n"
-        "        if '{' in line or line.strip().startswith('//') or line.strip().startswith('#'):\n"
-        "            continue\n"
-        "        for sym, pat in list(sym_patterns.items()):\n"
-        "            if sym in result:\n"
-        "                continue\n"
-        "            if not pat.search(line):\n"
-        "                continue\n"
-        "            # Likely a definition: extract body by brace-counting.\n"
-        "            depth = 0\n"
-        "            body_lines = []\n"
-        "            started = False\n"
-        "            for j in range(max(0, i-2), min(len(lines), i+200)):\n"
-        "                body_lines.append(lines[j].rstrip())\n"
-        "                depth += lines[j].count('{') - lines[j].count('}')\n"
-        "                if '{' in lines[j]:\n"
-        "                    started = True\n"
-        "                if started and depth <= 0:\n"
-        "                    break\n"
-        "            if not started:\n"
-        "                continue\n"
-        "            snippet = '\\n'.join(body_lines)\n"
-        "            result[sym] = {'sourceFile': rel, 'snippet': snippet}\n"
-        "            break\n"
-        "        if len(result) == len(symbols):\n"
-        "            break\n"
-        "    if len(result) == len(symbols):\n"
-        "        break\n"
-        "print(json.dumps(result))\n"
-    )
-
-    import base64
-    encoded_script = base64.b64encode(extract_script.encode()).decode()
-    sym_list = "\n".join(sorted(symbols))
-
-    # Write symbol list to a temp file inside the container, then run the script.
-    encoded_syms = base64.b64encode(sym_list.encode()).decode()
+    # Run the extraction script inside the container.
     result = executor.run(
-        f"docker exec {container} bash -c "
-        f"'echo {encoded_script} | base64 -d > /tmp/_extract_src.py && "
-        f"echo {encoded_syms} | base64 -d > /tmp/_symbols.txt && "
-        f"python3 /tmp/_extract_src.py {cpython_src} /tmp/_symbols.txt'"
-        f" 2>/dev/null",
+        f"docker exec {container} python3 /tmp/_src_extract/_extract_src.py "
+        f"/tmp/cpython-src /tmp/_src_extract/_symbols.txt /tmp/_src_extract/_result.json",
         timeout=180,
         stream=True,
     )
-    if result.returncode != 0 or not result.stdout.strip():
-        logger.warning("CPython source extraction failed: %s", result.stderr[:200] if result.stderr else "no output")
-        return
+    logger.info("Source extraction: %s", result.stdout.strip() if result.stdout else result.stderr[:200])
+
+    # Collect result via docker cp.
+    host_result = "/tmp/pyframework-src-result.json"
+    executor.run(f"docker cp {container}:/tmp/_src_extract/_result.json {host_result}", timeout=30)
+    local_result = output_path.parent / "_result_tmp.json"
+    local_result.parent.mkdir(parents=True, exist_ok=True)
+    executor.fetch_file(host_result, local_result)
 
     try:
-        source_map = json.loads(result.stdout.strip())
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse source extraction output")
-        return
+        source_map = json.loads(local_result.read_text(encoding="utf-8"))
+        if source_map:
+            output_path.write_text(
+                json.dumps(source_map, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            logger.info("Extracted CPython source for %d/%d symbols", len(source_map), len(symbols))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to read source extraction result: %s", e)
+    finally:
+        local_result.unlink(missing_ok=True)
 
-    if source_map:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            json.dumps(source_map, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        logger.info("Extracted CPython source for %d/%d symbols", len(source_map), len(symbols))
-
-    executor.run(
-        f"docker exec {container} bash -c 'rm -f /tmp/_extract_src.py /tmp/_symbols.txt'",
-        timeout=15,
-    )
-
-
-def _save_symbol_map(asm_dir: Path, symbol_map: dict[str, str]) -> None:
-    """Persist hash→symbol mapping alongside .s files."""
-    if symbol_map:
-        (asm_dir / "symbol_map.json").write_text(
-            json.dumps(symbol_map, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    # Cleanup.
+    executor.run(f"docker exec {container} rm -rf /tmp/_src_extract", timeout=15)
+    executor.run(f"rm -rf {host_staging} {host_result}", timeout=15)
 
 
 def _collect_asm_from_all_libs(
@@ -1179,11 +1109,14 @@ def _collect_asm_from_all_libs(
 ) -> None:
     """Collect objdump for top hotspot symbols from ALL shared libraries.
 
-    Reads perf_records.csv to discover which shared_object each hotspot
-    symbol belongs to, then runs objdump inside the container for each
-    library.  Skips kernel symbols and unresolved addresses.
+    Writes a Python script that runs entirely inside the container — finds
+    libraries, runs objdump, extracts symbols, writes .s files and
+    symbol_map.json into an output directory.  Then docker cp the results
+    back.  Avoids per-library round trips through SSH.
     """
     import csv
+    import tempfile
+    from collections import Counter
 
     perf_csv = perf_dir / "perf_records.csv"
     if not perf_csv.exists():
@@ -1199,7 +1132,6 @@ def _collect_asm_from_all_libs(
                 so = (row.get("shared_object") or "").strip()
                 if not sym or sym.startswith("0x") or so in ("", "[unknown]"):
                     continue
-                # Skip raw hex addresses without 0x prefix (unresolved IPs).
                 if len(sym) >= 8 and all(c in "0123456789abcdef" for c in sym.lower()):
                     continue
                 if so == "[kernel.kallsyms]":
@@ -1209,96 +1141,148 @@ def _collect_asm_from_all_libs(
         logger.warning("Failed to read perf_records.csv: %s", e)
         return
 
-    # Keep top symbols per library (by appearance count).
-    from collections import Counter
     for so, syms in so_to_syms.items():
         counts = Counter(syms)
-        top = [s for s, _ in counts.most_common(30)]
-        so_to_syms[so] = top
+        so_to_syms[so] = [s for s, _ in counts.most_common(30)]
 
-    symbol_map = _load_symbol_map(asm_dir)
+    # Load existing symbol_map so the in-container script can skip collected symbols.
+    existing_map = _load_symbol_map(asm_dir)
 
-    for so, syms in sorted(so_to_syms.items()):
-        # Find the shared library inside the container.
-        # Use substring match — Python .so names may have platform suffixes
-        # or be located under versioned paths that differ from what perf reports.
-        so_path = _find_so_in_container(executor, container, so)
-        if not so_path:
-            continue
+    # Write a single Python script + JSON manifest to run inside the container.
+    asm_script = textwrap.dedent("""\
+        import sys, os, re, json, subprocess, hashlib
 
-        logger.info("Collecting objdump from %s (%d symbols)", so, len(syms))
+        manifest = sys.argv[1]
+        output_dir = sys.argv[2]
 
-        # Run objdump inside container, redirect to file.
-        tmp_dump = "/tmp/_pyframework_objdump.tmp"
-        objdump_result = executor.run(
-            f"docker exec {container} bash -c "
-            f"'objdump -d -C {so_path} > {tmp_dump} 2>&1'",
-            timeout=180,
-            stream=True,
-        )
-        if objdump_result.returncode != 0:
-            logger.warning("objdump failed for %s: %s", so_path, objdump_result.stdout[-200:])
-            continue
+        with open(manifest) as f:
+            data = json.load(f)
+        so_to_syms = data['so_to_syms']
+        existing_map = data.get('existing_map', {})
 
-        # Pull dump file via docker cp + scp (avoids cat-through-SSH timeout).
-        host_tmp = f"/tmp/_pyframework_objdump_{so.replace('/', '_')}.tmp"
-        executor.run(f"docker exec -u root {container} chmod 644 {tmp_dump}", timeout=30)
-        cp_result = executor.run(
-            f"docker cp {container}:{tmp_dump} {host_tmp}",
-            timeout=120,
-            stream=True,
-        )
-        if cp_result.returncode != 0:
-            logger.warning("docker cp objdump failed for %s: %s", so_path, cp_result.stderr)
-            executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=30)
-            continue
+        # Invert existing_map to get set of already-collected hashes.
+        collected_hashes = set(existing_map.values()) if existing_map else set()
 
-        # Read locally via scp.
-        local_dump = asm_dir / f"_objdump_{so.replace('/', '_')}.tmp"
-        executor.fetch_file(host_tmp, local_dump)
-        executor.run(f"rm -f {host_tmp}", timeout=30)
-        executor.run(f"docker exec {container} rm -f {tmp_dump}", timeout=30)
+        symbol_map = dict(existing_map)
+        lib_dirs = '/usr/lib /usr/local/lib /opt /lib'.split()
+        bin_dirs = '/usr/local/bin /usr/bin /opt /root/.pyenv /root'.split()
+        all_dirs = lib_dirs + bin_dirs
+        total_collected = 0
 
-        full_dump = local_dump.read_text(encoding="utf-8", errors="replace")
-
-        # Extract each symbol's disassembly from the full dump.
-        collected_count = 0
-        for sym in syms:
-            import hashlib as _hashlib
-            sym_hash = _hashlib.md5(sym.encode()).hexdigest()[:8]
-            safe_name = f"{sym_hash}.s"
-            if (asm_dir / safe_name).exists() and (asm_dir / safe_name).stat().st_size > 0:
-                continue  # Already collected (e.g. from a previous library)
-
-            # Use awk-style extraction: lines between "<sym>:" and next empty line.
-            import re
-            pattern = re.compile(rf"^[0-9a-f]+ <{re.escape(sym)}>")
-            lines = []
-            capturing = False
-            for line in full_dump.splitlines():
-                if not capturing and pattern.match(line):
-                    capturing = True
-                if capturing:
-                    if line.strip() == "" and lines:
+        for so_name, syms in sorted(so_to_syms.items()):
+            # Find the library inside the container.
+            so_path = None
+            base = os.path.basename(so_name)
+            is_so = base.endswith('.so') or '.so.' in base
+            search = lib_dirs if is_so else all_dirs
+            for d in search:
+                for root, dirs, files in os.walk(d):
+                    for fn in files:
+                        if fn == base or (is_so and base.split('.')[0] in fn and '.so' in fn):
+                            candidate = os.path.join(root, fn)
+                            if os.path.exists(candidate):
+                                so_path = candidate
+                                break
+                    if so_path:
                         break
-                    lines.append(line)
-                if len(lines) > 500:
-                    lines = lines[:500]
+                if so_path:
                     break
+            if not so_path:
+                print(f"skip:{so_name}")
+                continue
 
-            content = "\n".join(lines)
-            if content.strip():
-                (asm_dir / safe_name).write_text(content, encoding="utf-8")
-                symbol_map[sym_hash] = sym
-                collected_count += 1
+            # Run objdump.
+            try:
+                r = subprocess.run(
+                    ['objdump', '-d', '-C', so_path],
+                    capture_output=True, text=True, timeout=60,
+                )
+            except Exception:
+                continue
+            if r.returncode != 0 or not r.stdout:
+                continue
 
-        if collected_count:
-            logger.info("  %s: collected %d/%d symbols", so, collected_count, len(syms))
-        # Clean up local dump file.
-        if local_dump.exists():
-            local_dump.unlink()
+            dump = r.stdout
+            collected = 0
+            for sym in syms:
+                h = hashlib.md5(sym.encode()).hexdigest()[:8]
+                if h in collected_hashes:
+                    continue
+                pat = re.compile(r'^[0-9a-f]+ <' + re.escape(sym) + '>')
+                lines = []
+                capturing = False
+                for line in dump.splitlines():
+                    if not capturing and pat.match(line):
+                        capturing = True
+                    if capturing:
+                        if line.strip() == '' and lines:
+                            break
+                        lines.append(line)
+                    if len(lines) > 500:
+                        lines = lines[:500]
+                        break
+                if not lines:
+                    continue
+                out_file = os.path.join(output_dir, f'{h}.s')
+                with open(out_file, 'w') as f:
+                    f.write('\\n'.join(lines))
+                symbol_map[h] = sym
+                collected_hashes.add(h)
+                collected += 1
+            if collected:
+                print(f"collected:{so_name}:{collected}/{len(syms)}")
+                total_collected += collected
 
-    _save_symbol_map(asm_dir, symbol_map)
+        # Write symbol_map.json.
+        map_path = os.path.join(output_dir, 'symbol_map.json')
+        with open(map_path, 'w') as f:
+            json.dump(symbol_map, f, ensure_ascii=False, indent=2)
+        print(f"done:total={total_collected},map_entries={len(symbol_map)}")
+    """)
+
+    manifest = {
+        "so_to_syms": so_to_syms,
+        "existing_map": existing_map,
+    }
+
+    with tempfile.TemporaryDirectory(prefix="pyframework_asm_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        (tmp / "_asm_collect.py").write_text(asm_script, encoding="utf-8")
+        (tmp / "_manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False) + "\n", encoding="utf-8",
+        )
+
+        # Push to remote host, then docker cp into container.
+        host_staging = "/tmp/pyframework-asm-collect"
+        executor.run(f"rm -rf {host_staging} && mkdir -p {host_staging}", timeout=15)
+        executor.push_file(tmp / "_asm_collect.py", f"{host_staging}/_asm_collect.py")
+        executor.push_file(tmp / "_manifest.json", f"{host_staging}/_manifest.json")
+        executor.run(f"docker cp {host_staging}/. {container}:/tmp/_asm_collect/", timeout=30)
+
+    # Create output directory inside container and run the script.
+    executor.run(
+        f"docker exec {container} mkdir -p /tmp/_asm_output", timeout=15,
+    )
+    result = executor.run(
+        f"docker exec {container} python3 /tmp/_asm_collect/_asm_collect.py "
+        f"/tmp/_asm_collect/_manifest.json /tmp/_asm_output",
+        timeout=300,
+        stream=True,
+    )
+    if result.stdout:
+        for line in result.stdout.strip().splitlines():
+            logger.info("  ASM: %s", line)
+
+    # Collect results: docker cp output dir → remote host → scp → local.
+    host_output = "/tmp/pyframework-asm-output"
+    executor.run(f"rm -rf {host_output}", timeout=15)
+    executor.run(f"docker cp {container}:/tmp/_asm_output/. {host_output}", timeout=120)
+    executor.fetch_dir(host_output, asm_dir)
+
+    # Cleanup container + remote host.
+    executor.run(f"docker exec {container} rm -rf /tmp/_asm_collect /tmp/_asm_output", timeout=15)
+    executor.run(f"rm -rf {host_staging} {host_output}", timeout=15)
+
     logger.info("ASM collection: %d files in %s", len(list(asm_dir.glob("*.s"))), asm_dir)
 
 
