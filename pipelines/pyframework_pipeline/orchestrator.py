@@ -1005,9 +1005,10 @@ def _extract_cpython_sources(
 ) -> None:
     """Extract C source code for hotspot symbols from CPython source in container.
 
-    pyenv keeps the extracted source at /root/.pyenv/sources/<version>/. For each
-    symbol in perf_records.csv, grep for the function definition and extract the
-    body. Writes symbol_source_map.json for asm_backfill to consume.
+    pyenv caches the Python source tarball at /root/.pyenv/cache/Python-$VER.tar.xz
+    but does NOT keep extracted sources after compilation.  We extract the tarball
+    to /tmp/cpython-src/ on first run, then grep for function definitions matching
+    the perf hotspot symbols.  Writes symbol_source_map.json for asm_backfill.
     """
     import csv as _csv
 
@@ -1028,51 +1029,77 @@ def _extract_cpython_sources(
         return
 
     # Find CPython source directory in container.
+    # pyenv does NOT keep extracted sources after compilation.  The cached
+    # tarball is at /root/.pyenv/cache/Python-$VERSION.tar.xz.  We extract
+    # it to /tmp/cpython-src/ and clean up afterwards.
+    cpython_src = ""
+    # 1. Check for already-extracted source (re-run scenario)
     src_check = executor.run(
         f"docker exec {container} bash -c "
-        "'ls -d /root/.pyenv/sources/*/Python-*/Objects/tupleobject.c 2>/dev/null | head -1'",
-        timeout=15,
+        "'test -d /tmp/cpython-src/Objects && echo /tmp/cpython-src'",
+        timeout=10,
     )
-    if src_check.returncode != 0 or not src_check.stdout.strip():
-        logger.warning("CPython source not found in container, skipping source extraction")
-        return
-
-    # Get the source root (e.g. /root/.pyenv/sources/3.14.3/Python-3.14.3)
-    sample_file = src_check.stdout.strip()
-    cpython_src = sample_file.rsplit("/", 2)[0]  # strip Objects/tupleobject.c
-    logger.info("Found CPython source at %s", cpython_src)
+    if src_check.stdout.strip():
+        cpython_src = src_check.stdout.strip()
+    else:
+        # 2. Find the cached tarball and extract
+        tarball_check = executor.run(
+            f"docker exec {container} bash -c "
+            "'ls /root/.pyenv/cache/Python-*.tar.xz 2>/dev/null | head -1'",
+            timeout=10,
+        )
+        if not tarball_check.stdout.strip():
+            logger.warning("CPython source tarball not found in container, skipping source extraction")
+            return
+        tarball = tarball_check.stdout.strip()
+        logger.info("Extracting CPython source from %s", tarball)
+        extract_result = executor.run(
+            f"docker exec {container} bash -c "
+            f"'mkdir -p /tmp/cpython-src && "
+            f"tar xf {tarball} -C /tmp/cpython-src --strip-components=1'",
+            timeout=60,
+        )
+        if extract_result.returncode != 0:
+            logger.warning("Failed to extract CPython source: %s", extract_result.stderr[:200])
+            return
+        cpython_src = "/tmp/cpython-src"
+    logger.info("Using CPython source at %s", cpython_src)
 
     # Build a Python extraction script to run inside the container.
-    # This is more reliable than chaining grep/awk through SSH.
+    # Pass symbols via a temp file to avoid shell quoting / arg-length issues.
     extract_script = (
         "import sys, os, re, json\n"
         "src = sys.argv[1]\n"
-        "symbols = sys.argv[2].split(',')\n"
+        "sym_file = sys.argv[2]\n"
+        "with open(sym_file) as f:\n"
+        "    symbols = [l.strip() for l in f if l.strip()]\n"
         "result = {}\n"
         "c_dirs = [os.path.join(src, d) for d in ['Objects', 'Python', 'Modules', 'Parser']]\n"
         "c_files = []\n"
         "for d in c_dirs:\n"
-        "    for f in os.listdir(d) if os.path.isdir(d) else []:\n"
+        "    if not os.path.isdir(d):\n"
+        "        continue\n"
+        "    for f in os.listdir(d):\n"
         "        if f.endswith('.c'):\n"
         "            c_files.append(os.path.join(d, f))\n"
-        "for sym in symbols:\n"
-        "    for cf in c_files:\n"
-        "        try:\n"
-        "            with open(cf) as fh:\n"
-        "                lines = fh.readlines()\n"
-        "        except Exception:\n"
+        "# Build regex: match sym( anywhere in a line (handles 'static void sym(' etc.)\n"
+        "sym_patterns = {s: re.compile(r'\\b' + re.escape(s) + r'\\s*\\(') for s in symbols}\n"
+        "for cf in c_files:\n"
+        "    try:\n"
+        "        with open(cf) as fh:\n"
+        "            lines = fh.readlines()\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    rel = os.path.relpath(cf, src)\n"
+        "    for i, line in enumerate(lines):\n"
+        "        if '{' in line or line.strip().startswith('//') or line.strip().startswith('#'):\n"
         "            continue\n"
-        "        rel = os.path.relpath(cf, src)\n"
-        "        for i, line in enumerate(lines):\n"
-        "            # Match function definition: sym appears at start of a line\n"
-        "            # followed by '(' and is not inside a comment or macro.\n"
-        "            stripped = line.lstrip()\n"
-        "            if not stripped.startswith(sym):\n"
+        "        for sym, pat in list(sym_patterns.items()):\n"
+        "            if sym in result:\n"
         "                continue\n"
-        "            rest = stripped[len(sym):].lstrip()\n"
-        "            if not rest.startswith('('):\n"
+        "            if not pat.search(line):\n"
         "                continue\n"
-        "            # Extract function body: count braces from this line.\n"
+        "            # Likely a definition: extract body by brace-counting.\n"
         "            depth = 0\n"
         "            body_lines = []\n"
         "            started = False\n"
@@ -1083,24 +1110,31 @@ def _extract_cpython_sources(
         "                    started = True\n"
         "                if started and depth <= 0:\n"
         "                    break\n"
+        "            if not started:\n"
+        "                continue\n"
         "            snippet = '\\n'.join(body_lines)\n"
         "            result[sym] = {'sourceFile': rel, 'snippet': snippet}\n"
         "            break\n"
-        "        if sym in result:\n"
+        "        if len(result) == len(symbols):\n"
         "            break\n"
+        "    if len(result) == len(symbols):\n"
+        "        break\n"
         "print(json.dumps(result))\n"
     )
 
     import base64
     encoded_script = base64.b64encode(extract_script.encode()).decode()
-    sym_list = ",".join(sorted(symbols))
+    sym_list = "\n".join(sorted(symbols))
 
+    # Write symbol list to a temp file inside the container, then run the script.
+    encoded_syms = base64.b64encode(sym_list.encode()).decode()
     result = executor.run(
         f"docker exec {container} bash -c "
         f"'echo {encoded_script} | base64 -d > /tmp/_extract_src.py && "
-        f"python3 /tmp/_extract_src.py {cpython_src} \"{sym_list}\"'"
+        f"echo {encoded_syms} | base64 -d > /tmp/_symbols.txt && "
+        f"python3 /tmp/_extract_src.py {cpython_src} /tmp/_symbols.txt'"
         f" 2>/dev/null",
-        timeout=120,
+        timeout=180,
         stream=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
@@ -1121,7 +1155,10 @@ def _extract_cpython_sources(
         )
         logger.info("Extracted CPython source for %d/%d symbols", len(source_map), len(symbols))
 
-    executor.run(f"docker exec {container} rm -f /tmp/_extract_src.py", timeout=15)
+    executor.run(
+        f"docker exec {container} bash -c 'rm -f /tmp/_extract_src.py /tmp/_symbols.txt'",
+        timeout=15,
+    )
 
 
 def _save_symbol_map(asm_dir: Path, symbol_map: dict[str, str]) -> None:
