@@ -33,8 +33,8 @@ def _is_body_too_large(exc: Exception) -> bool:
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code == 403
     if isinstance(exc, RuntimeError):
-        msg = str(exc)
-        return "403" in msg or "Forbidden" in msg
+        msg = str(exc).lower()
+        return "403" in msg or "forbidden" in msg
     return False
 
 
@@ -401,7 +401,7 @@ def publish(
                 })
                 logger.info("Published %s → #%s", symbol, number)
         except Exception as exc:
-            logger.error("Failed to publish %s: %s", symbol, exc)
+            logger.error("Failed to publish %s: %s", symbol, exc, exc_info=True)
             errors += 1
             continue
 
