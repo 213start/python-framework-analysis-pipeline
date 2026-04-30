@@ -475,6 +475,7 @@ def fetch(
     review_pending = 0
     patterns_new: list[dict[str, Any]] = []
     root_causes_new: list[dict[str, Any]] = []
+    opportunities_new: list[dict[str, Any]] = []
 
     for entry in manifest.issues:
         if entry.status not in ("created", "analysed", "review-pending"):
@@ -548,11 +549,24 @@ def fetch(
                 "category": rc.get("根因类别", ""),
                 "location": rc.get("出现位置", ""),
                 "impact": rc.get("热路径影响", ""),
+                "evidence": rc.get("perf stat/PMU证据", ""),
                 "functionId": entry.function_id,
             }
             root_causes_new.append(rc_entry)
 
-        # Extract optimization opportunities from root causes table.
+        # Extract optimization opportunities.
+        for idx, opp in enumerate(parsed_result.opportunities):
+            opp_entry = {
+                "id": f"opp_{entry.function_id}_{idx}",
+                "title": opp.get("优化点", ""),
+                "arm_status": opp.get("ARM现状", ""),
+                "x86_equivalent": opp.get("x86对应实现", ""),
+                "diff_note": opp.get("差异说明", ""),
+                "functionId": entry.function_id,
+            }
+            opportunities_new.append(opp_entry)
+
+        # Extract optimization strategies.
         for idx, opt in enumerate(parsed_result.optimizations):
             opt_entry = {
                 "id": f"opt_{entry.function_id}_{idx}",
@@ -579,6 +593,7 @@ def fetch(
     # Merge new patterns and root causes into dataset.
     _merge_list(dataset, "patterns", patterns_new, "id")
     _merge_list(dataset, "rootCauses", root_causes_new, "id")
+    _merge_list(dataset, "opportunities", opportunities_new, "id")
 
     # Write back.
     _write_json(dataset_path, dataset)

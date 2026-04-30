@@ -4,9 +4,9 @@ Generates the prompt + source + machine code body for each hotspot function.
 Handles chunking for long functions and single-platform degradation.
 
 The template follows the real-world pattern from
-https://github.com/sisibeloved/spark/issues/1 -- issue content contains ONLY
-source code and machine code (NO timing/perf metrics). The embedded prompt
-tells the LLM what to produce in its comment.
+https://github.com/sisibeloved/pytorch/discussions/2 -- the prompt instructs
+the LLM to produce a structured analysis with 分类、行为模式、总览、分段详情、
+根因汇总（含 perf stat/PMU 证据链）、优化机会 and 优化策略.
 """
 
 from __future__ import annotations
@@ -90,26 +90,32 @@ def _build_dual_prompt(symbol: str, framework: str) -> str:
     return (
         f"你是一个CPU微架构性能优化专家和Python软件专家，现在正在进行"
         f"{framework}在Kunpeng（ARM）和AMD Zen（x86）上的性能差异分析。"
-        f"阅读本Issue并在本Issue底下评论。根据两个平台的机器码和对应源码"
+        f"阅读本Discussion并在本Discussion底下评论。根据两个平台的机器码和对应源码"
         f"分析Arm相对x86性能相对劣势的根因，把整个函数对应源码的机器码差异、"
-        f"优化机会和优化策略都列出来。\n"
+        f"根因汇总、优化机会和优化策略都列出来。\n"
         f"\n"
-        f"差异分析应满足：\n"
-        f"1. 完整覆盖整个函数对应源码，保留源码和两个平台的机器码\n"
-        f"2. 逐行对照分析，无差异行注明\"无差异\"\n"
-        f"3. 优化机会中，如相同数量、相同意义的指令，x86执行更高效，也统计进来\n"
+        f"差异分析应该能完整覆盖整个函数对应源码，保留源码、两个平台的机器码；"
+        f"根因汇总中，需要给出推理证据链所需的perf stat/PMU数据；"
+        f"优化机会中，如相同数量、相同意义的指令，x86执行更高效，也可以统计进来；"
+        f"结尾的优化策略仅保留Arm收益比x86高的。\n"
         f"\n"
         f"评论格式要求：\n"
         f"- 以 `{_COMMENT_PREFIX_DUAL}{symbol}` 开头\n"
+        f"- `### 分类` 节：标注本函数所属组件和L1分类\n"
+        f"- `### 行为模式` 节：概述函数的控制流特征、热路径走向、"
+        f"分支预测友好度\n"
         f"- `### 总览` 节：表格列出每段源码的ARM/x86指令数和差异概要\n"
-        f"- 逐行分析节：每段源码配ARM汇编 + x86汇编 + 比较表 + ARM劣势说明\n"
+        f"- 分段详情节：每段源码配源码原文 + ARM汇编 + x86汇编 + 比较表 + "
+        f"ARM劣势说明，完整覆盖整个函数，无差异行注明\"无差异\"\n"
         f"- `### 根因汇总` 节：表格汇总ARM性能劣势来源"
-        f"（编号、劣势来源、出现位置、热路径影响、根因类别）\n"
+        f"（编号、劣势来源、出现位置、热路径影响、根因类别、perf stat/PMU证据）\n"
+        f"- `### 优化机会` 节：表格列出可优化点"
+        f"（编号、优化点、ARM现状、x86对应实现、差异说明）\n"
         f"- `### 优化策略` 节：表格列出优化建议"
         f"（编号、优化点、策略、受益方、ARM收益更高的原因、实施方）\n"
         f"- 优化策略仅保留ARM收益比x86高的，注明受益方"
         f"（仅ARM/ARM收益>x86）和实施方"
-        f"（CPython/编译器/硬件/OS/Python库/其它）"
+        f"（CPython/编译器/硬件/OS/Python库/其它自行补充）"
     )
 
 
@@ -126,16 +132,20 @@ def _build_single_prompt(symbol: str, framework: str, platform: str) -> str:
     return (
         f"你是一个CPU微架构性能优化专家和Python软件专家，现在正在进行"
         f"{framework}在{platform_display}上的性能分析。"
-        f"阅读本Issue并在本Issue底下评论。"
+        f"阅读本Discussion并在本Discussion底下评论。"
         f"本函数仅在{platform_display}平台出现，请分析该平台机器码的质量和潜在优化点。\n"
         f"\n"
         f"评论格式要求：\n"
         f"- 以 `{comment_prefix}{symbol}` 开头\n"
+        f"- `### 分类` 节：标注本函数所属组件和L1分类\n"
+        f"- `### 行为模式` 节：概述函数的控制流特征、热路径走向\n"
         f"- `### 总览` 节：列出函数的指令统计和关键特征\n"
-        f"- 逐段分析节：源码配对应汇编 + 优化说明\n"
+        f"- 分段详情节：源码配对应汇编 + 优化说明，完整覆盖整个函数\n"
+        f"- `### 根因汇总` 节：表格列出性能瓶颈来源"
+        f"（编号、瓶颈来源、出现位置、热路径影响、根因类别、perf stat/PMU证据）\n"
         f"- `### 优化建议` 节：表格列出优化建议"
         f"（编号、优化点、策略、实施方）\n"
-        f"- 注明实施方（CPython/编译器/硬件/OS/Python库/其它）"
+        f"- 注明实施方（CPython/编译器/硬件/OS/Python库/其它自行补充）"
     )
 
 
@@ -180,6 +190,8 @@ def _build_dual_body(
         "",
         f"## 分类\n\n- {category_l1}",
         "",
+        f"## 环境\n\n- {framework}",
+        "",
         source_section,
     ])
 
@@ -222,6 +234,8 @@ def _build_single_body(
         f"## 组件\n\n- {component}",
         "",
         f"## 分类\n\n- {category_l1}",
+        "",
+        f"## 环境\n\n- {framework}",
         "",
         source_section,
     ])

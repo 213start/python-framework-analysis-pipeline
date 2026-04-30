@@ -24,6 +24,7 @@ class ParsedAnalysis:
     sections: list[dict]  # per-line analysis sections
     root_causes: list[dict[str, str]]
     optimizations: list[dict[str, str]]
+    opportunities: list[dict[str, str]]
     raw_body: str
     warnings: list[str] = field(default_factory=list)
 
@@ -199,6 +200,10 @@ def parse_comment_body(body: str) -> ParsedAnalysis | None:
     root_cause_raw = _section_text("根因汇总")
     root_causes = _extract_markdown_table(root_cause_raw)
 
+    # --- Optimization opportunities -------------------------------------------
+    opp_raw = _section_text("优化机会")
+    opportunities = _extract_markdown_table(opp_raw)
+
     # --- Optimization strategies ----------------------------------------------
     opt_raw = _section_text("优化策略")
     optimizations = _extract_markdown_table(opt_raw)
@@ -219,6 +224,7 @@ def parse_comment_body(body: str) -> ParsedAnalysis | None:
         sections=sections,
         root_causes=root_causes,
         optimizations=optimizations,
+        opportunities=opportunities,
         raw_body=body,
         warnings=warnings,
     )
