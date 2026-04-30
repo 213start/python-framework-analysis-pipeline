@@ -16,6 +16,7 @@ from pyframework_pipeline.bridge.comment_parser import (
 from pyframework_pipeline.bridge.issue_template import (
     build_asm_diff_issue,
     check_chunking,
+    split_asm_from_body,
 )
 from pyframework_pipeline.bridge.manifest import (
     BridgeIssueEntry,
@@ -36,32 +37,28 @@ class TestBuildAsmDiffIssue(unittest.TestCase):
         result = build_asm_diff_issue(func, arm_asm="ldr x0", x86_asm="mov rax")
         self.assertEqual(result["title"], "my_func跨平台机器码差异分析")
         self.assertIn("跨平台机器码差异分析：my_func", result["body"])
-        # ASM is in comments, not body.
-        self.assertEqual(len(result["comments"]), 2)
-        arm_comment = result["comments"][0]
-        x86_comment = result["comments"][1]
-        self.assertIn("Kunpeng", arm_comment)
-        self.assertIn("ldr x0", arm_comment)
-        self.assertIn("Zen4", x86_comment)
-        self.assertIn("mov rax", x86_comment)
+        # ASM is in body by default, comments is empty.
+        self.assertEqual(len(result["comments"]), 0)
+        self.assertIn("ldr x0", result["body"])
+        self.assertIn("mov rax", result["body"])
 
     def test_arm_only(self):
         func = {"symbol": "arm_only_func"}
         result = build_asm_diff_issue(func, arm_asm="ldr x0", x86_asm=None)
         self.assertIn("Kunpeng only", result["title"])
         self.assertIn("Kunpeng 机器码分析", result["body"])
-        # ASM is in comments, not body.
-        self.assertEqual(len(result["comments"]), 1)
-        self.assertIn("ldr x0", result["comments"][0])
+        # ASM is in body by default.
+        self.assertEqual(len(result["comments"]), 0)
+        self.assertIn("ldr x0", result["body"])
 
     def test_x86_only(self):
         func = {"symbol": "x86_only_func"}
         result = build_asm_diff_issue(func, arm_asm=None, x86_asm="mov rax")
         self.assertIn("Zen4 only", result["title"])
         self.assertIn("Zen4 机器码分析", result["body"])
-        # ASM is in comments, not body.
-        self.assertEqual(len(result["comments"]), 1)
-        self.assertIn("mov rax", result["comments"][0])
+        # ASM is in body by default.
+        self.assertEqual(len(result["comments"]), 0)
+        self.assertIn("mov rax", result["body"])
 
     def test_both_none_raises(self):
         func = {"symbol": "no_asm"}
@@ -94,9 +91,43 @@ class TestBuildAsmDiffIssue(unittest.TestCase):
         result = build_asm_diff_issue(
             func, arm_asm=long_asm, x86_asm=long_asm, max_lines=100,
         )
-        # Truncation marker is in comments, not body.
-        self.assertIn("截断", result["comments"][0])
-        self.assertIn("截断", result["comments"][1])
+        # Truncation marker is in body.
+        self.assertIn("截断", result["body"])
+
+
+class TestSplitAsmFromBody(unittest.TestCase):
+    def test_split_dual_asm(self):
+        body = (
+            "## 提示词\n\nprompt text\n"
+            "\n## 源码\n\n```c\nint x;\n```\n"
+            "\n## 机器码 — Kunpeng\n\n```\nldr x0\n```\n"
+            "\n## 机器码 — Zen4\n\n```\nmov rax\n```"
+        )
+        trimmed, comments = split_asm_from_body(body)
+        self.assertEqual(len(comments), 2)
+        self.assertIn("ldr x0", comments[0])
+        self.assertIn("Kunpeng", comments[0])
+        self.assertIn("mov rax", comments[1])
+        self.assertIn("Zen4", comments[1])
+        self.assertNotIn("机器码", trimmed)
+        self.assertIn("提示词", trimmed)
+        self.assertIn("源码", trimmed)
+
+    def test_split_single_asm(self):
+        body = (
+            "## 提示词\n\nprompt\n"
+            "\n## 机器码 — Kunpeng\n\n```\nldr x0\n```"
+        )
+        trimmed, comments = split_asm_from_body(body)
+        self.assertEqual(len(comments), 1)
+        self.assertIn("ldr x0", comments[0])
+        self.assertNotIn("机器码", trimmed)
+
+    def test_no_asm_returns_unchanged(self):
+        body = "## 提示词\n\nprompt\n\n## 源码\n\n```c\nint x;\n```"
+        trimmed, comments = split_asm_from_body(body)
+        self.assertEqual(len(comments), 0)
+        self.assertEqual(trimmed, body)
 
     def test_framework_name_in_prompt(self):
         func = {"symbol": "f", "component": "cpython"}

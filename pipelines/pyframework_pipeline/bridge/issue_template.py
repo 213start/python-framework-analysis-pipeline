@@ -170,12 +170,11 @@ def _build_dual_body(
     component: str,
     category_l1: str,
     max_lines: int,
-) -> tuple[str, list[str]]:
-    """Build the issue body and ASM comments for a dual-platform function.
+) -> str:
+    """Build the full issue body for a dual-platform function.
 
-    Returns (body, comments) where body contains the prompt and source code,
-    and comments is a list of Markdown strings to post as separate comments
-    (one per platform's assembly).
+    Returns body containing prompt + source + ASM.  If posting fails with 403,
+    call :func:`split_asm_from_body` to extract ASM into separate comments.
     """
     prompt = _build_dual_prompt(symbol, framework)
     source_section = _build_source_section(source_code)
@@ -183,7 +182,7 @@ def _build_dual_body(
     arm_truncated = _truncate_asm(arm_asm, max_lines)
     x86_truncated = _truncate_asm(x86_asm, max_lines)
 
-    body = "\n".join([
+    return "\n".join([
         f"## 提示词\n\n{prompt}",
         "",
         f"## 组件\n\n- {component}",
@@ -193,14 +192,11 @@ def _build_dual_body(
         f"## 环境\n\n- {framework}",
         "",
         source_section,
-    ])
-
-    comments = [
+        "",
         f"## 机器码 — Kunpeng\n\n```\n{arm_truncated}\n```",
+        "",
         f"## 机器码 — Zen4\n\n```\n{x86_truncated}\n```",
-    ]
-
-    return body, comments
+    ])
 
 
 def _build_single_body(
@@ -213,10 +209,10 @@ def _build_single_body(
     component: str,
     category_l1: str,
     max_lines: int,
-) -> tuple[str, list[str]]:
-    """Build the issue body and ASM comment for a single-platform function.
+) -> str:
+    """Build the full issue body for a single-platform function.
 
-    Returns (body, comments).
+    Returns body containing prompt + source + ASM.
     """
     truncated = _truncate_asm(asm, max_lines)
 
@@ -228,7 +224,7 @@ def _build_single_body(
         else _PLATFORM_LABEL_X86
     )
 
-    body = "\n".join([
+    return "\n".join([
         f"## 提示词\n\n{prompt}",
         "",
         f"## 组件\n\n- {component}",
@@ -238,13 +234,9 @@ def _build_single_body(
         f"## 环境\n\n- {framework}",
         "",
         source_section,
-    ])
-
-    comments = [
+        "",
         f"## 机器码 — {platform_label}\n\n```\n{truncated}\n```",
-    ]
-
-    return body, comments
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -284,8 +276,9 @@ def build_asm_diff_issue(
     -------
     dict[str, Any]
         ``{'title': str, 'body': str, 'comments': list[str]}``
-        Body contains prompt + source code; comments contain per-platform
-        assembly to be posted as separate comments on the issue/discussion.
+        Body contains prompt + source code + ASM.  ``comments`` is empty
+        by default.  If posting the body triggers a 403, call
+        :func:`split_asm_from_body` to extract ASM into ``comments``.
 
     Raises
     ------
@@ -308,7 +301,7 @@ def build_asm_diff_issue(
     # Determine mode: dual or single-platform
     if arm_asm is not None and x86_asm is not None:
         title = f"{symbol}跨平台机器码差异分析"
-        body, comments = _build_dual_body(
+        body = _build_dual_body(
             symbol=symbol,
             arm_asm=arm_asm,
             x86_asm=x86_asm,
@@ -321,7 +314,7 @@ def build_asm_diff_issue(
         )
     elif arm_asm is not None:
         title = f"{symbol} ({_PLATFORM_LABEL_ARM} only) 机器码分析"
-        body, comments = _build_single_body(
+        body = _build_single_body(
             symbol=symbol,
             asm=arm_asm,
             platform="arm",
@@ -334,7 +327,7 @@ def build_asm_diff_issue(
         )
     else:
         title = f"{symbol} ({_PLATFORM_LABEL_X86} only) 机器码分析"
-        body, comments = _build_single_body(
+        body = _build_single_body(
             symbol=symbol,
             asm=x86_asm,  # type: ignore[arg-type]
             platform="x86",
@@ -346,7 +339,55 @@ def build_asm_diff_issue(
             max_lines=max_lines,
         )
 
-    return {"title": title, "body": body, "comments": comments}
+    return {"title": title, "body": body, "comments": []}
+
+
+def split_asm_from_body(body: str) -> tuple[str, list[str]]:
+    """Split ASM sections out of *body* for posting as separate comments.
+
+    Finds all ``## 机器码 —`` sections, extracts their content into
+    individual comment strings, and returns the trimmed body (everything
+    before the first ASM section) plus the list of comments.
+
+    Returns
+    -------
+    tuple[str, list[str]]
+        ``(trimmed_body, comments)``
+    """
+    lines = body.splitlines()
+    comments: list[str] = []
+    trimmed_lines: list[str] = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detect "## 机器码 — ..." heading
+        if stripped.startswith("## 机器码 —"):
+            heading = stripped
+            # Collect lines until the next heading (any ## line) or end
+            asm_lines: list[str] = []
+            i += 1
+            while i < len(lines):
+                next_stripped = lines[i].strip()
+                if next_stripped.startswith("## "):
+                    break
+                asm_lines.append(lines[i])
+                i += 1
+            # Trim trailing blank lines from asm block
+            while asm_lines and not asm_lines[-1].strip():
+                asm_lines.pop()
+            comments.append(f"{heading}\n\n" + "\n".join(asm_lines))
+        else:
+            trimmed_lines.append(line)
+            i += 1
+
+    # Trim trailing blank lines from body
+    while trimmed_lines and not trimmed_lines[-1].strip():
+        trimmed_lines.pop()
+
+    return "\n".join(trimmed_lines), comments
 
 
 def check_chunking(body: str, max_chars: int = 60000) -> dict[str, Any]:

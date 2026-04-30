@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from .comment_parser import (
     find_approved_discussion_analysis,
 )
 from .issue_client import IssueClient, create_client
-from .issue_template import build_asm_diff_issue, check_chunking
+from .issue_template import build_asm_diff_issue, check_chunking, split_asm_from_body
 from .manifest import BridgeIssueEntry, BridgeManifest, load_bridge_manifest
 
 logger = logging.getLogger(__name__)
@@ -281,34 +282,51 @@ def publish(
             continue
 
         existing_remote = remote_map.get(issue["title"])
-        asm_comments = issue.get("comments", [])
 
         try:
             if existing_remote:
-                # Update existing discussion/issue body.
                 number = existing_remote["number"]
                 url = existing_remote.get("url") or existing_remote.get("html_url", "")
                 logger.info("Updating %s → #%s (already exists)", symbol, number)
-                if use_discussion:
-                    assert discussion_client is not None
-                    discussion_client.update_discussion_body(
-                        owner, repo_name, number, issue["body"],
-                    )
-                    # Re-post ASM comments (updateDiscussion doesn't touch comments).
-                    node_id = discussion_client._get_discussion_node_id(
-                        owner, repo_name, number,
-                    )
-                    for comment_body in asm_comments:
-                        discussion_client.add_comment(node_id, comment_body)
-                else:
-                    assert issue_client is not None
-                    issue_client.update_issue(
-                        owner, repo_name, number, issue["body"],
-                    )
-                    for comment_body in asm_comments:
-                        issue_client.create_comment(
-                            owner, repo_name, number, comment_body,
+                try:
+                    if use_discussion:
+                        assert discussion_client is not None
+                        discussion_client.update_discussion_body(
+                            owner, repo_name, number, issue["body"],
                         )
+                    else:
+                        assert issue_client is not None
+                        issue_client.update_issue(
+                            owner, repo_name, number, issue["body"],
+                        )
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 403:
+                        raise
+                    logger.warning(
+                        "403 updating #%s, splitting ASM into comments",
+                        number,
+                    )
+                    body, asm_comments = split_asm_from_body(issue["body"])
+                    if use_discussion:
+                        assert discussion_client is not None
+                        discussion_client.update_discussion_body(
+                            owner, repo_name, number, body,
+                        )
+                        node_id = discussion_client._get_discussion_node_id(
+                            owner, repo_name, number,
+                        )
+                        for c in asm_comments:
+                            discussion_client.add_comment(node_id, c)
+                    else:
+                        assert issue_client is not None
+                        issue_client.update_issue(
+                            owner, repo_name, number, body,
+                        )
+                        for c in asm_comments:
+                            issue_client.create_comment(
+                                owner, repo_name, number, c,
+                            )
+
                 _upsert_manifest_entry(
                     manifest, func_id, platform, repo, number, url,
                 )
@@ -320,56 +338,48 @@ def publish(
                 updated += 1
             else:
                 # Create new discussion/issue.
-                discussion_node_id = None
-                if use_discussion:
-                    assert discussion_client is not None
-                    assert repo_id is not None
-                    category_id = discussion_client.get_discussion_category_id(
-                        repo_id, discussion_category,
-                    )
-                    result = discussion_client.create_discussion(
-                        repo_id=repo_id,
-                        category_id=category_id,
-                        title=issue["title"],
-                        body=issue["body"],
-                    )
-                    number = result.get("number", 0)
-                    url = result.get("url", "")
-                    # Post ASM as comments to avoid body size limits.
-                    discussion_node_id = discussion_client._get_discussion_node_id(
-                        owner, repo_name, number,
-                    )
-                else:
-                    assert issue_client is not None
-                    result = issue_client.create_issue(
+                try:
+                    number, url = _create_issue(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
                         owner=owner,
-                        repo=repo_name,
-                        title=issue["title"],
-                        body=issue["body"],
-                        labels=[_LABEL_ASM_DIFF],
+                        repo_name=repo_name,
+                        repo_id=repo_id,
+                        issue=issue,
+                        discussion_category=discussion_category,
                     )
-                    number = result.get("number", 0)
-                    url = result.get("html_url", "")
-
-                # Post assembly code as separate comments.
-                for comment_body in asm_comments:
-                    try:
-                        if use_discussion:
-                            assert discussion_client is not None
-                            assert discussion_node_id is not None
-                            discussion_client.add_comment(
-                                discussion_node_id, comment_body,
-                            )
-                        else:
-                            assert issue_client is not None
-                            issue_client.create_comment(
-                                owner, repo_name, number, comment_body,
-                            )
-                    except Exception as comment_exc:
-                        logger.warning(
-                            "Failed to post ASM comment for %s: %s",
-                            symbol, comment_exc,
-                        )
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 403:
+                        raise
+                    # 403 → body too large, split ASM into comments and retry.
+                    logger.warning(
+                        "403 creating %s, splitting ASM into comments",
+                        symbol,
+                    )
+                    body, asm_comments = split_asm_from_body(issue["body"])
+                    issue["body"] = body
+                    number, url = _create_issue(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
+                        owner=owner,
+                        repo_name=repo_name,
+                        repo_id=repo_id,
+                        issue=issue,
+                        discussion_category=discussion_category,
+                    )
+                    # Post ASM as separate comments.
+                    _post_comments(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
+                        owner=owner,
+                        repo_name=repo_name,
+                        number=number,
+                        comments=asm_comments,
+                        symbol=symbol,
+                    )
 
                 _upsert_manifest_entry(
                     manifest, func_id, platform, repo, number, url,
@@ -397,6 +407,75 @@ def publish(
         "issues": published,
         "dry_run": dry_run,
     }
+
+
+def _create_issue(
+    *,
+    use_discussion: bool,
+    discussion_client: Any,
+    issue_client: Any,
+    owner: str,
+    repo_name: str,
+    repo_id: str | None,
+    issue: dict[str, Any],
+    discussion_category: str,
+) -> tuple[int, str]:
+    """Create a new discussion or issue. Returns (number, url)."""
+    if use_discussion:
+        assert discussion_client is not None
+        assert repo_id is not None
+        category_id = discussion_client.get_discussion_category_id(
+            repo_id, discussion_category,
+        )
+        result = discussion_client.create_discussion(
+            repo_id=repo_id,
+            category_id=category_id,
+            title=issue["title"],
+            body=issue["body"],
+        )
+        return result.get("number", 0), result.get("url", "")
+    else:
+        assert issue_client is not None
+        result = issue_client.create_issue(
+            owner=owner,
+            repo=repo_name,
+            title=issue["title"],
+            body=issue["body"],
+            labels=[_LABEL_ASM_DIFF],
+        )
+        return result.get("number", 0), result.get("html_url", "")
+
+
+def _post_comments(
+    *,
+    use_discussion: bool,
+    discussion_client: Any,
+    issue_client: Any,
+    owner: str,
+    repo_name: str,
+    number: int,
+    comments: list[str],
+    symbol: str,
+) -> None:
+    """Post ASM comments to a discussion or issue."""
+    for comment_body in comments:
+        try:
+            if use_discussion:
+                assert discussion_client is not None
+                node_id = discussion_client._get_discussion_node_id(
+                    owner, repo_name, number,
+                )
+                discussion_client.add_comment(node_id, comment_body)
+            else:
+                assert issue_client is not None
+                issue_client.create_comment(
+                    owner, repo_name, number, comment_body,
+                )
+        except Exception as comment_exc:
+            logger.warning(
+                "Failed to post comment for %s: %s",
+                symbol, comment_exc,
+            )
 
 
 # ---------------------------------------------------------------------------
