@@ -243,6 +243,24 @@ class DiscussionClient:
         logger.info("Added comment to discussion (comment id: %s)", comment_id[:12] + "...")
         return comment_id
 
+    def update_comment(self, comment_node_id: str, body: str) -> None:
+        """Update the body of an existing discussion comment."""
+        query = """
+        mutation($commentId: ID!, $body: String!) {
+          updateDiscussionComment(input: {
+            commentId: $commentId,
+            body: $body
+          }) {
+            comment {
+              id
+            }
+          }
+        }
+        """
+        variables = {"commentId": comment_node_id, "body": body}
+        self._graphql(query, variables)
+        logger.info("Updated comment %s", comment_node_id[:12] + "...")
+
     def update_discussion_body(
         self,
         owner: str,

@@ -91,6 +91,18 @@ class GitHubClient:
         logger.info("Created comment on issue #%s", issue_number)
         return {"id": data.get("id")}
 
+    def update_comment(
+        self,
+        owner: str,
+        repo: str,
+        comment_id: int,
+        body: str,
+    ) -> None:
+        """Update the body of an existing issue comment."""
+        url = f"{self._base}/repos/{owner}/{repo}/issues/comments/{comment_id}"
+        self._request("PATCH", url, {"body": body})
+        logger.info("Updated comment %s in %s/%s", comment_id, owner, repo)
+
     def update_issue(
         self,
         owner: str,

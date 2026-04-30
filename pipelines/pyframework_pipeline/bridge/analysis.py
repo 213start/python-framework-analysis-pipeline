@@ -38,6 +38,18 @@ def _is_body_too_large(exc: Exception) -> bool:
     return False
 
 
+def _find_existing_comment(
+    existing_comments: list[dict[str, Any]],
+    heading: str,
+) -> dict[str, Any] | None:
+    """Find a comment whose body starts with *heading*."""
+    for c in existing_comments:
+        body = c.get("body", "")
+        if body.strip().startswith(heading):
+            return c
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -317,25 +329,36 @@ def publish(
                         number, symbol, exc,
                     )
                     body, asm_comments = split_asm_from_body(issue["body"])
+                    # Fetch existing comments to avoid duplicates.
+                    existing_comments = _fetch_existing_comments(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
+                        owner=owner,
+                        repo_name=repo_name,
+                        number=number,
+                    )
                     if use_discussion:
                         assert discussion_client is not None
                         discussion_client.update_discussion_body(
                             owner, repo_name, number, body,
                         )
-                        node_id = discussion_client._get_discussion_node_id(
-                            owner, repo_name, number,
-                        )
-                        for c in asm_comments:
-                            discussion_client.add_comment(node_id, c)
                     else:
                         assert issue_client is not None
                         issue_client.update_issue(
                             owner, repo_name, number, body,
                         )
-                        for c in asm_comments:
-                            issue_client.create_comment(
-                                owner, repo_name, number, c,
-                            )
+                    _post_comments(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
+                        owner=owner,
+                        repo_name=repo_name,
+                        number=number,
+                        comments=asm_comments,
+                        symbol=symbol,
+                        existing_comments=existing_comments,
+                    )
 
                 _upsert_manifest_entry(
                     manifest, func_id, platform, repo, number, url,
@@ -456,6 +479,32 @@ def _create_issue(
         return result.get("number", 0), result.get("html_url", "")
 
 
+def _fetch_existing_comments(
+    *,
+    use_discussion: bool,
+    discussion_client: Any,
+    issue_client: Any,
+    owner: str,
+    repo_name: str,
+    number: int,
+) -> list[dict[str, Any]]:
+    """Fetch existing comments for a discussion or issue."""
+    try:
+        if use_discussion:
+            assert discussion_client is not None
+            return discussion_client.get_discussion_comments(
+                owner, repo_name, number,
+            )
+        else:
+            assert issue_client is not None
+            return issue_client.get_issue_comments(
+                owner, repo_name, number,
+            )
+    except Exception as exc:
+        logger.warning("Failed to fetch existing comments for #%s: %s", number, exc)
+        return []
+
+
 def _post_comments(
     *,
     use_discussion: bool,
@@ -466,21 +515,39 @@ def _post_comments(
     number: int,
     comments: list[str],
     symbol: str,
+    existing_comments: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Post ASM comments to a discussion or issue."""
+    """Post or update ASM comments on a discussion or issue.
+
+    For each comment, checks *existing_comments* for a matching heading.
+    If found, updates the existing comment; otherwise creates a new one.
+    """
+    existing = existing_comments or []
     for comment_body in comments:
+        # Extract heading (first line) for matching.
+        heading = comment_body.split("\n", 1)[0].strip()
+        match = _find_existing_comment(existing, heading)
+
         try:
             if use_discussion:
                 assert discussion_client is not None
-                node_id = discussion_client._get_discussion_node_id(
-                    owner, repo_name, number,
-                )
-                discussion_client.add_comment(node_id, comment_body)
+                if match:
+                    discussion_client.update_comment(match["id"], comment_body)
+                else:
+                    node_id = discussion_client._get_discussion_node_id(
+                        owner, repo_name, number,
+                    )
+                    discussion_client.add_comment(node_id, comment_body)
             else:
                 assert issue_client is not None
-                issue_client.create_comment(
-                    owner, repo_name, number, comment_body,
-                )
+                if match:
+                    issue_client.update_comment(
+                        owner, repo_name, match["id"], comment_body,
+                    )
+                else:
+                    issue_client.create_comment(
+                        owner, repo_name, number, comment_body,
+                    )
         except Exception as comment_exc:
             logger.warning(
                 "Failed to post comment for %s: %s",
