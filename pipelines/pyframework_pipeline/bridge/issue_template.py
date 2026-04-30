@@ -89,8 +89,10 @@ def _resolve_environment(component: str, source_file: str) -> str:
     """
     if component == "cpython":
         return (
-            "GCC 14.2, `-O3 -march=native -flto`, "
-            "Conda 预编译版 CPython 3.14.3"
+            "GCC 14.2, CFLAGS=`-fno-omit-frame-pointer "
+            "-mno-omit-leaf-frame-pointer`, "
+            "CPython 3.14.3 源码编译（pyenv, "
+            "--enable-optimizations --with-lto）"
         )
     if component == "glibc":
         return "glibc 2.39 (system default)"
