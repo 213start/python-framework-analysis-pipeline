@@ -379,7 +379,7 @@ class DiscussionClient:
                 result = json.loads(raw.decode("utf-8")) if raw else {}
         except urllib.error.HTTPError as exc:
             logger.error(
-                "GitHub GraphQL error: %s %s", exc.code, exc.reason,
+                "GitHub GraphQL HTTP error: %s %s", exc.code, exc.reason,
             )
             raise
         except urllib.error.URLError as exc:
@@ -388,6 +388,13 @@ class DiscussionClient:
 
         errors = result.get("errors")
         if errors:
+            for e in errors:
+                logger.error(
+                    "GitHub GraphQL error: type=%s message=%s path=%s",
+                    e.get("type", ""),
+                    e.get("message", ""),
+                    e.get("path", ""),
+                )
             msgs = "; ".join(
                 e.get("message", "unknown") for e in errors
             )

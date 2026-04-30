@@ -28,6 +28,16 @@ _LABEL_ASM_DIFF = "asm-diff"
 _LABEL_COLOR = "1d76db"
 
 
+def _is_body_too_large(exc: Exception) -> bool:
+    """Check if the exception indicates the body exceeded platform limits."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 403
+    if isinstance(exc, RuntimeError):
+        msg = str(exc)
+        return "403" in msg or "Forbidden" in msg
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -299,12 +309,12 @@ def publish(
                         issue_client.update_issue(
                             owner, repo_name, number, issue["body"],
                         )
-                except urllib.error.HTTPError as exc:
-                    if exc.code != 403:
+                except Exception as exc:
+                    if not _is_body_too_large(exc):
                         raise
                     logger.warning(
-                        "403 updating #%s, splitting ASM into comments",
-                        number,
+                        "Body too large for #%s (%s), splitting ASM into comments: %s",
+                        number, symbol, exc,
                     )
                     body, asm_comments = split_asm_from_body(issue["body"])
                     if use_discussion:
@@ -349,13 +359,13 @@ def publish(
                         issue=issue,
                         discussion_category=discussion_category,
                     )
-                except urllib.error.HTTPError as exc:
-                    if exc.code != 403:
+                except Exception as exc:
+                    if not _is_body_too_large(exc):
                         raise
-                    # 403 → body too large, split ASM into comments and retry.
+                    # Body too large → split ASM into comments and retry.
                     logger.warning(
-                        "403 creating %s, splitting ASM into comments",
-                        symbol,
+                        "Body too large for %s, splitting ASM into comments: %s",
+                        symbol, exc,
                     )
                     body, asm_comments = split_asm_from_body(issue["body"])
                     issue["body"] = body
