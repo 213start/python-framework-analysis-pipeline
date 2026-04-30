@@ -81,6 +81,26 @@ def _resolve_category_display(category_l1: str) -> str:
     return _map.get(category_l1, category_l1 or "Unknown")
 
 
+def _resolve_environment(component: str, source_file: str) -> str:
+    """Build environment description from component and source file info.
+
+    For CPython: compiler toolchain and build flags.
+    For third-party libs: library name and version.
+    """
+    if component == "cpython":
+        return (
+            "GCC 14.2, `-O3 -march=native -flto`, "
+            "Conda 预编译版 CPython 3.14.3"
+        )
+    if component == "glibc":
+        return "glibc 2.39 (system default)"
+    if component == "kernel":
+        return "Linux 6.6 (kernel)"
+    if source_file:
+        return source_file
+    return component or "Unknown"
+
+
 # ---------------------------------------------------------------------------
 # Prompt builders
 # ---------------------------------------------------------------------------
@@ -169,6 +189,7 @@ def _build_dual_body(
     binary_path: str,
     component: str,
     category_l1: str,
+    environment: str,
     max_lines: int,
 ) -> str:
     """Build the full issue body for a dual-platform function.
@@ -189,7 +210,7 @@ def _build_dual_body(
         "",
         f"## 分类\n\n- {category_l1}",
         "",
-        f"## 环境\n\n- {framework}",
+        f"## 环境\n\n- {environment}",
         "",
         source_section,
         "",
@@ -208,6 +229,7 @@ def _build_single_body(
     binary_path: str,
     component: str,
     category_l1: str,
+    environment: str,
     max_lines: int,
 ) -> str:
     """Build the full issue body for a single-platform function.
@@ -231,7 +253,7 @@ def _build_single_body(
         "",
         f"## 分类\n\n- {category_l1}",
         "",
-        f"## 环境\n\n- {framework}",
+        f"## 环境\n\n- {environment}",
         "",
         source_section,
         "",
@@ -291,11 +313,14 @@ def build_asm_diff_issue(
         )
 
     symbol = function.get("symbol", "<unknown>")
-    component = _resolve_component_display(
-        function.get("component", "")
-    )
+    component_raw = function.get("component", "")
+    component = _resolve_component_display(component_raw)
     category_l1 = _resolve_category_display(
         function.get("categoryL1", "")
+    )
+    environment = _resolve_environment(
+        component_raw,
+        function.get("sourceFile", ""),
     )
 
     # Determine mode: dual or single-platform
@@ -310,6 +335,7 @@ def build_asm_diff_issue(
             binary_path=binary_path,
             component=component,
             category_l1=category_l1,
+            environment=environment,
             max_lines=max_lines,
         )
     elif arm_asm is not None:
@@ -323,6 +349,7 @@ def build_asm_diff_issue(
             binary_path=binary_path,
             component=component,
             category_l1=category_l1,
+            environment=environment,
             max_lines=max_lines,
         )
     else:
@@ -336,6 +363,7 @@ def build_asm_diff_issue(
             binary_path=binary_path,
             component=component,
             category_l1=category_l1,
+            environment=environment,
             max_lines=max_lines,
         )
 
