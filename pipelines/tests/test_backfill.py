@@ -412,3 +412,31 @@ class TestGenerateBindings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestBackfillPyTorchTiming(unittest.TestCase):
+    def test_auto_creates_pytorch_cases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            arm_dir = tmp / "arm"
+            x86_dir = tmp / "x86"
+            for platform_dir, value in ((arm_dir, 2_000_000_000), (x86_dir, 1_000_000_000)):
+                timing_dir = platform_dir / "timing"
+                timing_dir.mkdir(parents=True)
+                timing = {
+                    "framework": "pytorch",
+                    "cases": [{
+                        "caseId": "bytecode_tracing",
+                        "metrics": {
+                            "frameworkCallTime": {"total_ns": value},
+                            "wallClockTime": {"wall_clock_ns": value},
+                        },
+                    }],
+                }
+                (timing_dir / "timing-normalized.json").write_text(json.dumps(timing), encoding="utf-8")
+
+            dataset = {"cases": []}
+            result = backfill_timing(arm_dir, x86_dir, dataset)
+            self.assertEqual(result["cases_updated"], 1)
+            self.assertEqual(dataset["cases"][0]["id"], "pytorch-bytecode-tracing")
+            self.assertEqual(dataset["cases"][0]["benchmarkFamily"], "PyTorch Inductor")
+            self.assertEqual(dataset["cases"][0]["metrics"]["frameworkDelta"], "+100.0%")

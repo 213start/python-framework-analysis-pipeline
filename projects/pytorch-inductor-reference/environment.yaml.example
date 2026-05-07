@@ -1,0 +1,79 @@
+schemaVersion: 1
+framework: pytorch
+mode: plan-only
+
+# 单机 Docker 模式：每台物理机运行一个 pytorch-runner 容器。
+# 宿主机只需要 Docker；Python 3.14.3、PyTorch CPU wheel 和 perf 工具均在容器镜像内。
+#
+# 使用方式：复制为 environment.yaml，将 hostRef / alias 替换为实际主机：
+#   cp environment.yaml.example environment.yaml
+
+platforms:
+  - id: arm
+    arch: aarch64
+    hosts:
+      - role: client
+        hostRef: arm-host
+
+  - id: x86
+    arch: x86_64
+    hosts:
+      - role: client
+        hostRef: x86-host
+
+software:
+  baseImage: openeuler/openeuler:24.03-lts-sp3
+  pytorchImages:
+    arm: pytorch-inductor:2.10.0-py314-openeuler2403sp3-arm-final
+    x86: pytorch-inductor:2.10.0-py314-openeuler2403sp3-x86-final
+  # dockerRegistry: registry.internal  # 可选，镜像仓库前缀
+  dockerRequired: true
+  containerNetwork: pytorch-network
+  containerName: pytorch-runner
+  pythonVersion: "3.14.3"
+  torchVersion: "2.10.0+cpu"
+  torchaudioVersion: "2.10.0+cpu"
+  torchvisionVersion: "0.25.0+cpu"
+  pythonSourceUrl: https://mirrors.huaweicloud.com/python/3.14.3/Python-3.14.3.tar.xz
+  pipBootstrapIndexUrl: https://mirrors.huaweicloud.com/repository/pypi/simple
+  pytorchWheelBaseUrl: https://mirrors.aliyun.com/pytorch-wheels/cpu
+  pytorchIndexUrl: https://download.pytorch.org/whl/cpu
+  profilingTools:
+    - perf
+    - strace
+    - objdump
+    - gdb
+    - readelf
+
+hostRefs:
+  arm-host:
+    connect: ssh
+    alias: 192.168.1.100
+    user: root
+    key: ~/.ssh/id_rsa
+    port: 22
+    # env:
+    #   http_proxy: http://proxy.internal:3128
+    #   https_proxy: http://proxy.internal:3128
+    #   no_proxy: localhost,127.0.0.1
+    capabilities:
+      ssh: true
+      sudo: true
+      docker: true
+      internet: true
+      upload: true
+      download: true
+
+  x86-host:
+    connect: ssh
+    alias: 192.168.1.100
+    user: root
+    key: ~/.ssh/id_rsa
+    port: 22
+    capabilities:
+      ssh: true
+      sudo: true
+      docker: true
+      internet: true
+      upload: true
+      download: true

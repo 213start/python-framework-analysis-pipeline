@@ -14,6 +14,9 @@ def _load_adapter(framework: str):
     if framework == "pyflink":
         from .adapters.pyflink.environment import PyFlinkEnvironmentAdapter
         return PyFlinkEnvironmentAdapter()
+    if framework == "pytorch":
+        from .adapters.pytorch.environment import PyTorchEnvironmentAdapter
+        return PyTorchEnvironmentAdapter()
     raise ValueError(f"No environment adapter for framework: {framework}")
 
 

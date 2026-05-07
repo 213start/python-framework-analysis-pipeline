@@ -388,6 +388,10 @@ def _run_workload_deploy(
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
+    if str(env_config.get("framework", "")) == "pytorch":
+        _run_pytorch_workload_deploy(project_path, run_dir, platform, local_dir, executor, env_config)
+        return
+
     # Upload workload to remote host staging.
     remote_dir = "/tmp/pyframework-workload"
     # Remove stale remote directory so scp -r doesn't create a nested
@@ -450,6 +454,137 @@ def _run_workload_deploy(
             )
 
 
+def _pytorch_container_name(env_config: dict[str, Any]) -> str:
+    return str(env_config.get("software", {}).get("containerName", "pytorch-runner"))
+
+
+def _run_pytorch_workload_deploy(
+    project_path: Path,
+    run_dir: Path,
+    platform: str,
+    local_dir: Path,
+    executor: "SshExecutor",
+    env_config: dict[str, Any],
+) -> None:
+    """Upload PyTorch workload and runner script into the PyTorch container."""
+    import pyframework_pipeline
+
+    container = _pytorch_container_name(env_config)
+    remote_dir = "/tmp/pyframework-pytorch-workload"
+    executor.run(f"rm -rf {remote_dir}", timeout=15)
+    logger.info("Uploading PyTorch workload %s to %s", local_dir, remote_dir)
+    ok = executor.push_dir(local_dir, remote_dir)
+    if not ok:
+        raise StepError(f"Failed to upload PyTorch workload: {local_dir} -> {remote_dir}")
+
+    check = executor.run(f"docker inspect {container} >/dev/null 2>&1", timeout=15)
+    if check.returncode != 0:
+        raise StepError(f"PyTorch container {container} not found; run environment deploy first")
+
+    result = executor.run(
+        f"docker exec -u root {container} bash -lc 'rm -rf /opt/pytorch-workload && mkdir -p /opt/pytorch-workload /opt/pytorch-results /home/w30063991 && chmod 777 /opt/pytorch-workload /opt/pytorch-results /home/w30063991'",
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise StepError(f"Failed to prepare PyTorch container directories: {result.stderr[:500]}")
+
+    result = executor.run(f"docker cp {remote_dir}/. {container}:/opt/pytorch-workload", timeout=300)
+    if result.returncode != 0:
+        raise StepError(
+            f"Failed to copy workload to {container} (exit {result.returncode}):\n"
+            f"  stdout: {result.stdout[:500]}\n  stderr: {result.stderr[:500]}"
+        )
+
+    pkg_dir = Path(pyframework_pipeline.__file__).parent
+    local_runner = pkg_dir / "adapters" / "pytorch" / "scripts" / "run-inductor-train.sh"
+    if not local_runner.exists():
+        raise StepError(f"PyTorch runner script not found: {local_runner}")
+    remote_runner = "/tmp/run-inductor-train.sh"
+    if not executor.push_file(local_runner, remote_runner):
+        raise StepError(f"Failed to upload PyTorch runner script: {local_runner}")
+    result = executor.run(
+        f"docker cp {remote_runner} {container}:/opt/pytorch-workload/run-inductor-train.sh && "
+        f"docker exec -u root {container} chmod +x /opt/pytorch-workload/run-inductor-train.sh",
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise StepError(f"Failed to install PyTorch runner script: {result.stderr[:500]}")
+
+    logger.info("PyTorch workload deployed to %s:/opt/pytorch-workload", container)
+
+
+def _run_pytorch_benchmark(
+    project_path: Path,
+    run_dir: Path,
+    platform: str,
+    executor: "SshExecutor",
+    env_config: dict[str, Any],
+    *,
+    force: bool = False,
+) -> None:
+    """Run inductor_train.py twice with the configured PyTorch instrumentation."""
+    container = _pytorch_container_name(env_config)
+    platform_run_dir = run_dir / platform
+    local_result_dir = platform_run_dir / "pytorch-results"
+    marker = local_result_dir / "benchmark-completed.json"
+
+    if marker.exists() and not force:
+        logger.info("[5a] PyTorch benchmark already completed on %s; skipping", platform)
+        return
+
+    if force and local_result_dir.exists():
+        import shutil
+        shutil.rmtree(local_result_dir)
+
+    # Re-deploy workload to ensure the latest scripts/modified files are inside the container.
+    _run_workload_deploy(project_path, run_dir, platform)
+
+    result = executor.run(
+        f"docker exec -u root {container} bash -lc '/opt/pytorch-workload/run-inductor-train.sh'",
+        timeout=7200,
+        stream=True,
+    )
+    if result.returncode != 0:
+        raise StepError(
+            f"PyTorch Inductor benchmark failed (exit {result.returncode}) on {platform}:\n"
+            f"  output: {result.stdout[-2000:]}"
+        )
+
+    host_results = f"/tmp/pyframework-pytorch-results-{platform}"
+    executor.run(f"rm -rf {host_results} && mkdir -p {host_results}", timeout=30)
+    result = executor.run(f"docker cp {container}:/opt/pytorch-results/. {host_results}", timeout=300)
+    if result.returncode != 0:
+        raise StepError(
+            f"Failed to copy PyTorch results from {container} (exit {result.returncode}):\n"
+            f"  stdout: {result.stdout[:500]}\n  stderr: {result.stderr[:500]}"
+        )
+
+    local_result_dir.mkdir(parents=True, exist_ok=True)
+    if not executor.fetch_dir(host_results, local_result_dir):
+        raise StepError(f"Failed to fetch PyTorch results from remote dir: {host_results}")
+
+    from .acquisition.pytorch_timing import collect_pytorch_timing
+
+    timing_result = collect_pytorch_timing(platform_run_dir, platform)
+    logger.info(
+        "[5a] PyTorch timing parse: %s (%d cases, missing=%s)",
+        timing_result.get("status"),
+        timing_result.get("cases", 0),
+        timing_result.get("missing", []),
+    )
+
+    marker.write_text(
+        json.dumps({
+            "status": "completed",
+            "platform": platform,
+            "container": container,
+            "timing": timing_result,
+        }, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("[5a] PyTorch benchmark results fetched to %s", local_result_dir)
+
+
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
     *, force: bool = False,
@@ -465,6 +600,11 @@ def _run_benchmark(
     env_config = load_environment_config(project_path)
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
+
+    if str(env_config.get("framework", "")) == "pytorch":
+        _run_pytorch_benchmark(project_path, run_dir, platform, executor, env_config, force=force)
+        return
+
     python_bin = _find_container_python(executor, env_config)
 
     # Ensure Java UDF JAR exists inside JM container.

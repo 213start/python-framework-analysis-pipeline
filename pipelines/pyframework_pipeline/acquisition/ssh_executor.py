@@ -70,6 +70,8 @@ class SshExecutor:
             args,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -81,12 +83,17 @@ class SshExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         stdout_lines: list[str] = []
         try:
             for line in proc.stdout:
                 line = line.rstrip("\n")
-                print(f"  {line}", flush=True)
+                printable = f"  {line}"
+                output_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+                printable = printable.encode(output_encoding, "replace").decode(output_encoding, "replace")
+                print(printable, flush=True)
                 stdout_lines.append(line)
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -110,7 +117,14 @@ class SshExecutor:
         args.extend(["-o", "StrictHostKeyChecking=no"])
         args.append(f"{target}:{remote_path}")
         args.append(str(local_path))
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         return result.returncode == 0
 
     def push_file(self, local_path: Path, remote_path: str) -> bool:
@@ -124,7 +138,14 @@ class SshExecutor:
         args.extend(["-o", "StrictHostKeyChecking=no"])
         args.append(str(local_path))
         args.append(f"{target}:{remote_path}")
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         return result.returncode == 0
 
     def push_dir(self, local_dir: Path, remote_dir: str) -> bool:
@@ -138,7 +159,14 @@ class SshExecutor:
         args.extend(["-o", "StrictHostKeyChecking=no"])
         args.append(str(local_dir))
         args.append(f"{target}:{remote_dir}")
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         return result.returncode == 0
 
     def fetch_dir(self, remote_dir: str, local_dir: Path) -> bool:
@@ -153,7 +181,14 @@ class SshExecutor:
         args.extend(["-o", "StrictHostKeyChecking=no"])
         args.append(f"{target}:{remote_dir}/.")
         args.append(str(local_dir))
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         return result.returncode == 0
 
     def docker_exec(self, container: str, command: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:

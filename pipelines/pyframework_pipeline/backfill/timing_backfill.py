@@ -92,6 +92,21 @@ def backfill_timing(
 
 def _create_minimal_case(legacy_case_id: str) -> dict[str, Any]:
     """Create a minimal dataset case entry from a timing caseId."""
+    if legacy_case_id in _PYTORCH_CASE_NAMES:
+        return {
+            "id": f"pytorch-{_slugify_case_id(legacy_case_id)}",
+            "legacyCaseId": legacy_case_id,
+            "name": _PYTORCH_CASE_NAMES[legacy_case_id],
+            "benchmarkFamily": "PyTorch Inductor",
+            "implementationForm": "torch.compile-inductor-local-region",
+            "semanticStatus": "auto-generated",
+            "artifactIds": [],
+            "hotspots": [],
+            "patterns": [],
+            "rootCauses": [],
+            "metrics": {},
+        }
+
     return {
         "id": f"tpch-{legacy_case_id}-pyflink",
         "legacyCaseId": legacy_case_id,
@@ -105,6 +120,17 @@ def _create_minimal_case(legacy_case_id: str) -> dict[str, Any]:
         "rootCauses": [],
         "metrics": {},
     }
+
+
+_PYTORCH_CASE_NAMES: dict[str, str] = {
+    "aot_trace_joint_graph": "PyTorch AOT trace joint graph",
+    "fw_compiler_base": "PyTorch Inductor forward compiler",
+    "bytecode_tracing": "PyTorch Dynamo bytecode tracing",
+}
+
+
+def _slugify_case_id(case_id: str) -> str:
+    return case_id.replace("_", "-").replace(".", "-").replace("<", "").replace(">", "")
 
 
 def _load_timing_json(run_dir: Path) -> dict[str, Any]:

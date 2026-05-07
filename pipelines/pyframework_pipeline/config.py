@@ -196,19 +196,35 @@ def validate_pipeline_config(
                     )
 
         software = env_config.get("software", {})
-        pyflink_images = software.get("flinkPyflinkImages", {})
-        if not pyflink_images:
-            add(
-                "software.flinkPyflinkImages",
-                "environment.yaml missing software.flinkPyflinkImages",
-            )
-        else:
-            for platform in platforms:
-                if str(platform) not in pyflink_images:
-                    add(
-                        f"software.flinkPyflinkImages.{platform}",
-                        f"missing PyFlink image for platform {platform}",
-                    )
+        framework = str(env_config.get("framework", ""))
+        if framework == "pyflink":
+            pyflink_images = software.get("flinkPyflinkImages", {})
+            if not pyflink_images:
+                add(
+                    "software.flinkPyflinkImages",
+                    "environment.yaml missing software.flinkPyflinkImages",
+                )
+            else:
+                for platform in platforms:
+                    if str(platform) not in pyflink_images:
+                        add(
+                            f"software.flinkPyflinkImages.{platform}",
+                            f"missing PyFlink image for platform {platform}",
+                        )
+        elif framework == "pytorch":
+            pytorch_images = software.get("pytorchImages", {})
+            if not pytorch_images:
+                add(
+                    "software.pytorchImages",
+                    "environment.yaml missing software.pytorchImages",
+                )
+            else:
+                for platform in platforms:
+                    if str(platform) not in pytorch_images:
+                        add(
+                            f"software.pytorchImages.{platform}",
+                            f"missing PyTorch image for platform {platform}",
+                        )
 
     bridge = project_config.get("bridge", {}) if project_config else {}
     if not isinstance(bridge, dict) or not bridge.get("repo"):

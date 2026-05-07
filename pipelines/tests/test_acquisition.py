@@ -429,3 +429,52 @@ class FilterPythonRowsTest(unittest.TestCase):
         symbols = {r["symbol"] for r in result}
         self.assertEqual(symbols, {"_Py_dict_lookup", "arrow_batch",
                                     "_PyEval_EvalFrameDefault", "cblas_dgemm"})
+
+class PyTorchTimingParserTest(unittest.TestCase):
+    def test_parse_merged_compile_times_and_write_normalized_json(self) -> None:
+        from pipelines.pyframework_pipeline.acquisition.pytorch_timing import (
+            collect_pytorch_timing,
+            parse_compile_times_text,
+        )
+
+        sample = """\
+===== CASE: aot_trace =====
+===== CASE: aot_trace FILE: 950_compile.txt =====
+[compile inductor]:
+TorchDynamo compilation metrics:
+Function, Runtimes (s)
+aot_trace_joint_graph, 2.5000
+compile_fx.<locals>.fw_compiler_base, 3.2500
+
+===== CASE: bytecode_tracing =====
+===== CASE: bytecode_tracing FILE: 950_compile.txt =====
+[compile inductor]:
+TorchDynamo compilation metrics:
+Function, Runtimes (s)
+bytecode_tracing, 14.6499
+"""
+        parsed = parse_compile_times_text(sample)
+        self.assertEqual(parsed["aot_trace"]["aot_trace_joint_graph"], 2.5)
+        self.assertEqual(parsed["aot_trace"]["compile_fx.<locals>.fw_compiler_base"], 3.25)
+        self.assertEqual(parsed["bytecode_tracing"]["bytecode_tracing"], 14.6499)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "arm"
+            results = run_dir / "pytorch-results"
+            (results / "aot_trace").mkdir(parents=True)
+            (results / "bytecode_tracing").mkdir(parents=True)
+            (results / "pytorch-compile-times.txt").write_text(sample, encoding="utf-8")
+            (results / "aot_trace" / "aot_trace_joint_graph_arm.data").write_text("", encoding="utf-8")
+            (results / "aot_trace" / "fw_compiler_base_arm.data").write_text("", encoding="utf-8")
+            (results / "bytecode_tracing" / "bytecode_tracing_1.data").write_text("", encoding="utf-8")
+
+            result = collect_pytorch_timing(run_dir, "arm")
+            self.assertEqual(result["status"], "collected")
+            self.assertEqual(result["cases"], 3)
+            normalized = json.loads((run_dir / "timing" / "timing-normalized.json").read_text())
+            cases = {case["caseId"]: case for case in normalized["cases"]}
+            self.assertEqual(cases["bytecode_tracing"]["metrics"]["frameworkCallTime"]["total_ns"], 14_649_900_000)
+            self.assertEqual(
+                cases["fw_compiler_base"]["metrics"]["frameworkCallTime"]["dynamoTimedName"],
+                "compile_fx.<locals>.fw_compiler_base",
+            )

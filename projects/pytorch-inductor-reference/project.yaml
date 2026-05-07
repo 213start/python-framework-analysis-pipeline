@@ -1,0 +1,23 @@
+id: pytorch-inductor-reference
+name: PyTorch Inductor Reference
+fourLayerRoot: .
+
+workload:
+  localDir: ../../workload/pytorch
+  entry: test/inductor_train.py
+  getPerfDataDir: get_perf_data
+  perfCaseOrder:
+    - aot_trace
+    - bytecode_tracing
+
+bridge:
+  repo: sisibeloved/pytorch
+  platform: github
+  type: discussion
+  category: General
+  tokenEnvVar: PYFRAMEWORK_BRIDGE_TOKEN
+
+run:
+  platforms:
+    - x86
+    - arm
