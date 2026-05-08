@@ -539,14 +539,22 @@ def _run_benchmark(
                 logger.info("  %s: wall-clock %.3fs, throughput %s rows/s",
                             query, wc["wallClockSeconds"], wc.get("throughputRowsPerSec", "-"))
 
+            # Extract operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
+            # In local mini-cluster mode, System.out lands in the docker-exec
+            # stdout (captured above).  Fall back to docker logs for remote
+            # cluster mode where UDFs run inside TM containers.
+            summary_found = _parse_benchmark_summary(
+                result.stdout, query, wall_clock_times,
+            )
+            if not summary_found:
+                _collect_operator_timing(executor, tm_count, query, wall_clock_times)
+
             # Collect JM logs (Python workers run in JM for local mini-cluster mode).
             jm_logs = executor.docker_logs("flink-jm", tail=200)
             (platform_run_dir / "tm-stdout-jm.log").write_text(jm_logs, encoding="utf-8")
             for i in range(1, tm_count + 1):
                 logs = executor.docker_logs(f"flink-tm{i}", tail=50)
                 (platform_run_dir / f"tm-stdout-tm{i}.log").write_text(logs, encoding="utf-8")
-
-            _collect_operator_timing(executor, tm_count, query, wall_clock_times)
 
         _merge_wall_clock_times(platform_run_dir, platform, wall_clock_times)
 
@@ -571,31 +579,62 @@ def _run_benchmark(
         logger.info("[5a] perf.data verified in %s: %s", perf_container, perf_check.stdout.strip())
 
 
+def _parse_benchmark_summary(
+    stdout: str,
+    query_id: str,
+    wall_clock_times: dict[str, dict],
+) -> bool:
+    """Parse [BENCHMARK_SUMMARY] from benchmark_runner.py stdout.
+
+    In local mini-cluster mode, PostUDF's System.out goes to the PyFlink
+    JVM subprocess stdout, which is captured by ``docker exec`` (and thus
+    ``executor.run()``), NOT by ``docker logs``.
+
+    Returns True if a summary was found and merged.
+    """
+    import json as _json
+
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if "BENCHMARK_SUMMARY" not in line:
+            continue
+        try:
+            json_str = line.split("BENCHMARK_SUMMARY] ", 1)[1].strip()
+            stats = _json.loads(json_str)
+            wc = wall_clock_times.get(query_id, {})
+            wc["recordCount"] = wc.get("recordCount", 0) + stats.get("recordCount", 0)
+            wc["totalPyDurationNs"] = wc.get("totalPyDurationNs", 0) + stats.get("totalPyDurationNs", 0)
+            wc["totalFrameworkOverheadNs"] = (
+                wc.get("totalFrameworkOverheadNs", 0)
+                + stats.get("totalFrameworkOverheadNs", 0)
+            )
+            wall_clock_times[query_id] = wc
+            logger.info("  %s: %d records, py=%d ns, fw=%d ns",
+                        query_id, stats.get("recordCount", 0),
+                        stats.get("totalPyDurationNs", 0),
+                        stats.get("totalFrameworkOverheadNs", 0))
+            return True
+        except (_json.JSONDecodeError, IndexError):
+            return False
+    return False
+
+
 def _collect_operator_timing(
     executor: "SshExecutor",
     tm_count: int,
     query_id: str,
     wall_clock_times: dict[str, dict],
 ) -> None:
-    """Collect operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
+    """Collect operator/framework timing from docker logs (remote cluster fallback).
 
-    PostUDF (CalcOverhead) accumulates per-record py_duration and framework
-    overhead in AtomicLongs, then prints a JSON summary to stdout on close().
-
-    System.out goes to the JVM process stdout, which Docker captures as
-    container logs (not Flink's log4j files). We grep the actual TM log
-    files (flink--taskexecutor-*.log) as a first attempt, then fall back
-    to docker logs --tail if needed.
+    When benchmark_runner.py runs with ``--cluster``, UDFs execute inside
+    Flink TM containers where System.out appears in ``docker logs``.
     """
     import json as _json
 
-    # Check JM first (local mini-cluster: Python workers in JM),
-    # then TMs (cluster mode: Python workers in TMs).
     containers = ["flink-jm"] + [f"flink-tm{i}" for i in range(1, tm_count + 1)]
     for c in containers:
         label = "JM" if c == "flink-jm" else c.replace("flink-", "").upper()
-        # No --tail limit: BENCHMARK_SUMMARY may be thousands of lines back
-        # after multiple queries with verbose Flink output.
         result = executor.run(
             f"docker logs {c} 2>&1 | grep BENCHMARK_SUMMARY | tail -1",
             timeout=120,
