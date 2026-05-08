@@ -793,15 +793,20 @@ def _merge_wall_clock_times(
         case["metrics"]["tmE2eTime"] = {"wall_clock_ns": wall_clock_ns}
 
         # Operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
+        # PostUDF accumulates across ALL records — store per-invocation
+        # so the backfill gets a meaningful per-call value.
+        record_count = wc.get("recordCount", 0)
         py_ns = wc.get("totalPyDurationNs", 0)
         fw_ns = wc.get("totalFrameworkOverheadNs", 0)
         if py_ns > 0:
             case["metrics"]["businessOperatorTime"] = {
                 "total_ns": py_ns,
+                **({"per_invocation_ns": py_ns / record_count} if record_count else {}),
             }
         if fw_ns > 0:
             case["metrics"]["frameworkCallTime"] = {
                 "total_ns": fw_ns,
+                **({"per_invocation_ns": fw_ns / record_count} if record_count else {}),
             }
 
     timing_path.write_text(
