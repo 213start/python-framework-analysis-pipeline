@@ -113,7 +113,7 @@ class PyFlinkEnvironmentAdapter:
         jm_run_args = (
             f"docker run -d --name flink-jm --network {network} "
             f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
-            f"-p 8081:8081 --privileged {image} jobmanager"
+            f"--privileged {image} jobmanager"
         )
         steps.append(PlanStep(
             id="start-jobmanager",
