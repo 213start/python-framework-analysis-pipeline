@@ -793,9 +793,13 @@ def _merge_wall_clock_times(
         case["metrics"]["tmE2eTime"] = {"wall_clock_ns": wall_clock_ns}
 
         # Operator/framework timing from PostUDF's [BENCHMARK_SUMMARY].
-        # PostUDF accumulates across ALL records — store per-invocation
-        # so the backfill gets a meaningful per-call value.
+        # PostUDF measures overhead per-record, but records within the same
+        # bundle share one Java-Python-Java round-trip — the framework
+        # overhead is counted bundle_size times.  Divide to deduplicate.
+        # Python execution time (pyDurationNs) is measured inside Python
+        # and is NOT inflated by batching.
         record_count = wc.get("recordCount", 0)
+        bundle_size = wc.get("bundleSize", 0)
         py_ns = wc.get("totalPyDurationNs", 0)
         fw_ns = wc.get("totalFrameworkOverheadNs", 0)
         if py_ns > 0:
@@ -804,9 +808,10 @@ def _merge_wall_clock_times(
                 **({"per_invocation_ns": py_ns / record_count} if record_count else {}),
             }
         if fw_ns > 0:
+            actual_fw = fw_ns // bundle_size if bundle_size else fw_ns
             case["metrics"]["frameworkCallTime"] = {
-                "total_ns": fw_ns,
-                **({"per_invocation_ns": fw_ns / record_count} if record_count else {}),
+                "total_ns": actual_fw,
+                **({"per_invocation_ns": actual_fw / record_count} if record_count else {}),
             }
 
     timing_path.write_text(

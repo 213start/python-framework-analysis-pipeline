@@ -436,6 +436,7 @@ def main():
         "rows": num_rows,
         "wallClockSeconds": round(elapsed, 3),
         "throughputRowsPerSec": round(num_rows / elapsed, 1),
+        "bundleSize": args.bundle_size,
     }
 
     print(json.dumps(result_data))
