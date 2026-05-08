@@ -74,6 +74,15 @@ def run_compare(
     -------
     dict with comparison summary.
     """
+    framework = ""
+    try:
+        from ..config import load_environment_config
+        framework = str(load_environment_config(project_yaml).get("framework", ""))
+    except Exception:
+        framework = ""
+    if framework == "pytorch":
+        return _run_pytorch_compare(project_yaml, arm_run_dir, x86_run_dir, output_dir, top_n)
+
     arm_csv = arm_run_dir / "perf" / "data" / "perf_records.csv"
     x86_csv = x86_run_dir / "perf" / "data" / "perf_records.csv"
 
@@ -142,6 +151,88 @@ def run_compare(
         "arm_e2e_time": arm_e2e,
         "x86_e2e_time": x86_e2e,
     }
+
+
+def _run_pytorch_compare(
+    project_yaml: Path,
+    arm_run_dir: Path,
+    x86_run_dir: Path,
+    output_dir: Path | None,
+    top_n: int,
+) -> dict[str, Any]:
+    regions = ["aot_trace_joint_graph", "fw_compiler_base", "bytecode_tracing"]
+    if output_dir is None:
+        output_dir = arm_run_dir.parent / "compare" / "pytorch"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    arm_e2e = _geomean_e2e_time(arm_run_dir)
+    x86_e2e = _geomean_e2e_time(x86_run_dir)
+    completed: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for region in regions:
+        arm_root = arm_run_dir / "perf" / "pytorch" / region
+        x86_root = x86_run_dir / "perf" / "pytorch" / region
+        arm_csv = arm_root / "data" / "perf_records.csv"
+        x86_csv = x86_root / "data" / "perf_records.csv"
+        region_output = output_dir / region
+
+        if not arm_csv.exists() or not x86_csv.exists():
+            errors.append({
+                "region": region,
+                "reason": f"missing perf CSV: arm={arm_csv.exists()} x86={x86_csv.exists()}",
+            })
+            continue
+
+        python_version = _detect_python_version(arm_csv)
+        cmd = [
+            sys.executable, str(_COMPARE_SCRIPT),
+            "-R", str(arm_root),
+            "-S", str(x86_root),
+            "-x", str(arm_e2e),
+            "-y", str(x86_e2e),
+            "-p", "arm",
+            "-q", "x86",
+            "-a", "aarch64",
+            "-A", "x86_64",
+            "-o", str(region_output),
+            "-n", str(top_n),
+            "--skip-annotate",
+        ]
+        if python_version:
+            cmd.extend(["-V", python_version])
+
+        logger.info("Running PyTorch compare for %s: %s", region, " ".join(cmd))
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300, check=False,
+        )
+        if result.returncode != 0:
+            logger.error("PyTorch compare failed for %s (exit %d): %s", region, result.returncode, result.stderr[:500])
+            errors.append({
+                "region": region,
+                "returncode": result.returncode,
+                "stderr": result.stderr[:500],
+            })
+            continue
+        completed.append({
+            "region": region,
+            "output_dir": str(region_output),
+        })
+
+    summary = {
+        "status": "completed" if completed and not errors else "partial" if completed else "error",
+        "framework": "pytorch",
+        "output_dir": str(output_dir),
+        "arm_e2e_time": arm_e2e,
+        "x86_e2e_time": x86_e2e,
+        "regions": completed,
+        "errors": errors,
+    }
+    (output_dir / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return summary
 
 
 def _detect_python_version(perf_csv: Path) -> str:

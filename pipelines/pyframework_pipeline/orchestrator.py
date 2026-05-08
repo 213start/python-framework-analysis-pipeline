@@ -916,6 +916,7 @@ def _merge_wall_clock_times(
 def _find_container_python(
     executor: "SshExecutor",
     env_config: dict | None = None,
+    container: str = "flink-jm",
 ) -> str:
     """Find the Python binary path inside the JM container."""
     py_version = "3.14.3"
@@ -923,14 +924,14 @@ def _find_container_python(
         py_version = env_config.get("software", {}).get("pythonVersion", py_version)
     expected = f"/root/.pyenv/versions/{py_version}/bin/python3"
     result = executor.run(
-        f"docker exec flink-jm ls {expected}",
+        f"docker exec {container} ls {expected}",
         timeout=15,
     )
     if result.returncode == 0 and result.stdout.strip():
         return expected
     # Fallback: find any pyenv python3.
     result = executor.run(
-        "docker exec flink-jm bash -c "
+        f"docker exec {container} bash -c "
         "'ls /root/.pyenv/versions/*/bin/python3 2>/dev/null | sort -V | tail -1'",
         timeout=15,
     )
@@ -962,10 +963,10 @@ def _ensure_jar(executor: "SshExecutor") -> None:
         )
 
 
-def _find_container_perf(executor: "SshExecutor") -> str:
+def _find_container_perf(executor: "SshExecutor", container: str = "flink-tm1") -> str:
     """Find the perf binary path inside the TM container."""
     result = executor.run(
-        "docker exec flink-tm1 bash -c "
+        f"docker exec {container} bash -c "
         "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
         timeout=30,
     )
@@ -1053,6 +1054,10 @@ def _run_collect_substep(
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
+    if str(env_config.get("framework", "")) == "pytorch":
+        _run_pytorch_collect_substep(project_path, run_dir, platform, substep, executor, env_config)
+        return
+
     platform_run_dir = run_dir / platform
     perf_dir = platform_run_dir / "perf" / "data"
     perf_dir.mkdir(parents=True, exist_ok=True)
@@ -1111,6 +1116,144 @@ def _run_collect_substep(
         return
 
     raise StepError(f"Unknown 5b sub-step: {substep}")
+
+
+def _pytorch_perf_regions(results_dir: Path) -> list[dict[str, Any]]:
+    """Return PyTorch perf.data region descriptors from fetched benchmark results."""
+    specs = [
+        ("aot_trace_joint_graph", "aot_trace", "aot_trace_joint_graph*.data"),
+        ("fw_compiler_base", "aot_trace", "fw_compiler_base*.data"),
+        ("bytecode_tracing", "bytecode_tracing", "bytecode_tracing*.data"),
+    ]
+    regions: list[dict[str, Any]] = []
+    for region, case_name, pattern in specs:
+        matches = sorted((results_dir / case_name).glob(pattern))
+        if not matches:
+            continue
+        data_file = matches[0]
+        regions.append({
+            "region": region,
+            "case": case_name,
+            "localPerfData": data_file,
+            "containerPerfData": f"/opt/pytorch-results/{case_name}/{data_file.name}",
+        })
+    return regions
+
+
+def _write_pytorch_perf_manifest(platform_run_dir: Path, platform: str, regions: list[dict[str, Any]]) -> None:
+    manifest_path = platform_run_dir / "perf" / "pytorch" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps({
+            "platform": platform,
+            "regions": [{
+                "region": r["region"],
+                "case": r["case"],
+                "localPerfData": Path(r["localPerfData"]).relative_to(platform_run_dir).as_posix(),
+                "containerPerfData": r["containerPerfData"],
+            } for r in regions],
+        }, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _run_pytorch_collect_substep(
+    project_path: Path,
+    run_dir: Path,
+    platform: str,
+    substep: str,
+    executor: "SshExecutor",
+    env_config: dict[str, Any],
+) -> None:
+    """Execute PyTorch 5b collection without touching PyFlink containers."""
+    container = _pytorch_container_name(env_config)
+    platform_run_dir = run_dir / platform
+    results_dir = platform_run_dir / "pytorch-results"
+    pytorch_perf_root = platform_run_dir / "perf" / "pytorch"
+    regions = _pytorch_perf_regions(results_dir)
+
+    if substep == "5b.1":
+        if len(regions) < 3:
+            found = [r["region"] for r in regions]
+            raise StepError(f"[5b.1] Expected 3 PyTorch perf.data regions under {results_dir}, found {found}; run 5a first")
+        _write_pytorch_perf_manifest(platform_run_dir, platform, regions)
+        logger.info("[5b.1] PyTorch perf manifest written with %d regions under %s", len(regions), pytorch_perf_root)
+        return
+
+    manifest_path = pytorch_perf_root / "manifest.json"
+    if not manifest_path.exists():
+        raise StepError(f"[{substep}] PyTorch perf manifest not found; run 5b.1 first")
+    if not regions:
+        raise StepError(f"[{substep}] PyTorch perf.data not found under {results_dir}; run 5a first")
+
+    if substep == "5b.2":
+        for region_info in regions:
+            region = region_info["region"]
+            region_root = pytorch_perf_root / region
+            region_csv = region_root / "data" / "perf_records.csv"
+            if region_csv.exists() and region_csv.stat().st_size > 0:
+                logger.info("[5b.2] PyTorch %s perf_records.csv exists, skipping", region)
+                continue
+            logger.info("[5b.2] Running PyTorch perf-kits for %s on %s", region, platform)
+            _run_perf_kits_on_remote(
+                executor,
+                Path(region_info["localPerfData"]),
+                region_root / "data",
+                platform,
+                project_path,
+                container,
+                container_base="/opt/pytorch-workload",
+                perf_data_container=region_info["containerPerfData"],
+                container_output=f"/opt/pytorch-perf-kits-output/{region}",
+                benchmark="pytorch",
+            )
+        return
+
+    missing_csv = [
+        r["region"]
+        for r in regions
+        if not (pytorch_perf_root / r["region"] / "data" / "perf_records.csv").exists()
+    ]
+    if missing_csv:
+        raise StepError(f"[{substep}] PyTorch perf_records.csv missing for regions {missing_csv}; run 5b.2 first")
+
+    if substep == "5b.2b":
+        for region_info in regions:
+            region = region_info["region"]
+            region_root = pytorch_perf_root / region
+            source_map_path = region_root / "symbol_source_map.json"
+            if source_map_path.exists() and source_map_path.stat().st_size > 10:
+                logger.info("[5b.2b] PyTorch %s source map exists, skipping", region)
+                continue
+            logger.info("[5b.2b] Extracting CPython source for PyTorch %s on %s", region, platform)
+            _extract_cpython_sources(
+                executor,
+                region_root / "data" / "perf_records.csv",
+                source_map_path,
+                container,
+            )
+        return
+
+    if substep == "5b.3":
+        for region_info in regions:
+            region = region_info["region"]
+            region_root = pytorch_perf_root / region
+            asm_dir = region_root / "asm"
+            asm_dir.mkdir(parents=True, exist_ok=True)
+            if list(asm_dir.glob("*.s")):
+                logger.info("[5b.3] PyTorch %s ASM exists (%d files), skipping", region, len(list(asm_dir.glob("*.s"))))
+                continue
+            logger.info("[5b.3] Collecting PyTorch objdump for %s on %s", region, platform)
+            _collect_asm_from_all_libs(
+                executor,
+                region_root / "data",
+                asm_dir,
+                platform,
+                container,
+            )
+        return
+
+    raise StepError(f"Unknown PyTorch 5b sub-step: {substep}")
 
 
 def _find_perf_container(executor: "SshExecutor", env_config: dict) -> str:
@@ -1240,7 +1383,7 @@ def _extract_cpython_sources(
         executor.push_file(tmp / "_extract_src.py", f"{host_staging}/_extract_src.py")
         executor.push_file(tmp / "_symbols.txt", f"{host_staging}/_symbols.txt")
         executor.run(f"docker cp {host_staging}/. {container}:/tmp/_src_extract/", timeout=30)
-        executor.run(f"docker exec -u root {container} chown -R flink:flink /tmp/_src_extract", timeout=15)
+        executor.run(f"docker exec -u root {container} chmod -R a+rX /tmp/_src_extract", timeout=15)
 
     # Ensure CPython source is available (extract from pyenv cache if needed).
     src_prep = executor.run(
@@ -1490,6 +1633,11 @@ def _run_perf_kits_on_remote(
     platform: str,
     project_path: Path | None = None,
     container: str = "flink-jm",
+    *,
+    container_base: str = "/opt/flink",
+    perf_data_container: str = "/tmp/perf-udf.data",
+    container_output: str | None = None,
+    benchmark: str = "tpch",
 ) -> None:
     """Run python-performance-kits pipeline inside the container.
 
@@ -1510,11 +1658,10 @@ def _run_perf_kits_on_remote(
         logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
         return
 
-    container_kits = "/opt/flink/perf-kits-scripts"
-    container_output = "/opt/flink/perf-kits-output"
-    perf_data_container = "/tmp/perf-udf.data"
-    python_bin = _find_container_python(executor)
-    perf_bin = _find_container_perf(executor)
+    container_kits = f"{container_base}/perf-kits-scripts"
+    container_output = container_output or f"{container_base}/perf-kits-output"
+    python_bin = _find_container_python(executor, container=container)
+    perf_bin = _find_container_perf(executor, container=container)
 
     # Deploy scripts into container via host staging.
     host_staging = "/tmp/pyframework-perf-kits-scripts"
@@ -1547,7 +1694,7 @@ def _run_perf_kits_on_remote(
         timeout=30,
     )
     executor.run(
-        f"docker exec -u root {container} chown -R flink:flink {container_kits}",
+        f"docker exec -u root {container} chmod -R a+rX {container_kits}",
         timeout=15,
     )
     executor.run(f"rm -rf {host_staging}", timeout=30)
@@ -1558,7 +1705,7 @@ def _run_perf_kits_on_remote(
         f"docker exec {container} {python_bin} "
         f"{container_kits}/run_single_platform_pipeline.py "
         f"{perf_data_container} -o {container_output} "
-        f"--benchmark tpch --platform {platform} "
+        f"--benchmark {benchmark} --platform {platform} "
         f"--perf-bin {perf_bin} "
         f"--skip-annotate --no-print-report",
         timeout=600,
