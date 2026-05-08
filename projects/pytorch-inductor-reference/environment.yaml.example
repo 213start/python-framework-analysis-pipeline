@@ -37,6 +37,12 @@ software:
   pythonSourceUrl: https://mirrors.huaweicloud.com/python/3.14.3/Python-3.14.3.tar.xz
   pipBootstrapIndexUrl: https://mirrors.huaweicloud.com/repository/pypi/simple
   pytorchWheelBaseUrl: https://mirrors.aliyun.com/pytorch-wheels/cpu
+  pytorchWheelBaseUrls:
+    arm: https://mirrors.aliyun.com/pytorch-wheels/cpu
+    x86: https://mirrors.aliyun.com/pytorch-wheels/cpu
+  pytorchWheelPlatformTags:
+    arm: manylinux_2_28_aarch64
+    x86: manylinux_2_28_x86_64
   pytorchIndexUrl: https://download.pytorch.org/whl/cpu
   profilingTools:
     - perf

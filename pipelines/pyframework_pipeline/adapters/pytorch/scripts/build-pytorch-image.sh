@@ -24,13 +24,22 @@ TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.10.0+cpu}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.25.0+cpu}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 PYTORCH_WHEEL_BASE_URL="${PYTORCH_WHEEL_BASE_URL:-}"
+PYTORCH_WHEEL_PLATFORM_TAG="${PYTORCH_WHEEL_PLATFORM_TAG:-}"
 PYTHON_SOURCE_URL="${PYTHON_SOURCE_URL:-https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz}"
 PIP_BOOTSTRAP_INDEX_URL="${PIP_BOOTSTRAP_INDEX_URL:-https://pypi.org/simple}"
 MAKEOPTS="${MAKEOPTS:--j$(($(nproc 2>/dev/null || echo 4) / 2))}"
 PYENV_ROOT="/root/.pyenv"
 PYTHON="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3"
-PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host pypi.python.org --trusted-host download.pytorch.org"
+PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host pypi.python.org --trusted-host download.pytorch.org --trusted-host mirrors.aliyun.com --trusted-host mirrors.huaweicloud.com --trusted-host pypi.tuna.tsinghua.edu.cn"
 BUILD_CONTAINER="pytorch-build"
+
+if [ "$ARCH" = "aarch64" ]; then
+    PYTORCH_DIRECT_WHEEL_BASE_URL="$PYTORCH_WHEEL_BASE_URL"
+    PYTORCH_DIRECT_WHEEL_PLATFORM_TAG="${PYTORCH_WHEEL_PLATFORM_TAG:-manylinux_2_28_aarch64}"
+else
+    PYTORCH_DIRECT_WHEEL_BASE_URL="$PYTORCH_WHEEL_BASE_URL"
+    PYTORCH_DIRECT_WHEEL_PLATFORM_TAG="${PYTORCH_WHEEL_PLATFORM_TAG:-manylinux_2_28_x86_64}"
+fi
 
 # Forward proxy env vars into docker exec calls (container does not inherit host env).
 DOCKER_PROXY_FLAGS=""
@@ -49,6 +58,8 @@ echo "  TORCHAUDIO_VERSION=$TORCHAUDIO_VERSION"
 echo "  TORCHVISION_VERSION=$TORCHVISION_VERSION"
 echo "  PYTORCH_INDEX_URL=$PYTORCH_INDEX_URL"
 echo "  PYTORCH_WHEEL_BASE_URL=$PYTORCH_WHEEL_BASE_URL"
+echo "  PYTORCH_DIRECT_WHEEL_BASE_URL=$PYTORCH_DIRECT_WHEEL_BASE_URL"
+echo "  PYTORCH_DIRECT_WHEEL_PLATFORM_TAG=$PYTORCH_DIRECT_WHEEL_PLATFORM_TAG"
 echo "  PYTHON_SOURCE_URL=$PYTHON_SOURCE_URL"
 echo "  PIP_BOOTSTRAP_INDEX_URL=$PIP_BOOTSTRAP_INDEX_URL"
 echo "  BUILD_CONTAINER=$BUILD_CONTAINER"
@@ -91,6 +102,13 @@ retry() {
 
 # openEuler 24.03 uses dnf.  Package names intentionally stay broad so the
 # script works on both x86_64 and aarch64 images.
+# Some lab networks terminate TLS with an internal/self-signed CA.  The base
+# image does not know that CA yet, so disable dnf SSL verification before the
+# first metadata download.  curl/wget/pip are relaxed below for the same reason.
+grep -q '^sslverify=False' /etc/dnf/dnf.conf 2>/dev/null || echo 'sslverify=False' >> /etc/dnf/dnf.conf
+for repo_file in /etc/yum.repos.d/*.repo; do
+    [ -f "$repo_file" ] && sed -i 's/^sslverify=.*/sslverify=False/' "$repo_file" || true
+done
 dnf makecache -y || true
 dnf install -y \
     gcc gcc-c++ make patch bzip2 bzip2-devel zlib-devel \
@@ -208,11 +226,11 @@ set -e
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PYENV_ROOT/versions/$PYTHON_VERSION/bin:\$PATH
 
-if [ -n "$PYTORCH_WHEEL_BASE_URL" ]; then
+if [ -n "$PYTORCH_DIRECT_WHEEL_BASE_URL" ]; then
     $PIP install \
-        "$PYTORCH_WHEEL_BASE_URL/torch-${TORCH_VERSION/+/%2B}-cp314-cp314-manylinux_2_28_x86_64.whl" \
-        "$PYTORCH_WHEEL_BASE_URL/torchaudio-${TORCHAUDIO_VERSION/+/%2B}-cp314-cp314-manylinux_2_28_x86_64.whl" \
-        "$PYTORCH_WHEEL_BASE_URL/torchvision-${TORCHVISION_VERSION/+/%2B}-cp314-cp314-manylinux_2_28_x86_64.whl" \
+        "$PYTORCH_DIRECT_WHEEL_BASE_URL/torch-${TORCH_VERSION/+/%2B}-cp314-cp314-$PYTORCH_DIRECT_WHEEL_PLATFORM_TAG.whl" \
+        "$PYTORCH_DIRECT_WHEEL_BASE_URL/torchaudio-${TORCHAUDIO_VERSION/+/%2B}-cp314-cp314-$PYTORCH_DIRECT_WHEEL_PLATFORM_TAG.whl" \
+        "$PYTORCH_DIRECT_WHEEL_BASE_URL/torchvision-${TORCHVISION_VERSION/+/%2B}-cp314-cp314-$PYTORCH_DIRECT_WHEEL_PLATFORM_TAG.whl" \
         --index-url $PIP_BOOTSTRAP_INDEX_URL
 else
     $PIP install \

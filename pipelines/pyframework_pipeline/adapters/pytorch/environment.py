@@ -55,7 +55,8 @@ class PyTorchEnvironmentAdapter:
             f"https://www.python.org/ftp/python/{python_version}/Python-{python_version}.tar.xz",
         )
         pip_bootstrap_index_url = software.get("pipBootstrapIndexUrl", "https://pypi.org/simple")
-        pytorch_wheel_base_url = software.get("pytorchWheelBaseUrl", "")
+        pytorch_wheel_base_urls = software.get("pytorchWheelBaseUrls", {})
+        pytorch_wheel_platform_tags = software.get("pytorchWheelPlatformTags", {})
 
         hosts_by_role = {}
         for host_entry in platform_config.get("hosts", []):
@@ -63,6 +64,18 @@ class PyTorchEnvironmentAdapter:
         host = hosts_by_role.get("client", hosts_by_role.get("jobmanager", ""))
         host_alias = host_refs.get(host, {}).get("alias", host)
         arch = platform_config.get("arch", "x86_64")
+        arch_tag = "arm" if arch == "aarch64" else "x86"
+        pytorch_wheel_base_url = (
+            pytorch_wheel_base_urls.get(arch_tag)
+            if isinstance(pytorch_wheel_base_urls, dict)
+            else None
+        ) or software.get("pytorchWheelBaseUrl", "")
+        default_wheel_platform_tag = "manylinux_2_28_aarch64" if arch == "aarch64" else "manylinux_2_28_x86_64"
+        pytorch_wheel_platform_tag = (
+            pytorch_wheel_platform_tags.get(arch_tag)
+            if isinstance(pytorch_wheel_platform_tags, dict)
+            else None
+        ) or software.get("pytorchWheelPlatformTag", default_wheel_platform_tag)
 
         build_script = "adapters/pytorch/scripts/build-pytorch-image.sh"
         build_env = (
@@ -73,6 +86,7 @@ class PyTorchEnvironmentAdapter:
             f"TORCHVISION_VERSION={torchvision_version} "
             f"PYTORCH_INDEX_URL={pytorch_index_url} "
             f"PYTORCH_WHEEL_BASE_URL={pytorch_wheel_base_url} "
+            f"PYTORCH_WHEEL_PLATFORM_TAG={pytorch_wheel_platform_tag} "
             f"PYTHON_SOURCE_URL={python_source_url} "
             f"PIP_BOOTSTRAP_INDEX_URL={pip_bootstrap_index_url}"
         )
