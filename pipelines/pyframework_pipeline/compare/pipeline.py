@@ -18,6 +18,11 @@ _COMPARE_SCRIPT = (
     / "vendor" / "python-performance-kits" / "scripts" / "perf_insights"
     / "run_compare_pipeline.py"
 )
+_COMPARE_PLATFORM_SCRIPT = (
+    Path(__file__).resolve().parents[3]
+    / "vendor" / "python-performance-kits" / "scripts" / "perf_insights"
+    / "compare_platform_perf.py"
+)
 
 
 def _clip_output(value: str | None, limit: int = 4000) -> str:
@@ -203,23 +208,18 @@ def _run_pytorch_compare(
             })
             continue
 
-        python_version = _detect_python_version(arm_csv)
+        region_tables = region_output / "tables"
         cmd = [
-            sys.executable, str(_COMPARE_SCRIPT),
-            "-R", str(arm_root),
-            "-S", str(x86_root),
-            "-x", str(arm_e2e),
-            "-y", str(x86_e2e),
+            sys.executable, str(_COMPARE_PLATFORM_SCRIPT),
+            "-b", str(arm_csv),
+            "-t", str(x86_csv),
             "-p", "arm",
             "-q", "x86",
-            "-a", "aarch64",
-            "-A", "x86_64",
-            "-o", str(region_output),
-            "-n", str(top_n),
-            "--skip-annotate",
+            "-x", str(arm_e2e),
+            "-y", str(x86_e2e),
+            "-o", str(region_tables),
+            "-l", "INFO",
         ]
-        if python_version:
-            cmd.extend(["-V", python_version])
 
         logger.info("Running PyTorch compare for %s: %s", region, " ".join(cmd))
         result = subprocess.run(
