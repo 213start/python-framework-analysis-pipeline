@@ -6,6 +6,7 @@ fetch: pull LLM comments, parse structured results, backfill into Dataset.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import urllib.error
@@ -153,6 +154,7 @@ def publish(
     dry_run: bool = False,
     max_lines: int = 2000,
     base_url: str | None = None,
+    symbols: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create analysis issues or discussions for all hotspot functions.
 
@@ -250,6 +252,18 @@ def publish(
         logger.info("Remote has %d existing discussions/issues", len(remote_map))
 
     functions = dataset.get("functions", [])
+
+    if symbols:
+        original_count = len(functions)
+        functions = [
+            f for f in functions
+            if any(fnmatch.fnmatch(f.get("symbol", ""), pat) for pat in symbols)
+        ]
+        logger.info(
+            "Symbol filter: %d/%d functions match %s",
+            len(functions), original_count, symbols,
+        )
+
     published: list[dict[str, Any]] = []
     skipped = 0
     updated = 0
@@ -320,6 +334,27 @@ def publish(
                         assert issue_client is not None
                         issue_client.update_issue(
                             owner, repo_name, number, issue["body"],
+                        )
+                    # Post pre-split ASM comments if any.
+                    if issue.get("comments"):
+                        existing_comments = _fetch_existing_comments(
+                            use_discussion=use_discussion,
+                            discussion_client=discussion_client,
+                            issue_client=issue_client,
+                            owner=owner,
+                            repo_name=repo_name,
+                            number=number,
+                        )
+                        _post_comments(
+                            use_discussion=use_discussion,
+                            discussion_client=discussion_client,
+                            issue_client=issue_client,
+                            owner=owner,
+                            repo_name=repo_name,
+                            number=number,
+                            comments=issue["comments"],
+                            symbol=symbol,
+                            existing_comments=existing_comments,
                         )
                 except Exception as exc:
                     if not _is_body_too_large(exc):
@@ -411,6 +446,19 @@ def publish(
                         repo_name=repo_name,
                         number=number,
                         comments=asm_comments,
+                        symbol=symbol,
+                    )
+
+                # Post pre-split ASM comments if any.
+                if issue.get("comments"):
+                    _post_comments(
+                        use_discussion=use_discussion,
+                        discussion_client=discussion_client,
+                        issue_client=issue_client,
+                        owner=owner,
+                        repo_name=repo_name,
+                        number=number,
+                        comments=issue["comments"],
                         symbol=symbol,
                     )
 

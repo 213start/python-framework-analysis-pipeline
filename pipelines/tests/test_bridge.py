@@ -91,8 +91,14 @@ class TestBuildAsmDiffIssue(unittest.TestCase):
         result = build_asm_diff_issue(
             func, arm_asm=long_asm, x86_asm=long_asm, max_lines=100,
         )
-        # Truncation marker is in body.
-        self.assertIn("截断", result["body"])
+        # Long ASM is split into comments, body has no ASM section headings.
+        self.assertNotIn("## 机器码 —", result["body"])
+        self.assertTrue(len(result["comments"]) > 0)
+        # Each platform produces ceil(3000/100)=30 segments → 60 total.
+        self.assertEqual(len(result["comments"]), 60)
+        # Segments have numbering.
+        self.assertIn("（1/30）", result["comments"][0])
+        self.assertIn("Kunpeng", result["comments"][0])
 
 
 class TestSplitAsmFromBody(unittest.TestCase):

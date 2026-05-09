@@ -241,6 +241,8 @@ def build_parser() -> argparse.ArgumentParser:
     br_pub.add_argument("--token", help="覆盖环境变量中的 token")
     br_pub.add_argument("--dry-run", action="store_true")
     br_pub.add_argument("--max-lines", type=int, default=2000)
+    br_pub.add_argument("--symbol", action="append", dest="symbols",
+                        help="仅发布 symbol 匹配的函数（可多次指定，支持 fnmatch 通配符）")
     br_pub.add_argument("--base-url")
 
     br_fetch = bridge_sub.add_parser(
@@ -866,6 +868,7 @@ def _cmd_bridge_publish(args) -> int:
             dry_run=args.dry_run,
             max_lines=args.max_lines,
             base_url=args.base_url,
+            symbols=args.symbols,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
