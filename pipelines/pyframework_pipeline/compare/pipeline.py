@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,13 +19,6 @@ _COMPARE_SCRIPT = (
     / "vendor" / "python-performance-kits" / "scripts" / "perf_insights"
     / "run_compare_pipeline.py"
 )
-_COMPARE_PLATFORM_SCRIPT = (
-    Path(__file__).resolve().parents[3]
-    / "vendor" / "python-performance-kits" / "scripts" / "perf_insights"
-    / "compare_platform_perf.py"
-)
-
-
 def _clip_output(value: str | None, limit: int = 4000) -> str:
     """Return a safe, bounded subprocess output snippet for logs/results."""
     return (value or "")[:limit]
@@ -56,6 +50,36 @@ def _geomean_e2e_time(run_dir: Path) -> float:
     # Geometric mean in seconds.
     log_sum = sum(math.log(t) for t in times_ns)
     return math.exp(log_sum / len(times_ns)) / 1e9
+
+
+def _case_time_seconds(run_dir: Path, case_id: str) -> float:
+    """Return one PyTorch region/case wall-clock time in seconds."""
+    timing_path = run_dir / "timing" / "timing-normalized.json"
+    if not timing_path.exists():
+        return 0.0
+    try:
+        data = json.loads(timing_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return 0.0
+    for case in data.get("cases", []):
+        if case.get("caseId") != case_id:
+            continue
+        wc = case.get("metrics", {}).get("wallClockTime", {})
+        seconds = wc.get("seconds")
+        if seconds and seconds > 0:
+            return float(seconds)
+        ns = wc.get("wall_clock_ns") or wc.get("total_ns")
+        if ns and ns > 0:
+            return float(ns) / 1e9
+    return 0.0
+
+
+def _compare_env() -> dict[str, str]:
+    """Force UTF-8 in nested Python subprocesses on Windows."""
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+    return env
 
 
 def run_compare(
@@ -146,6 +170,7 @@ def run_compare(
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=_compare_env(),
         timeout=300,
         check=False,
     )
@@ -189,8 +214,6 @@ def _run_pytorch_compare(
         output_dir = arm_run_dir.parent / "compare" / "pytorch"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    arm_e2e = _geomean_e2e_time(arm_run_dir)
-    x86_e2e = _geomean_e2e_time(x86_run_dir)
     completed: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
 
@@ -208,18 +231,30 @@ def _run_pytorch_compare(
             })
             continue
 
-        region_tables = region_output / "tables"
+        arm_e2e = _case_time_seconds(arm_run_dir, region)
+        x86_e2e = _case_time_seconds(x86_run_dir, region)
+        if arm_e2e <= 0:
+            arm_e2e = _geomean_e2e_time(arm_run_dir)
+        if x86_e2e <= 0:
+            x86_e2e = _geomean_e2e_time(x86_run_dir)
+
+        python_version = _detect_python_version(arm_csv)
         cmd = [
-            sys.executable, str(_COMPARE_PLATFORM_SCRIPT),
-            "-b", str(arm_csv),
-            "-t", str(x86_csv),
-            "-p", "arm",
-            "-q", "x86",
+            sys.executable, str(_COMPARE_SCRIPT),
+            "-R", str(arm_root),
+            "-S", str(x86_root),
             "-x", str(arm_e2e),
             "-y", str(x86_e2e),
-            "-o", str(region_tables),
-            "-l", "INFO",
+            "-p", "arm",
+            "-q", "x86",
+            "-a", "aarch64",
+            "-A", "x86_64",
+            "-o", str(region_output),
+            "-n", str(top_n),
+            "--skip-annotate",
         ]
+        if python_version:
+            cmd.extend(["-V", python_version])
 
         logger.info("Running PyTorch compare for %s: %s", region, " ".join(cmd))
         result = subprocess.run(
@@ -228,6 +263,7 @@ def _run_pytorch_compare(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=_compare_env(),
             timeout=300,
             check=False,
         )
@@ -251,14 +287,14 @@ def _run_pytorch_compare(
         completed.append({
             "region": region,
             "output_dir": str(region_output),
+            "arm_e2e_time": arm_e2e,
+            "x86_e2e_time": x86_e2e,
         })
 
     summary = {
         "status": "completed" if completed and not errors else "partial" if completed else "error",
         "framework": "pytorch",
         "output_dir": str(output_dir),
-        "arm_e2e_time": arm_e2e,
-        "x86_e2e_time": x86_e2e,
         "regions": completed,
         "errors": errors,
     }

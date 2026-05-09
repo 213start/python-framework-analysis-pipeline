@@ -888,23 +888,22 @@ def backfill_perf(
         - arm_rows: number of ARM perf CSV rows read
         - x86_rows: number of x86 perf CSV rows read
     """
-    # Locate perf_records.csv files
-    arm_csv = arm_run_dir / "perf" / "data" / "perf_records.csv"
-    x86_csv = x86_run_dir / "perf" / "data" / "perf_records.csv"
+    # Locate perf_records.csv files.  PyFlink has one perf/data CSV per
+    # platform; PyTorch has one CSV per local compiler region.
+    arm_csvs = _discover_perf_csvs(arm_run_dir)
+    x86_csvs = _discover_perf_csvs(x86_run_dir)
 
-    arm_rows = _read_perf_csv(arm_csv)
-    x86_rows = _read_perf_csv(x86_csv)
+    arm_rows = _read_many_perf_csvs(arm_csvs)
+    x86_rows = _read_many_perf_csvs(x86_csvs)
 
     # Load symbol_source_map.json (from step 5b's _extract_cpython_sources).
     source_map: dict[str, dict] = {}
     for rd in (arm_run_dir, x86_run_dir):
-        for sub in ("arm64", "arm", "x86_64", "x86"):
-            p = rd / "perf" / "data" / "symbol_source_map.json"
-            if p.exists():
-                try:
-                    source_map.update(json.loads(p.read_text(encoding="utf-8")))
-                except (json.JSONDecodeError, OSError):
-                    pass
+        for p in _discover_symbol_source_maps(rd):
+            try:
+                source_map.update(json.loads(p.read_text(encoding="utf-8")))
+            except (json.JSONDecodeError, OSError):
+                pass
 
     if not arm_rows and not x86_rows:
         logger.warning("No perf CSV data found for either platform")
@@ -1010,6 +1009,40 @@ def backfill_perf(
         summary["arm_rows"], summary["x86_rows"],
     )
     return summary
+
+
+def _discover_perf_csvs(run_dir: Path) -> list[Path]:
+    """Return perf CSVs for either legacy single-perf or PyTorch region layout."""
+    legacy = run_dir / "perf" / "data" / "perf_records.csv"
+    if legacy.exists():
+        return [legacy]
+    pytorch_root = run_dir / "perf" / "pytorch"
+    if pytorch_root.is_dir():
+        return sorted(pytorch_root.glob("*/data/perf_records.csv"))
+    return [legacy]
+
+
+def _read_many_perf_csvs(paths: list[Path]) -> list[dict]:
+    rows: list[dict] = []
+    for path in paths:
+        for row in _read_perf_csv(path):
+            if "caseId" not in row or not row.get("caseId"):
+                region = path.parent.parent.name if path.parent.parent.name != "perf" else ""
+                if region:
+                    row["caseId"] = region
+            rows.append(row)
+    return rows
+
+
+def _discover_symbol_source_maps(run_dir: Path) -> list[Path]:
+    legacy = run_dir / "perf" / "data" / "symbol_source_map.json"
+    paths: list[Path] = []
+    if legacy.exists():
+        paths.append(legacy)
+    pytorch_root = run_dir / "perf" / "pytorch"
+    if pytorch_root.is_dir():
+        paths.extend(sorted(pytorch_root.glob("*/symbol_source_map.json")))
+    return paths
 
 
 def _compute_cpu_utilization(rows: list[dict[str, str]],

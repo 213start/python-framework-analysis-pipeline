@@ -1905,8 +1905,7 @@ def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> 
     if len(platforms) < 2:
         raise StepError("Need at least 2 platforms for backfill")
 
-    arm_dir = run_dir / platforms[0]
-    x86_dir = run_dir / platforms[1]
+    arm_dir, x86_dir = _resolve_compare_platform_dirs(run_dir, platforms)
 
     rc = run_backfill(project_path, arm_dir, x86_dir)
     if rc != 0:
@@ -1920,9 +1919,11 @@ def _run_backfill(project_path: Path, run_dir: Path, *, force: bool = False) -> 
 def _run_compare(project_path: Path, run_dir: Path) -> None:
     """Step 6b: run cross-platform comparison using python-performance-kits."""
     from .compare.pipeline import run_compare
+    from .config import get_run_config
 
-    arm_dir = run_dir / "arm"
-    x86_dir = run_dir / "x86"
+    run_config = get_run_config(project_path)
+    platforms = run_config.get("platforms", [])
+    arm_dir, x86_dir = _resolve_compare_platform_dirs(run_dir, platforms)
 
     if not arm_dir.is_dir():
         raise StepError(f"ARM run directory not found: {arm_dir}")
@@ -1933,6 +1934,29 @@ def _run_compare(project_path: Path, run_dir: Path) -> None:
     if result.get("status") != "completed":
         raise StepError(f"Compare failed: {result}")
     logger.info("[S6b] Compare complete: %s", result.get("output_dir", ""))
+
+
+def _resolve_compare_platform_dirs(run_dir: Path, platforms: list[str]) -> tuple[Path, Path]:
+    """Resolve ARM and x86 run directories from configured platform names."""
+    arm_aliases = {"arm", "arm64", "aarch64"}
+    x86_aliases = {"x86", "x86_64", "amd64"}
+    arm_platform = ""
+    x86_platform = ""
+
+    for platform in platforms:
+        normalized = str(platform).strip().lower().replace("-", "_")
+        if normalized in arm_aliases:
+            arm_platform = str(platform)
+        elif normalized in x86_aliases:
+            x86_platform = str(platform)
+
+    if not arm_platform or not x86_platform:
+        raise StepError(
+            "Need one ARM platform and one x86 platform for backfill/compare. "
+            f"Configured platforms: {platforms}"
+        )
+
+    return run_dir / arm_platform, run_dir / x86_platform
 
 
 def _run_bridge_publish(project_path: Path) -> None:

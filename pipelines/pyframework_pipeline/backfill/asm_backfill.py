@@ -23,8 +23,13 @@ def _load_symbol_source_map(
         _symbol_source_map = {}
         if run_dirs:
             for rd in run_dirs:
-                dynamic = rd / "perf" / "data" / "symbol_source_map.json"
-                if dynamic.exists():
+                candidates = [rd / "perf" / "data" / "symbol_source_map.json"]
+                pytorch_root = rd / "perf" / "pytorch"
+                if pytorch_root.is_dir():
+                    candidates.extend(sorted(pytorch_root.glob("*/symbol_source_map.json")))
+                for dynamic in candidates:
+                    if not dynamic.exists():
+                        continue
                     try:
                         _symbol_source_map.update(json.loads(dynamic.read_text(encoding="utf-8")))
                     except (json.JSONDecodeError, OSError):
@@ -224,7 +229,8 @@ def _discover_asm_files(run_dir: Path, platform_dirs: tuple[str, ...]) -> dict[s
     """
     result: dict[str, Path] = {}
     asm_root = run_dir / "asm"
-    if not asm_root.is_dir():
+    pytorch_root = run_dir / "perf" / "pytorch"
+    if not asm_root.is_dir() and not pytorch_root.is_dir():
         return result
 
     for sub in platform_dirs:
@@ -246,6 +252,22 @@ def _discover_asm_files(run_dir: Path, platform_dirs: tuple[str, ...]) -> dict[s
             symbol = hash_to_sym.get(stem, stem)
             if symbol not in result:
                 result[symbol] = s_file
+    if pytorch_root.is_dir():
+        for sub_dir in sorted(pytorch_root.glob("*/asm")):
+            if not sub_dir.is_dir():
+                continue
+            map_path = sub_dir / "symbol_map.json"
+            hash_to_sym: dict[str, str] = {}
+            if map_path.exists():
+                try:
+                    hash_to_sym = json.loads(map_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    hash_to_sym = {}
+            for s_file in sorted(sub_dir.glob("*.s")):
+                stem = s_file.stem
+                symbol = hash_to_sym.get(stem, stem)
+                if symbol not in result:
+                    result[symbol] = s_file
     return result
 
 
