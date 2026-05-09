@@ -20,7 +20,7 @@ _COMPARE_SCRIPT = (
 )
 
 
-def _clip_output(value: str | None, limit: int = 500) -> str:
+def _clip_output(value: str | None, limit: int = 4000) -> str:
     """Return a safe, bounded subprocess output snippet for logs/results."""
     return (value or "")[:limit]
 
@@ -146,11 +146,18 @@ def run_compare(
     )
     if result.returncode != 0:
         stderr = _clip_output(result.stderr)
-        logger.error("Compare pipeline failed (exit %d): %s", result.returncode, stderr)
+        stdout = _clip_output(result.stdout)
+        logger.error(
+            "Compare pipeline failed (exit %d): stderr=%s stdout=%s",
+            result.returncode,
+            stderr,
+            stdout,
+        )
         return {
             "status": "error",
             "returncode": result.returncode,
             "stderr": stderr,
+            "stdout": stdout,
         }
 
     if result.stdout:
@@ -226,11 +233,19 @@ def _run_pytorch_compare(
         )
         if result.returncode != 0:
             stderr = _clip_output(result.stderr)
-            logger.error("PyTorch compare failed for %s (exit %d): %s", region, result.returncode, stderr)
+            stdout = _clip_output(result.stdout)
+            logger.error(
+                "PyTorch compare failed for %s (exit %d): stderr=%s stdout=%s",
+                region,
+                result.returncode,
+                stderr,
+                stdout,
+            )
             errors.append({
                 "region": region,
                 "returncode": result.returncode,
                 "stderr": stderr,
+                "stdout": stdout,
             })
             continue
         completed.append({
