@@ -20,6 +20,11 @@ _COMPARE_SCRIPT = (
 )
 
 
+def _clip_output(value: str | None, limit: int = 500) -> str:
+    """Return a safe, bounded subprocess output snippet for logs/results."""
+    return (value or "")[:limit]
+
+
 def _geomean_e2e_time(run_dir: Path) -> float:
     """Compute geometric mean of query wall-clock times from timing-normalized.json.
 
@@ -131,14 +136,21 @@ def run_compare(
     logger.info("Running compare pipeline: %s", " ".join(cmd))
 
     result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=300, check=False,
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+        check=False,
     )
     if result.returncode != 0:
-        logger.error("Compare pipeline failed (exit %d): %s", result.returncode, result.stderr[:500])
+        stderr = _clip_output(result.stderr)
+        logger.error("Compare pipeline failed (exit %d): %s", result.returncode, stderr)
         return {
             "status": "error",
             "returncode": result.returncode,
-            "stderr": result.stderr[:500],
+            "stderr": stderr,
         }
 
     if result.stdout:
@@ -204,14 +216,21 @@ def _run_pytorch_compare(
 
         logger.info("Running PyTorch compare for %s: %s", region, " ".join(cmd))
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=300, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            check=False,
         )
         if result.returncode != 0:
-            logger.error("PyTorch compare failed for %s (exit %d): %s", region, result.returncode, result.stderr[:500])
+            stderr = _clip_output(result.stderr)
+            logger.error("PyTorch compare failed for %s (exit %d): %s", region, result.returncode, stderr)
             errors.append({
                 "region": region,
                 "returncode": result.returncode,
-                "stderr": result.stderr[:500],
+                "stderr": stderr,
             })
             continue
         completed.append({
