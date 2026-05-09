@@ -86,19 +86,22 @@ class TestBuildAsmDiffIssue(unittest.TestCase):
         self.assertIn("CPython", result["body"])
 
     def test_truncation(self):
-        long_asm = "\n".join([f"instr_{i}" for i in range(3000)])
+        # Each line is ~50 chars; 200 lines = ~10000 chars.
+        # With max_chars=300, each segment fits only a few lines.
+        long_asm = "\n".join([f"instr_{i:04d}_padding_to_fifty_chars_long______" for i in range(200)])
         func = {"symbol": "long_func"}
         result = build_asm_diff_issue(
-            func, arm_asm=long_asm, x86_asm=long_asm, max_lines=100,
+            func, arm_asm=long_asm, x86_asm=long_asm, max_chars=300,
         )
         # Long ASM is split into comments, body has no ASM section headings.
         self.assertNotIn("## 机器码 —", result["body"])
         self.assertTrue(len(result["comments"]) > 0)
-        # Each platform produces ceil(3000/100)=30 segments → 60 total.
-        self.assertEqual(len(result["comments"]), 60)
         # Segments have numbering.
-        self.assertIn("（1/30）", result["comments"][0])
+        self.assertIn("（1/", result["comments"][0])
         self.assertIn("Kunpeng", result["comments"][0])
+        # No segment exceeds max_chars.
+        for c in result["comments"]:
+            self.assertLessEqual(len(c), 320)  # slight tolerance for heading
 
 
 class TestSplitAsmFromBody(unittest.TestCase):

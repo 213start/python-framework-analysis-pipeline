@@ -72,43 +72,66 @@ def _strip_code_fences(text: str) -> str:
 def split_asm_into_segments(
     asm_text: str,
     heading: str,
-    max_lines: int = 2000,
+    max_chars: int = 60000,
 ) -> list[str]:
     """Split long ASM text into multiple comment-ready segments.
 
-    Returns one comment string per segment.  Single-segment output omits
-    the （N/M） numbering for backward compatibility.
+    Splits by character budget (*max_chars* for the full rendered comment
+    including heading and code fences), always on line boundaries so no
+    line is ever cut in half.
+
+    Single-segment output omits the （N/M） numbering for backward
+    compatibility.
     """
     lines = asm_text.splitlines()
-    if len(lines) <= max_lines:
+
+    # Reserve space for heading + "\n\n```\n" + "\n```" ≈ heading + 12.
+    overhead = len(heading) + 12
+    budget = max_chars - overhead
+
+    # Accumulate lines into chunks that fit the character budget.
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line) + 1  # +1 for newline
+        if current and current_len + line_len > budget:
+            chunks.append(current)
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += line_len
+    if current:
+        chunks.append(current)
+
+    total = len(chunks)
+    if total <= 1:
         return [f"{heading}\n\n```\n{asm_text}\n```"]
 
-    total = (len(lines) + max_lines - 1) // max_lines
     segments: list[str] = []
-    for i in range(total):
-        chunk = lines[i * max_lines:(i + 1) * max_lines]
+    for i, chunk in enumerate(chunks):
         seg_heading = f"{heading}（{i + 1}/{total}）"
         segments.append(f"{seg_heading}\n\n```\n{chr(10).join(chunk)}\n```")
     return segments
 
 
-def _has_oversized_asm(body: str, max_lines: int) -> bool:
-    """Return True if any ## 机器码 section in *body* exceeds *max_lines*."""
+def _has_oversized_asm(body: str, max_chars: int = 60000) -> bool:
+    """Return True if any ## 机器码 section in *body* exceeds *max_chars*."""
     lines = body.splitlines()
     in_asm = False
-    count = 0
+    chars = 0
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("## 机器码 —"):
             in_asm = True
-            count = 0
+            chars = 0
             continue
         if in_asm:
             if stripped.startswith("## "):
                 in_asm = False
             else:
-                count += 1
-                if count > max_lines:
+                chars += len(line) + 1
+                if chars > max_chars:
                     return True
     return False
 
@@ -330,6 +353,7 @@ def build_asm_diff_issue(
     framework_name: str = "CPython 3.14",
     binary_path: str = "",
     max_lines: int = 2000,
+    max_chars: int = 60000,
 ) -> dict[str, Any]:
     """Build issue title, body, and ASM comments for one hotspot function.
 
@@ -349,7 +373,10 @@ def build_asm_diff_issue(
     binary_path : str
         Path to the binary used for objdump (displayed in the issue body).
     max_lines : int
-        Maximum assembly lines to include before truncation.
+        Legacy parameter, kept for API compatibility.  No longer used for
+        truncation — splitting is now driven by *max_chars*.
+    max_chars : int
+        Maximum characters per comment segment (default 60000).
 
     Returns
     -------
@@ -424,14 +451,14 @@ def build_asm_diff_issue(
             max_lines=max_lines,
         )
 
-    if _has_oversized_asm(body, max_lines):
-        trimmed_body, asm_comments = split_asm_from_body(body, max_lines=max_lines)
+    if _has_oversized_asm(body, max_chars):
+        trimmed_body, asm_comments = split_asm_from_body(body, max_chars=max_chars)
         return {"title": title, "body": trimmed_body, "comments": asm_comments}
 
     return {"title": title, "body": body, "comments": []}
 
 
-def split_asm_from_body(body: str, max_lines: int = 2000) -> tuple[str, list[str]]:
+def split_asm_from_body(body: str, max_chars: int = 60000) -> tuple[str, list[str]]:
     """Split ASM sections out of *body* for posting as separate comments.
 
     Finds all ``## 机器码 —`` sections, extracts their content into
@@ -442,8 +469,8 @@ def split_asm_from_body(body: str, max_lines: int = 2000) -> tuple[str, list[str
     ----------
     body:
         The issue body text.
-    max_lines:
-        Maximum lines per ASM comment segment.
+    max_chars:
+        Maximum characters per ASM comment segment.
 
     Returns
     -------
@@ -475,7 +502,7 @@ def split_asm_from_body(body: str, max_lines: int = 2000) -> tuple[str, list[str
             while asm_lines and not asm_lines[-1].strip():
                 asm_lines.pop()
             raw_asm = _strip_code_fences("\n".join(asm_lines))
-            segments = split_asm_into_segments(raw_asm, heading, max_lines=max_lines)
+            segments = split_asm_into_segments(raw_asm, heading, max_chars=max_chars)
             comments.extend(segments)
         else:
             trimmed_lines.append(line)
