@@ -179,7 +179,10 @@ class SshExecutor:
         if self.key:
             args.extend(["-i", str(self.key)])
         args.extend(["-o", "StrictHostKeyChecking=no"])
-        args.append(f"{target}:{remote_dir}/.")
+        # Windows OpenSSH scp defaults to SFTP mode and rejects a remote
+        # trailing "/." with "unexpected filename: .".  Use a shell glob to
+        # copy the directory contents without introducing a literal "." entry.
+        args.append(f"{target}:{remote_dir}/*")
         args.append(str(local_dir))
         result = subprocess.run(
             args,

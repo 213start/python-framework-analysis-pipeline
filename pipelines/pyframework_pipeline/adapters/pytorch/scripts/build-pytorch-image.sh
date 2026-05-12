@@ -107,7 +107,7 @@ retry() {
 # first metadata download.  curl/wget/pip are relaxed below for the same reason.
 grep -q '^sslverify=False' /etc/dnf/dnf.conf 2>/dev/null || echo 'sslverify=False' >> /etc/dnf/dnf.conf
 for repo_file in /etc/yum.repos.d/*.repo; do
-    [ -f "$repo_file" ] && sed -i 's/^sslverify=.*/sslverify=False/' "$repo_file" || true
+    [ -f "\$repo_file" ] && sed -i 's/^sslverify=.*/sslverify=False/' "\$repo_file" || true
 done
 dnf makecache -y || true
 dnf install -y \
