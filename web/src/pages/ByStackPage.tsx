@@ -4,12 +4,12 @@ import { useAsyncData } from "../hooks/useAsyncData";
 import { Link } from "react-router-dom";
 
 const STACK_SEGMENT_STYLES = [
-  "linear-gradient(180deg, #d97b57 0%, #ab4e2c 100%)",
-  "linear-gradient(180deg, #aa6c4c 0%, #7f4d35 100%)",
-  "linear-gradient(180deg, #557c74 0%, #395d56 100%)",
-  "linear-gradient(180deg, #6f7fa3 0%, #49587b 100%)",
-  "linear-gradient(180deg, #8d7b54 0%, #67573b 100%)",
-  "linear-gradient(180deg, #8a5d73 0%, #684457 100%)",
+  "#4f46e5",
+  "#7c3aed",
+  "#0ea5e9",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
 ];
 
 function parseMagnitude(value: string) {
