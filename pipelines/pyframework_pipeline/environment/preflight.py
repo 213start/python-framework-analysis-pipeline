@@ -41,7 +41,7 @@ _CHECKS: list[dict[str, Any]] = [
     },
     {
         "id": "images",
-        "command": "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'flink-pyflink|python' || true",
+        "command": "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'flink-pyflink|data-juicer|python' || true",
         "timeout": 30,
     },
 ]
@@ -139,11 +139,7 @@ def _build_warnings(
                 "usually requires 0 and deploy will need to change it."
             )
 
-    image = (
-        env_config.get("software", {})
-        .get("flinkPyflinkImages", {})
-        .get(platform, "")
-    )
+    image = _target_image(env_config, platform)
     images = by_id.get("images", {})
     if image and images.get("exitCode") == 0 and image not in str(images.get("stdout", "")):
         warnings.append(
@@ -167,6 +163,14 @@ def _build_warnings(
             )
 
     return warnings
+
+
+def _target_image(env_config: dict[str, Any], platform: str) -> str:
+    software = env_config.get("software", {})
+    framework = str(env_config.get("framework", ""))
+    if framework == "datajuicer":
+        return str(software.get("dataJuicerImages", {}).get(platform, ""))
+    return str(software.get("flinkPyflinkImages", {}).get(platform, ""))
 
 
 def _parse_perf_paranoid(stdout: str) -> int | None:

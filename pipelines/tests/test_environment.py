@@ -721,6 +721,61 @@ class SshExecutorEnvTest(unittest.TestCase):
         self.assertIn("-F", scp_args)
         self.assertIn(str(ssh_config), scp_args)
 
+    def test_fetch_file_uses_legacy_scp_with_timeout(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(host="myhost")
+        with tempfile.TemporaryDirectory() as tmp:
+            local_path = Path(tmp) / "perf.data"
+            with patch(
+                "pyframework_pipeline.acquisition.ssh_executor.subprocess.run",
+                return_value=subprocess.CompletedProcess(
+                    args=["scp"],
+                    returncode=0,
+                    stdout="",
+                    stderr="",
+                ),
+            ) as run:
+                ok = executor.fetch_file("/tmp/perf.data", local_path)
+
+        self.assertTrue(ok)
+        args = run.call_args.args[0]
+        self.assertEqual(args[0], "scp")
+        self.assertIn("-O", args)
+        self.assertIn("myhost:/tmp/perf.data", args)
+        self.assertEqual(run.call_args.kwargs["timeout"], 300)
+        self.assertEqual(run.call_args.kwargs["errors"], "replace")
+
+    def test_fetch_file_falls_back_to_ssh_cat(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(host="myhost")
+        failures = [
+            subprocess.CompletedProcess(args=["scp"], returncode=1, stdout="", stderr="sftp failed"),
+            subprocess.CompletedProcess(args=["scp"], returncode=1, stdout="", stderr="scp failed"),
+            subprocess.CompletedProcess(args=["ssh"], returncode=0, stdout="", stderr=b""),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            local_path = Path(tmp) / "perf.data"
+            with patch(
+                "pyframework_pipeline.acquisition.ssh_executor.subprocess.run",
+                side_effect=failures,
+            ) as run:
+                ok = executor.fetch_file("/tmp/perf.data", local_path)
+
+            self.assertTrue(ok)
+            self.assertTrue(local_path.exists())
+
+        self.assertEqual(run.call_count, 3)
+        scp_legacy_args = run.call_args_list[0].args[0]
+        scp_sftp_args = run.call_args_list[1].args[0]
+        ssh_args = run.call_args_list[2].args[0]
+        self.assertIn("-O", scp_legacy_args)
+        self.assertNotIn("-O", scp_sftp_args)
+        self.assertEqual(ssh_args[0], "ssh")
+        self.assertIn("cat /tmp/perf.data", ssh_args[-1])
+        self.assertEqual(run.call_args_list[2].kwargs["timeout"], 300)
+
     def test_run_timeout_returns_completed_process(self) -> None:
         import subprocess
         from unittest.mock import patch
@@ -747,6 +802,35 @@ class SshExecutorEnvTest(unittest.TestCase):
         self.assertIn("partial stdout", result.stdout)
         self.assertIn("partial stderr", result.stderr)
         self.assertIn("TIMEOUT after 7s", result.stderr)
+
+    def test_streaming_uses_replacement_decoding(self) -> None:
+        from unittest.mock import patch
+
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = iter(["ok\n"])
+                self.returncode = 0
+
+            def wait(self, timeout: int) -> None:
+                self.returncode = 0
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+        executor = SshExecutor(host="myhost")
+        fake = FakeProcess()
+        with patch(
+            "pyframework_pipeline.acquisition.ssh_executor.subprocess.Popen",
+            return_value=fake,
+        ) as popen:
+            result = executor.run("echo hi", stream=True)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "ok")
+        self.assertEqual(popen.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(popen.call_args.kwargs["errors"], "replace")
 
 
 class DockerRegistryTest(unittest.TestCase):

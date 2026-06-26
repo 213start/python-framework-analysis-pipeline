@@ -1,0 +1,83 @@
+schemaVersion: 1
+framework: datajuicer
+mode: plan-only
+
+# Single-container CPU benchmark mode.
+# The project runs Data-Juicer's upstream performance benchmark text modality
+# only. Image/video/audio modalities are intentionally skipped because they can
+# require GPU/model-heavy operators.
+#
+# Usage:
+#   cp environment.yaml.example environment.yaml
+#   replace hostRef / alias / auth fields with real hosts
+
+platforms:
+  - id: arm
+    arch: aarch64
+    hosts:
+      - role: client
+        hostRef: arm-host
+
+  - id: x86
+    arch: x86_64
+    hosts:
+      - role: client
+        hostRef: x86-host
+
+software:
+  pythonImage: python:3.11-slim
+  dataJuicerVersion: 1.5.2
+  dataJuicerImages:
+    arm: data-juicer-bench:1.5.2-py311-arm
+    x86: data-juicer-bench:1.5.2-py311-x86
+  dataJuicerContainer: data-juicer-bench
+  benchmarkName: data-juicer-text
+  benchmarkTimeout: 7200
+  benchmarkDataUrl: http://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/perf_bench_data/perf_bench_data.tar.gz
+  benchmarkUseFullArchive: false
+  # Optional direct JSONL mirror for perf_bench_data/text/wiki-10k.jsonl.
+  # When unset, the runner materializes a deterministic text-only input and
+  # avoids downloading the upstream image/video/audio archive.
+  # benchmarkTextDataUrl: https://mirror.example/data-juicer/wiki-10k.jsonl
+  # benchmarkTextRows: 10000
+  benchmarkModalities:
+    - text
+  # dockerRegistry: registry.internal  # Optional Docker Hub mirror/prefix for pythonImage
+  # aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian
+  # aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security
+  # hfEndpoint: https://hf-mirror.com  # Optional Hugging Face mirror for tokenizer downloads
+  # pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple
+  # pipTrustedHosts:
+  #   - pypi.tuna.tsinghua.edu.cn
+  # pipTimeout: 180
+  # pipRetries: 10
+  profilingTools:
+    - perf
+    - objdump
+    - readelf
+
+hostRefs:
+  arm-host:
+    connect: ssh
+    alias: 192.168.1.100
+    user: root
+    key: ~/.ssh/id_rsa
+    port: 22
+    capabilities:
+      ssh: true
+      sudo: true
+      docker: true
+      internet: true
+      upload: true
+      download: true
+
+  x86-host:
+    connect: ssh
+    alias: 192.168.1.200
+    capabilities:
+      ssh: true
+      sudo: true
+      docker: true
+      internet: true
+      upload: true
+      download: true

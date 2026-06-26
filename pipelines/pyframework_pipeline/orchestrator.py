@@ -170,6 +170,37 @@ def _init_submodules(repo_root: Path) -> None:
         logger.warning("Failed to init git submodules: %s", exc)
 
 
+def _framework_id(env_config: dict[str, Any]) -> str:
+    return str(env_config.get("framework", "pyflink"))
+
+
+def _datajuicer_container(env_config: dict[str, Any]) -> str:
+    return str(
+        env_config.get("software", {}).get("dataJuicerContainer", "data-juicer-bench")
+    )
+
+
+def _datajuicer_modalities(
+    workload: dict[str, Any],
+    env_config: dict[str, Any],
+) -> list[str]:
+    raw = workload.get("modalities")
+    if raw in ("", None):
+        raw = env_config.get("software", {}).get("benchmarkModalities", ["text"])
+    if isinstance(raw, list):
+        values = [str(item).strip() for item in raw]
+    else:
+        values = [item.strip() for item in str(raw).replace(",", " ").split()]
+    selected = [item for item in values if item == "text"]
+    return selected or ["text"]
+
+
+def _datajuicer_benchmark_name(env_config: dict[str, Any]) -> str:
+    return str(
+        env_config.get("software", {}).get("benchmarkName", "data-juicer-text")
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -388,6 +419,10 @@ def _run_workload_deploy(
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
+    if _framework_id(env_config) == "datajuicer":
+        _run_datajuicer_workload_deploy(local_dir, executor, env_config)
+        return
+
     # Upload workload to remote host staging.
     remote_dir = "/tmp/pyframework-workload"
     # Remove stale remote directory so scp -r doesn't create a nested
@@ -450,6 +485,54 @@ def _run_workload_deploy(
             )
 
 
+def _run_datajuicer_workload_deploy(
+    local_dir: Path,
+    executor: Any,
+    env_config: dict[str, Any],
+) -> None:
+    container = _datajuicer_container(env_config)
+    remote_dir = "/tmp/pyframework-workload"
+    executor.run(f"rm -rf {remote_dir}", timeout=15)
+    logger.info("Uploading Data-Juicer workload %s to %s", local_dir, remote_dir)
+    ok = executor.push_dir(local_dir, remote_dir)
+    if not ok:
+        raise StepError(
+            f"Failed to upload Data-Juicer workload:\n"
+            f"  Local: {local_dir}\n"
+            f"  Remote: {remote_dir}"
+        )
+
+    clean_result = executor.run(
+        f"docker exec -u root {container} bash -lc "
+        "'rm -rf /workspace/benchmark && mkdir -p /workspace/benchmark'",
+        timeout=120,
+        stream=True,
+    )
+    if clean_result.returncode != 0:
+        raise StepError(
+            f"Failed to clean Data-Juicer benchmark directory "
+            f"(exit {clean_result.returncode}):\n"
+            f"  stdout: {clean_result.stdout[:500]}\n"
+            f"  stderr: {clean_result.stderr[:500]}"
+        )
+
+    cp_result = executor.run(
+        f"docker cp {remote_dir}/. {container}:/workspace/benchmark",
+        timeout=120,
+        stream=True,
+    )
+    if cp_result.returncode != 0:
+        raise StepError(
+            f"Failed to copy workload to {container} (exit {cp_result.returncode}):\n"
+            f"  stdout: {cp_result.stdout[:500]}\n"
+            f"  stderr: {cp_result.stderr[:500]}"
+        )
+    executor.run(
+        f"docker exec -u root {container} chown -R root:root /workspace/benchmark",
+        timeout=15,
+    )
+
+
 def _run_benchmark(
     project_path: Path, run_dir: Path, platform: str,
     *, force: bool = False,
@@ -465,6 +548,12 @@ def _run_benchmark(
     env_config = load_environment_config(project_path)
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
+    if _framework_id(env_config) == "datajuicer":
+        _run_datajuicer_benchmark(
+            project_path, run_dir, platform, executor, workload, env_config, force=force,
+        )
+        return
+
     python_bin = _find_container_python(executor, env_config)
 
     # Ensure Java UDF JAR exists inside JM container.
@@ -577,6 +666,105 @@ def _run_benchmark(
                 f"running {len(queries)} queries.  Last check: {check.stdout.strip()}"
             )
         logger.info("[5a] perf.data verified in %s: %s", perf_container, perf_check.stdout.strip())
+
+
+def _run_datajuicer_benchmark(
+    project_path: Path,
+    run_dir: Path,
+    platform: str,
+    executor: Any,
+    workload: dict[str, Any],
+    env_config: dict[str, Any],
+    *,
+    force: bool = False,
+) -> None:
+    import shlex
+
+    container = _datajuicer_container(env_config)
+    modalities = _datajuicer_modalities(workload, env_config)
+    modalities_arg = ",".join(modalities)
+    platform_run_dir = run_dir / platform
+    platform_run_dir.mkdir(parents=True, exist_ok=True)
+    timing_path = platform_run_dir / "timing" / "timing-normalized.json"
+
+    if force:
+        _run_workload_deploy(project_path, run_dir, platform)
+        for old in [
+            timing_path,
+            platform_run_dir / "timing" / "timing-raw.json",
+            platform_run_dir / "perf" / "data" / f"perf-{platform}.data",
+        ]:
+            if old.exists():
+                old.unlink()
+                logger.info("[5a] Force: removed old artifact %s", old.relative_to(run_dir))
+
+    if timing_path.exists() and timing_path.stat().st_size > 0:
+        logger.info("[5a] Data-Juicer timing exists, skipping benchmark on %s", platform)
+        return
+
+    timeout = int(
+        workload.get(
+            "timeout",
+            env_config.get("software", {}).get("benchmarkTimeout", 1800),
+        )
+    )
+    remote_output = f"/tmp/pyframework-datajuicer-run-{platform}"
+    host_output = f"/tmp/pyframework-datajuicer-output-{platform}"
+    runner_args = (
+        f"--platform {shlex.quote(platform)} "
+        f"--output-dir {shlex.quote(remote_output)} "
+        f"--modalities {shlex.quote(modalities_arg)}"
+    )
+    script = (
+        "set -euo pipefail; "
+        f"rm -rf {shlex.quote(remote_output)} /tmp/perf-udf.data; "
+        "cd /workspace/benchmark; "
+        "command -v perf >/dev/null; "
+        f"perf record -F 999 -g -e task-clock -o /tmp/perf-udf.data -- "
+        f"python3 benchmark_runner.py {runner_args}; "
+        "test -s /tmp/perf-udf.data"
+    )
+    logger.info("[5a] Running Data-Juicer modalities=%s on %s", modalities_arg, platform)
+    result = executor.run(
+        f"docker exec {container} bash -lc {shlex.quote(script)}",
+        timeout=timeout,
+        stream=True,
+    )
+    if result.returncode != 0:
+        raise StepError(
+            f"Data-Juicer benchmark failed (exit {result.returncode}):\n"
+            f"  Container: {container}\n"
+            f"  Modalities: {modalities_arg}\n"
+            f"  output: {result.stdout[-2000:]}\n"
+            f"  stderr: {result.stderr[-1000:]}"
+        )
+
+    executor.run(f"rm -rf {host_output}", timeout=15)
+    cp_result = executor.run(
+        f"docker cp {container}:{remote_output}/. {host_output}",
+        timeout=120,
+        stream=True,
+    )
+    if cp_result.returncode != 0:
+        raise StepError(
+            f"Failed to copy Data-Juicer benchmark output (exit {cp_result.returncode}):\n"
+            f"  stdout: {cp_result.stdout[:500]}\n"
+            f"  stderr: {cp_result.stderr[:500]}"
+        )
+    if not executor.fetch_dir(host_output, platform_run_dir):
+        raise StepError(
+            f"Failed to fetch Data-Juicer benchmark output from {host_output}:\n"
+            f"  docker cp stdout: {cp_result.stdout[:500]}\n"
+            f"  docker cp stderr: {cp_result.stderr[:500]}"
+        )
+    executor.run(f"rm -rf {host_output}", timeout=15)
+
+    if not timing_path.exists() or timing_path.stat().st_size == 0:
+        raise StepError(
+            f"Data-Juicer benchmark did not produce {timing_path}:\n"
+            f"  docker cp stdout: {cp_result.stdout[:500]}\n"
+            f"  docker cp stderr: {cp_result.stderr[:500]}"
+        )
 
 
 def _parse_benchmark_summary(
@@ -825,22 +1013,29 @@ def _merge_wall_clock_times(
 def _find_container_python(
     executor: "SshExecutor",
     env_config: dict | None = None,
+    container: str = "flink-jm",
 ) -> str:
-    """Find the Python binary path inside the JM container."""
+    """Find the Python binary path inside a benchmark container."""
     py_version = "3.14.3"
     if env_config:
         py_version = env_config.get("software", {}).get("pythonVersion", py_version)
     expected = f"/root/.pyenv/versions/{py_version}/bin/python3"
     result = executor.run(
-        f"docker exec flink-jm ls {expected}",
+        f"docker exec {container} ls {expected}",
         timeout=15,
     )
     if result.returncode == 0 and result.stdout.strip():
         return expected
     # Fallback: find any pyenv python3.
     result = executor.run(
-        "docker exec flink-jm bash -c "
+        f"docker exec {container} bash -c "
         "'ls /root/.pyenv/versions/*/bin/python3 2>/dev/null | sort -V | tail -1'",
+        timeout=15,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    result = executor.run(
+        f"docker exec {container} bash -c 'command -v python3 || command -v python'",
         timeout=15,
     )
     if result.returncode == 0 and result.stdout.strip():
@@ -871,11 +1066,20 @@ def _ensure_jar(executor: "SshExecutor") -> None:
         )
 
 
-def _find_container_perf(executor: "SshExecutor") -> str:
-    """Find the perf binary path inside the TM container."""
+def _find_container_perf(
+    executor: "SshExecutor",
+    container: str = "flink-tm1",
+) -> str:
+    """Find the perf binary path inside a benchmark container."""
     result = executor.run(
-        "docker exec flink-tm1 bash -c "
+        f"docker exec {container} bash -c "
         "'ls /usr/lib/linux-tools-*/perf 2>/dev/null | sort -V | tail -1'",
+        timeout=30,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    result = executor.run(
+        f"docker exec {container} bash -c 'command -v perf'",
         timeout=30,
     )
     if result.returncode == 0 and result.stdout.strip():
@@ -990,7 +1194,13 @@ def _run_collect_substep(
             return
         perf_container = _find_perf_container(executor, env_config)
         logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
-        _run_perf_kits_on_remote(executor, perf_data_local, perf_dir, platform, project_path, perf_container)
+        benchmark = "tpch"
+        if _framework_id(env_config) == "datajuicer":
+            benchmark = _datajuicer_benchmark_name(env_config)
+        _run_perf_kits_on_remote(
+            executor, perf_data_local, perf_dir, platform, project_path,
+            perf_container, benchmark=benchmark, env_config=env_config,
+        )
         return
 
     # Sub-steps 5b.2b+ need perf_records.csv.
@@ -1024,6 +1234,8 @@ def _run_collect_substep(
 
 def _find_perf_container(executor: "SshExecutor", env_config: dict) -> str:
     """Find which container has perf.data."""
+    if _framework_id(env_config) == "datajuicer":
+        return _datajuicer_container(env_config)
     _tm_count = _parse_tm_count(env_config)
     for c in ["flink-jm"] + [f"flink-tm{i}" for i in range(1, _tm_count + 1)]:
         check = executor.run(
@@ -1149,7 +1361,11 @@ def _extract_cpython_sources(
         executor.push_file(tmp / "_extract_src.py", f"{host_staging}/_extract_src.py")
         executor.push_file(tmp / "_symbols.txt", f"{host_staging}/_symbols.txt")
         executor.run(f"docker cp {host_staging}/. {container}:/tmp/_src_extract/", timeout=30)
-        executor.run(f"docker exec -u root {container} chown -R flink:flink /tmp/_src_extract", timeout=15)
+        executor.run(
+            f"docker exec -u root {container} sh -c "
+            "'chown -R flink:flink /tmp/_src_extract 2>/dev/null || true'",
+            timeout=15,
+        )
 
     # Ensure CPython source is available (extract from pyenv cache if needed).
     src_prep = executor.run(
@@ -1360,14 +1576,20 @@ def _collect_asm_from_all_libs(
         executor.push_file(tmp / "_asm_collect.py", f"{host_staging}/_asm_collect.py")
         executor.push_file(tmp / "_manifest.json", f"{host_staging}/_manifest.json")
         executor.run(f"docker cp {host_staging}/. {container}:/tmp/_asm_collect/", timeout=30)
-        executor.run(f"docker exec -u root {container} chown -R flink:flink /tmp/_asm_collect", timeout=15)
+        executor.run(
+            f"docker exec -u root {container} sh -c "
+            "'chown -R flink:flink /tmp/_asm_collect 2>/dev/null || true'",
+            timeout=15,
+        )
 
     # Create output directory inside container and run the script.
     executor.run(
         f"docker exec {container} mkdir -p /tmp/_asm_output", timeout=15,
     )
     executor.run(
-        f"docker exec -u root {container} chown flink:flink /tmp/_asm_output", timeout=15,
+        f"docker exec -u root {container} sh -c "
+        "'chown flink:flink /tmp/_asm_output 2>/dev/null || true'",
+        timeout=15,
     )
     result = executor.run(
         f"docker exec {container} python3 /tmp/_asm_collect/_asm_collect.py "
@@ -1399,6 +1621,9 @@ def _run_perf_kits_on_remote(
     platform: str,
     project_path: Path | None = None,
     container: str = "flink-jm",
+    *,
+    benchmark: str = "tpch",
+    env_config: dict | None = None,
 ) -> None:
     """Run python-performance-kits pipeline inside the container.
 
@@ -1419,11 +1644,11 @@ def _run_perf_kits_on_remote(
         logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
         return
 
-    container_kits = "/opt/flink/perf-kits-scripts"
-    container_output = "/opt/flink/perf-kits-output"
+    container_kits = "/tmp/pyframework-perf-kits-scripts"
+    container_output = "/tmp/pyframework-perf-kits-output"
     perf_data_container = "/tmp/perf-udf.data"
-    python_bin = _find_container_python(executor)
-    perf_bin = _find_container_perf(executor)
+    python_bin = _find_container_python(executor, env_config, container=container)
+    perf_bin = _find_container_perf(executor, container=container)
 
     # Deploy scripts into container via host staging.
     host_staging = "/tmp/pyframework-perf-kits-scripts"
@@ -1455,10 +1680,6 @@ def _run_perf_kits_on_remote(
         f"docker cp {host_staging}/. {container}:{container_kits}",
         timeout=30,
     )
-    executor.run(
-        f"docker exec -u root {container} chown -R flink:flink {container_kits}",
-        timeout=15,
-    )
     executor.run(f"rm -rf {host_staging}", timeout=30)
 
     # Run the pipeline inside the container.
@@ -1467,7 +1688,7 @@ def _run_perf_kits_on_remote(
         f"docker exec {container} {python_bin} "
         f"{container_kits}/run_single_platform_pipeline.py "
         f"{perf_data_container} -o {container_output} "
-        f"--benchmark tpch --platform {platform} "
+        f"--benchmark {benchmark} --platform {platform} "
         f"--perf-bin {perf_bin} "
         f"--skip-annotate --no-print-report",
         timeout=600,
@@ -1588,7 +1809,7 @@ def _collect_binary_from_container(
     local_path: Path,
 ) -> bool:
     """Collect a binary file from a container via docker cp + scp."""
-    staging = f"/opt/flink/_collect_{local_path.name}"
+    staging = f"/tmp/_collect_{local_path.name}"
     host_tmp = f"/tmp/pyframework-collect-{container}-{local_path.name}"
 
     # Copy inside container to a path accessible by docker cp.
@@ -1602,6 +1823,7 @@ def _collect_binary_from_container(
     )
 
     # docker cp from container to host filesystem.
+    executor.run(f"rm -f {host_tmp}", timeout=30)
     cp_result = executor.run(
         f"docker cp {container}:{staging} {host_tmp}",
         timeout=120,

@@ -1,0 +1,22 @@
+id: data-juicer-benchmark-reference
+name: Data-Juicer Benchmark Reference
+fourLayerRoot: .
+
+workload:
+  localDir: ../../workload/data-juicer/benchmark
+  benchmark: upstream-performance
+  modalities:
+    - text
+  timeout: 7200
+
+bridge:
+  repo: datajuicer/data-juicer
+  platform: github
+  type: discussion
+  category: General
+  tokenEnvVar: PYFRAMEWORK_BRIDGE_TOKEN
+
+run:
+  platforms:
+    - arm
+    - x86

@@ -15,6 +15,8 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+_SCP_TIMEOUT_SECONDS = 300
+
 
 class SshExecutor:
     """Execute commands on a remote host via SSH."""
@@ -90,6 +92,8 @@ class SshExecutor:
                 args,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout,
                 check=False,
             )
@@ -117,6 +121,8 @@ class SshExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         stdout_lines: list[str] = []
         try:
@@ -135,42 +141,130 @@ class SshExecutor:
             stderr="",
         )
 
+    def _scp_args(self, *, recursive: bool = False, legacy_protocol: bool = True) -> list[str]:
+        args = ["scp"]
+        if legacy_protocol:
+            # OpenSSH defaults scp to SFTP.  Some lab hosts have unstable SFTP
+            # subsystems, while the legacy scp protocol still works reliably.
+            args.append("-O")
+        if recursive:
+            args.append("-r")
+        args.extend(self._scp_options())
+        return args
+
+    def _run_scp(self, args: list[str], *, timeout: int = _SCP_TIMEOUT_SECONDS) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = _coerce_timeout_text(exc.stderr)
+            timeout_line = f"[TIMEOUT after {timeout}s]"
+            if stderr:
+                stderr = f"{stderr}\n{timeout_line}"
+            else:
+                stderr = timeout_line
+            stdout = _coerce_timeout_text(
+                exc.stdout if exc.stdout is not None else exc.output
+            )
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=124,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+    def _scp_transfer(
+        self,
+        source: str,
+        destination: str,
+        *,
+        recursive: bool = False,
+        timeout: int = _SCP_TIMEOUT_SECONDS,
+    ) -> bool:
+        for legacy_protocol in (True, False):
+            args = self._scp_args(
+                recursive=recursive,
+                legacy_protocol=legacy_protocol,
+            )
+            args.extend([source, destination])
+            result = self._run_scp(args, timeout=timeout)
+            if result.returncode == 0:
+                return True
+            mode = "legacy scp" if legacy_protocol else "sftp scp"
+            log.warning(
+                "%s transfer failed with exit %s: %s",
+                mode,
+                result.returncode,
+                (result.stderr or result.stdout)[:500],
+            )
+        return False
+
     def fetch_file(self, remote_path: str, local_path: Path) -> bool:
         """Download a file from the remote host via scp."""
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         target = f"{self.user}@{self.host}" if self.user else self.host
-        args = ["scp", *self._scp_options()]
-        args.append(f"{target}:{remote_path}")
-        args.append(str(local_path))
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
-        return result.returncode == 0
+        ok = self._scp_transfer(f"{target}:{remote_path}", str(local_path))
+        if ok:
+            return True
+        return self._fetch_file_via_ssh_cat(remote_path, local_path)
+
+    def _fetch_file_via_ssh_cat(self, remote_path: str, local_path: Path) -> bool:
+        args = self._build_ssh_args(f"cat {shlex.quote(remote_path)}")
+        log.info("SSH fetch fallback: %s", remote_path)
+        try:
+            with local_path.open("wb") as output:
+                result = subprocess.run(
+                    args,
+                    stdout=output,
+                    stderr=subprocess.PIPE,
+                    timeout=_SCP_TIMEOUT_SECONDS,
+                    check=False,
+                )
+        except subprocess.TimeoutExpired:
+            local_path.unlink(missing_ok=True)
+            log.warning("SSH fetch fallback timed out for %s", remote_path)
+            return False
+        if result.returncode != 0:
+            local_path.unlink(missing_ok=True)
+            stderr = result.stderr.decode(errors="replace") if result.stderr else ""
+            log.warning(
+                "SSH fetch fallback failed with exit %s: %s",
+                result.returncode,
+                stderr[:500],
+            )
+            return False
+        return True
 
     def push_file(self, local_path: Path, remote_path: str) -> bool:
         """Upload a file to the remote host via scp."""
         target = f"{self.user}@{self.host}" if self.user else self.host
-        args = ["scp", *self._scp_options()]
-        args.append(str(local_path))
-        args.append(f"{target}:{remote_path}")
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
-        return result.returncode == 0
+        return self._scp_transfer(str(local_path), f"{target}:{remote_path}")
 
     def push_dir(self, local_dir: Path, remote_dir: str) -> bool:
         """Upload a directory to the remote host via scp -r."""
         target = f"{self.user}@{self.host}" if self.user else self.host
-        args = ["scp", "-r", *self._scp_options()]
-        args.append(str(local_dir))
-        args.append(f"{target}:{remote_dir}")
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
-        return result.returncode == 0
+        return self._scp_transfer(
+            str(local_dir),
+            f"{target}:{remote_dir}",
+            recursive=True,
+        )
 
     def fetch_dir(self, remote_dir: str, local_dir: Path) -> bool:
         """Download a directory from the remote host via scp -r."""
         local_dir.mkdir(parents=True, exist_ok=True)
         target = f"{self.user}@{self.host}" if self.user else self.host
-        args = ["scp", "-r", *self._scp_options()]
-        args.append(f"{target}:{remote_dir}/.")
-        args.append(str(local_dir))
-        result = subprocess.run(args, capture_output=True, text=True, check=False)
-        return result.returncode == 0
+        return self._scp_transfer(
+            f"{target}:{remote_dir}/.",
+            str(local_dir),
+            recursive=True,
+        )
 
     def docker_exec(self, container: str, command: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:
         """Execute a command inside a Docker container on the remote host."""

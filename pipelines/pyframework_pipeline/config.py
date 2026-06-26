@@ -174,6 +174,7 @@ def validate_pipeline_config(
         add("run.platforms", "project.yaml missing run.platforms")
 
     if env_config:
+        framework = str(env_config.get("framework", ""))
         env_platforms = {
             str(p.get("id")): p for p in env_config.get("platforms", [])
         }
@@ -196,19 +197,48 @@ def validate_pipeline_config(
                     )
 
         software = env_config.get("software", {})
-        pyflink_images = software.get("flinkPyflinkImages", {})
-        if not pyflink_images:
-            add(
-                "software.flinkPyflinkImages",
-                "environment.yaml missing software.flinkPyflinkImages",
-            )
+        if framework == "pyflink":
+            pyflink_images = software.get("flinkPyflinkImages", {})
+            if not pyflink_images:
+                add(
+                    "software.flinkPyflinkImages",
+                    "environment.yaml missing software.flinkPyflinkImages",
+                )
+            else:
+                for platform in platforms:
+                    if str(platform) not in pyflink_images:
+                        add(
+                            f"software.flinkPyflinkImages.{platform}",
+                            f"missing PyFlink image for platform {platform}",
+                        )
+        elif framework == "datajuicer":
+            datajuicer_images = software.get("dataJuicerImages", {})
+            if not datajuicer_images:
+                add(
+                    "software.dataJuicerImages",
+                    "environment.yaml missing software.dataJuicerImages",
+                )
+            else:
+                for platform in platforms:
+                    if str(platform) not in datajuicer_images:
+                        add(
+                            f"software.dataJuicerImages.{platform}",
+                            f"missing Data-Juicer image for platform {platform}",
+                        )
+            modalities = software.get("benchmarkModalities", ["text"])
+            if isinstance(modalities, list):
+                requested = {str(item) for item in modalities}
+            else:
+                requested = set(str(modalities).replace(",", " ").split())
+            unsupported = sorted(requested - {"text"})
+            if unsupported:
+                add(
+                    "software.benchmarkModalities",
+                    "Data-Juicer benchmark must skip GPU-heavy modalities; "
+                    f"unsupported: {', '.join(unsupported)}",
+                )
         else:
-            for platform in platforms:
-                if str(platform) not in pyflink_images:
-                    add(
-                        f"software.flinkPyflinkImages.{platform}",
-                        f"missing PyFlink image for platform {platform}",
-                    )
+            add("framework", f"unsupported environment framework: {framework}")
 
     bridge = project_config.get("bridge", {}) if project_config else {}
     if not isinstance(bridge, dict) or not bridge.get("repo"):

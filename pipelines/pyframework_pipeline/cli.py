@@ -14,6 +14,9 @@ def _load_adapter(framework: str):
     if framework == "pyflink":
         from .adapters.pyflink.environment import PyFlinkEnvironmentAdapter
         return PyFlinkEnvironmentAdapter()
+    if framework == "datajuicer":
+        from .adapters.datajuicer.environment import DataJuicerEnvironmentAdapter
+        return DataJuicerEnvironmentAdapter()
     raise ValueError(f"No environment adapter for framework: {framework}")
 
 
