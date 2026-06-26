@@ -3,11 +3,25 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import atexit
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_ROOT = REPO_ROOT / "examples" / "four-layer" / "pyflink-reference"
+PROJECT_CONFIG = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+
+
+def _ensure_environment_yaml_fixture() -> None:
+    env = PROJECT_CONFIG.parent / "environment.yaml"
+    example = PROJECT_CONFIG.parent / "environment.yaml.example"
+    if env.exists() or not example.exists():
+        return
+    env.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    atexit.register(lambda: env.exists() and env.unlink())
+
+
+_ensure_environment_yaml_fixture()
 
 
 class ValidateCliTest(unittest.TestCase):
@@ -69,7 +83,7 @@ class ValidateCliTest(unittest.TestCase):
         self.assertEqual(payload["projectId"], "pyflink-tpch-reference")
 
     def test_config_validate_rejects_placeholder_bridge_token(self) -> None:
-        project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+        project_config = PROJECT_CONFIG
 
         result = self.run_cli(
             "config", "validate", str(project_config),
@@ -85,7 +99,7 @@ class ValidateCliTest(unittest.TestCase):
         )
 
     def test_config_validate_can_skip_bridge_token_for_pre_bridge_checks(self) -> None:
-        project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+        project_config = PROJECT_CONFIG
 
         result = self.run_cli(
             "config", "validate", str(project_config), "--skip-bridge-token",
@@ -124,7 +138,7 @@ class ValidateCliTest(unittest.TestCase):
         )
 
     def test_run_stops_at_config_gate_without_bridge_token(self) -> None:
-        project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+        project_config = PROJECT_CONFIG
 
         result = self.run_cli("run", str(project_config), "--force")
 
@@ -134,7 +148,7 @@ class ValidateCliTest(unittest.TestCase):
         self.assertIn("PYFRAMEWORK_BRIDGE_TOKEN", result.stderr)
 
     def test_run_stop_before_bridge_does_not_require_bridge_token(self) -> None:
-        project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+        project_config = PROJECT_CONFIG
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = self.run_cli(
@@ -148,7 +162,7 @@ class ValidateCliTest(unittest.TestCase):
         self.assertNotIn("PYFRAMEWORK_BRIDGE_TOKEN", result.stderr)
 
     def test_run_can_stop_before_remote_steps_after_config_gate(self) -> None:
-        project_config = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+        project_config = PROJECT_CONFIG
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = self.run_cli(
@@ -160,6 +174,11 @@ class ValidateCliTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("ImportError", result.stderr)
+
+    def test_stop_before_6b_does_not_require_bridge_token(self) -> None:
+        from pyframework_pipeline.cli import _run_requires_bridge_token
+
+        self.assertFalse(_run_requires_bridge_token("6b"))
 
     def copy_tree(self, source: Path, destination: Path) -> None:
         for item in source.rglob("*"):

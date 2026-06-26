@@ -152,6 +152,29 @@ class AcquisitionValidateTest(unittest.TestCase):
             output = json.loads(result.stdout)
             self.assertEqual(output["status"], "ok")
 
+    def test_validate_rejects_invalid_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            manifest = {
+                "schemaVersion": 2,
+                "projectId": "test",
+                "platform": "arm",
+                "runDir": str(run_dir),
+                "timing": {"status": "pending"},
+                "perf": {"status": "pending"},
+                "asm": {"status": "pending"},
+            }
+            (run_dir / "acquisition-manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+
+            result = CliInvoker.run("acquire", "validate", str(run_dir))
+
+        self.assertEqual(result.returncode, 1)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "error")
+        self.assertIn("schemaVersion", "\n".join(output["errors"]))
+
 
 class ManifestModelTest(unittest.TestCase):
     """Test AcquisitionManifest data model."""

@@ -51,8 +51,35 @@ def deploy_plan(
 
     def _save_record(record: dict) -> None:
         _record_dir.mkdir(parents=True, exist_ok=True)
-        (_record_dir / "deploy-record.json").write_text(
-            json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+        payload = json.dumps(record, indent=2, ensure_ascii=False)
+        for name in ("deploy-record.json", "environment-record.json"):
+            (_record_dir / name).write_text(payload, encoding="utf-8")
+
+    def _save_readiness_report(record: dict, project_id: str) -> None:
+        plan_steps_by_id = {s.get("id", ""): s for s in steps}
+        checks = []
+        for step in record.get("steps", []):
+            plan_step = plan_steps_by_id.get(step.get("id", ""))
+            if not plan_step:
+                continue
+            if plan_step.get("kind") not in ("framework-readiness", "framework-smoke-test"):
+                continue
+            status = step.get("status", "unknown")
+            checks.append({
+                "id": step.get("id", ""),
+                "status": status if status in ("passed", "failed") else "unknown",
+                "message": plan_step.get("description", ""),
+            })
+        report = {
+            "schemaVersion": 1,
+            "projectId": project_id,
+            "platform": platform_id,
+            "status": "ready" if checks and all(c["status"] == "passed" for c in checks) else "not-ready",
+            "checks": checks,
+        }
+        _record_dir.mkdir(parents=True, exist_ok=True)
+        (_record_dir / "readiness-report.json").write_text(
+            json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
     def _fail(step_id: str, description: str, command: str,
@@ -208,7 +235,10 @@ def deploy_plan(
             return _fail(step_id, description, command, result.returncode, stderr_snippet)
         else:
             logger.info("[Step %s] Passed", step_id)
-            record_steps.append({"id": step_id, "status": "passed", "exitCode": 0})
+            step_record = {"id": step_id, "status": "passed", "exitCode": 0}
+            if step.get("mutatesHost"):
+                step_record["note"] = "executed by environment deploy"
+            record_steps.append(step_record)
             passed += 1
 
     finished_at = _now_iso()
@@ -231,6 +261,7 @@ def deploy_plan(
     }
 
     _save_record(record)
+    _save_readiness_report(record, project_id)
 
     return {
         "status": "failed" if failed > 0 else "completed",

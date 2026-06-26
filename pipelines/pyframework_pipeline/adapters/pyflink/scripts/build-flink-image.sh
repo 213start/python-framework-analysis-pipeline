@@ -28,8 +28,23 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.14.3}"
 TM_COUNT="${TM_COUNT:-2}"
 USE_TMPFS="${USE_TMPFS:-true}"
 MAKEOPTS="${MAKEOPTS:--j$(($(nproc 2>/dev/null || echo 4) / 2))}"
+PIP_INDEX_URL="${PIP_INDEX_URL:-}"
+PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-}"
+PIP_TRUSTED_HOSTS="${PIP_TRUSTED_HOSTS:-pypi.org files.pythonhosted.org pypi.python.org}"
+PIP_TIMEOUT="${PIP_TIMEOUT:-120}"
+PIP_RETRIES="${PIP_RETRIES:-10}"
 PYENV_ROOT="/root/.pyenv"
-PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host pypi.python.org"
+PIP_INSTALL_ARGS="--timeout $PIP_TIMEOUT --retries $PIP_RETRIES"
+if [ -n "$PIP_INDEX_URL" ]; then
+    PIP_INSTALL_ARGS="$PIP_INSTALL_ARGS --index-url $PIP_INDEX_URL"
+fi
+if [ -n "$PIP_EXTRA_INDEX_URL" ]; then
+    PIP_INSTALL_ARGS="$PIP_INSTALL_ARGS --extra-index-url $PIP_EXTRA_INDEX_URL"
+fi
+for trusted_host in $PIP_TRUSTED_HOSTS; do
+    PIP_INSTALL_ARGS="$PIP_INSTALL_ARGS --trusted-host $trusted_host"
+done
+PIP="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/pip"
 PYTHON="$PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3"
 
 # Forward proxy env vars into docker exec calls (container doesn't inherit host env)
@@ -49,6 +64,9 @@ echo "  NETWORK=$NETWORK"
 echo "  PYTHON_VERSION=$PYTHON_VERSION"
 echo "  TM_COUNT=$TM_COUNT"
 echo "  BUILD_CONTAINER=$BUILD_CONTAINER"
+if [ -n "$PIP_INDEX_URL" ]; then
+    echo "  PIP_INDEX_URL=$PIP_INDEX_URL"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 1: Start or reuse build container
@@ -109,23 +127,31 @@ retry() {
 
 # Install pyenv via official Basic GitHub Checkout
 echo '  Installing pyenv...'
-retry 'git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT'
+if [ -x $PYENV_ROOT/bin/pyenv ]; then
+    echo '  pyenv already installed'
+else
+    retry 'git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT'
+fi
 export PYENV_ROOT=$PYENV_ROOT
 export PATH=\$PYENV_ROOT/bin:\$PATH
 eval \"\$(pyenv init -)\"
 
-# Pre-cache Python source (pyenv auto-detects ~/.pyenv/cache)
-echo '  Pre-caching Python $PYTHON_VERSION source...'
-mkdir -p \$PYENV_ROOT/cache
-retry 'curl -k -o \$PYENV_ROOT/cache/Python-$PYTHON_VERSION.tar.xz https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz'
+if [ -x $PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3 ]; then
+    echo '  Python already installed:' \$($PYENV_ROOT/versions/$PYTHON_VERSION/bin/python3 --version)
+else
+    # Pre-cache Python source (pyenv auto-detects ~/.pyenv/cache)
+    echo '  Pre-caching Python $PYTHON_VERSION source...'
+    mkdir -p \$PYENV_ROOT/cache
+    retry 'curl -k -o \$PYENV_ROOT/cache/Python-$PYTHON_VERSION.tar.xz https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz'
 
-# Compile Python with LTO+PGO (PYTHON_BUILD_CURL_OPTS is the official way to pass -k)
-echo '  Compiling Python (this takes ~40 min)...'
-CFLAGS='-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer' \
-PYTHON_CONFIGURE_OPTS='--enable-optimizations --with-lto' \
-PYTHON_BUILD_CURL_OPTS='-k' \
-MAKEOPTS='$MAKEOPTS' \
-pyenv install $PYTHON_VERSION
+    # Compile Python with LTO+PGO (PYTHON_BUILD_CURL_OPTS is the official way to pass -k)
+    echo '  Compiling Python (this takes ~40 min)...'
+    CFLAGS='-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer' \
+    PYTHON_CONFIGURE_OPTS='--enable-optimizations --with-lto' \
+    PYTHON_BUILD_CURL_OPTS='-k' \
+    MAKEOPTS='$MAKEOPTS' \
+    pyenv install $PYTHON_VERSION
+fi
 
 pyenv global $PYTHON_VERSION
 echo '  Python compiled:' \$(python3 --version)
@@ -177,7 +203,7 @@ print('  Fixed certifi cacert.pem')
 PYEOF
 
 # Build tools
-$PIP install 'Cython>=3.2' setuptools==78.1.0 meson-python ninja meson
+$PIP install $PIP_INSTALL_ARGS 'Cython>=3.2' setuptools==78.1.0 meson-python ninja meson
 echo '  Build tools installed'
 "
 
@@ -210,20 +236,20 @@ retry() {
 
 # 1. numpy (beam's Cythonize requires it at build time)
 echo '  [4a] Installing numpy...'
-$PIP install numpy
+$PIP install $PIP_INSTALL_ARGS numpy
 
 # 2. apache-beam from source (Cython 3.2.4 generates 3.14-compatible C)
 echo '  [4b] Installing apache-beam 2.61.0 (from source, ~5 min)...'
-$PIP install apache-beam==2.61.0 --no-build-isolation --no-deps
+$PIP install $PIP_INSTALL_ARGS apache-beam==2.61.0 --no-build-isolation --no-deps
 
 # 3. apache-flink from source
 echo '  [4c] Installing apache-flink 2.2.0 (from source)...'
-$PIP install py4j==0.10.9.7
-$PIP install apache-flink==2.2.0 apache-flink-libraries==2.2.0 --no-build-isolation --no-deps
+$PIP install $PIP_INSTALL_ARGS py4j==0.10.9.7
+$PIP install $PIP_INSTALL_ARGS apache-flink==2.2.0 apache-flink-libraries==2.2.0 --no-build-isolation --no-deps
 
 # 4. Runtime deps (versions verified on kunpeng ARM)
 echo '  [4d] Installing runtime dependencies...'
-$PIP install \
+$PIP install $PIP_INSTALL_ARGS \
     dill==0.4.1 \
     sortedcontainers==2.4.0 \
     zstandard==0.25.0 \
@@ -253,41 +279,46 @@ $PIP install \
     ruamel.yaml==0.19.1 \
     pandas
 
-# 5. pyarrow 23 (Python 3.14 requires >=23, source build against system Arrow C++)
-echo '  [4e] Installing Apache Arrow C++ dev packages...'
-apt-get install -y lsb-release wget
-retry wget -q https://apache.jfrog.io/artifactory/arrow/\$(lsb_release --id --short | tr A-Z a-z)/apache-arrow-apt-source-latest-\$(lsb_release --codename --short).deb -O /tmp/arrow-apt.deb
-dpkg -i /tmp/arrow-apt.deb
-apt-get update -qq
-apt-get install -y libarrow-dev libparquet-dev libarrow-dataset-dev libarrow-acero-dev
-echo '  Arrow C++ dev packages installed'
+# 5. pyarrow 23 (Python 3.14 requires >=23)
+echo '  [4e] Installing pyarrow 23.0.1...'
+if $PIP install $PIP_INSTALL_ARGS --only-binary=:all: pyarrow==23.0.1; then
+    echo '  pyarrow wheel installed'
+else
+    echo '  pyarrow wheel unavailable; falling back to source build'
+    apt-get install -y lsb-release wget
+    retry wget -q https://apache.jfrog.io/artifactory/arrow/\$(lsb_release --id --short | tr A-Z a-z)/apache-arrow-apt-source-latest-\$(lsb_release --codename --short).deb -O /tmp/arrow-apt.deb
+    dpkg -i /tmp/arrow-apt.deb
+    apt-get update -qq
+    apt-get install -y libarrow-dev libparquet-dev libarrow-dataset-dev libarrow-acero-dev
+    echo '  Arrow C++ dev packages installed'
 
-# Install cmake (required for pyarrow source build)
-$PIP install cmake ninja
+    # Install cmake (required for pyarrow source build)
+    $PIP install $PIP_INSTALL_ARGS cmake ninja
 
-# Download pyarrow source manually (pip install fails due to dynamic version 0.0.0)
-echo '  [4f] Downloading pyarrow 23.0.1 source...'
-cd /tmp && mkdir -p pyarrow-build && cd pyarrow-build
-retry curl -sSL https://files.pythonhosted.org/packages/88/22/134986a4cc224d593c1afde5494d18ff629393d74cc2eddb176669f234a4/pyarrow-23.0.1.tar.gz -o pyarrow-23.0.1.tar.gz
-tar xzf pyarrow-23.0.1.tar.gz
-cd pyarrow-23.0.1
+    # Download pyarrow source manually (pip install can fail due to dynamic version 0.0.0)
+    echo '  [4f] Downloading pyarrow 23.0.1 source...'
+    cd /tmp && mkdir -p pyarrow-build && cd pyarrow-build
+    retry curl -sSL https://files.pythonhosted.org/packages/88/22/134986a4cc224d593c1afde5494d18ff629393d74cc2eddb176669f234a4/pyarrow-23.0.1.tar.gz -o pyarrow-23.0.1.tar.gz
+    tar xzf pyarrow-23.0.1.tar.gz
+    cd pyarrow-23.0.1
 
-echo '  [4f] Building pyarrow 23.0.1 (~15 min, C++ compilation)...'
-PYARROW_WITH_CUDA=0 \
-PYARROW_WITH_FLIGHT=0 \
-PYARROW_WITH_GANDIVA=0 \
-PYARROW_WITH_ORC=0 \
-PYARROW_WITH_SUBSTRAIT=0 \
-PYARROW_WITH_AZURE=0 \
-PYARROW_WITH_GCS=0 \
-PYARROW_WITH_S3=0 \
-PYARROW_WITH_HDFS=0 \
-PYARROW_WITH_PARQUET=1 \
-PYARROW_WITH_DATASET=1 \
-PYARROW_WITH_ACERO=1 \
-CMAKE_BUILD_PARALLEL_LEVEL=$(($(nproc 2>/dev/null || echo 4) / 2)) \
-$PIP install . --no-build-isolation
-echo '  pyarrow installed'
+    echo '  [4f] Building pyarrow 23.0.1 (~15 min, C++ compilation)...'
+    PYARROW_WITH_CUDA=0 \
+    PYARROW_WITH_FLIGHT=0 \
+    PYARROW_WITH_GANDIVA=0 \
+    PYARROW_WITH_ORC=0 \
+    PYARROW_WITH_SUBSTRAIT=0 \
+    PYARROW_WITH_AZURE=0 \
+    PYARROW_WITH_GCS=0 \
+    PYARROW_WITH_S3=0 \
+    PYARROW_WITH_HDFS=0 \
+    PYARROW_WITH_PARQUET=1 \
+    PYARROW_WITH_DATASET=1 \
+    PYARROW_WITH_ACERO=1 \
+    CMAKE_BUILD_PARALLEL_LEVEL=$(($(nproc 2>/dev/null || echo 4) / 2)) \
+    $PIP install $PIP_INSTALL_ARGS . --no-build-isolation
+    echo '  pyarrow source build installed'
+fi
 
 echo '  All Python deps installed.'
 "

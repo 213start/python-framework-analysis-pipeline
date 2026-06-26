@@ -36,6 +36,10 @@ def validate_node(instance: Any, schema: JsonObject, path: str, issues: list[Sch
     if enum_values is not None and instance not in enum_values:
         issues.append(SchemaIssue(path=path, message=f"expected one of {enum_values!r}, got {instance!r}"))
 
+    const_value = schema.get("const")
+    if "const" in schema and instance != const_value:
+        issues.append(SchemaIssue(path=path, message=f"expected {const_value!r}, got {instance!r}"))
+
     min_length = schema.get("minLength")
     if isinstance(min_length, int) and isinstance(instance, str) and len(instance) < min_length:
         issues.append(SchemaIssue(path=path, message=f"expected length >= {min_length}"))

@@ -102,6 +102,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     env_validate_parser.add_argument("run_dir", help="运行目录")
 
+    # environment preflight
+    env_preflight_parser = env_sub.add_parser(
+        "preflight",
+        help="[S3] 只读远端环境预检（SSH/Docker/perf 状态）。",
+    )
+    env_preflight_parser.add_argument("project", help="project.yaml 路径")
+    env_preflight_parser.add_argument("--platform", required=True, help="目标平台 ID")
+    env_preflight_parser.add_argument("--output", help="输出目录")
+    env_preflight_parser.add_argument(
+        "--timeout",
+        type=int,
+        help="覆盖每条远端预检命令的超时时间（秒）",
+    )
+
     # workload [Step 4]
     workload_parser = subparsers.add_parser(
         "workload",
@@ -392,7 +406,7 @@ def _cmd_run(args) -> int:
 def _run_requires_bridge_token(stop_before: str | None) -> bool:
     if stop_before is None:
         return True
-    step_ids = ["3", "4", "5a", "5b", "5c", "6", "7"]
+    step_ids = ["3", "4", "5a", "5b", "5b.1", "5b.2", "5b.2b", "5b.3", "5c", "6", "6b", "7"]
     if stop_before not in step_ids:
         return True
     return step_ids.index(stop_before) > step_ids.index("7")
@@ -416,6 +430,8 @@ def _handle_environment(args) -> int:
         return _cmd_env_teardown(args)
     if args.env_command == "validate":
         return _cmd_env_validate(args)
+    if args.env_command == "preflight":
+        return _cmd_env_preflight(args)
     return 2
 
 
@@ -489,6 +505,20 @@ def _cmd_env_validate(args) -> int:
     report = validate_run(run_dir, schemas)
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     return 0 if report.status == "ok" else 1
+
+
+def _cmd_env_preflight(args) -> int:
+    from .environment.preflight import run_preflight
+
+    output_dir = Path(args.output) if args.output else None
+    report = run_preflight(
+        Path(args.project),
+        args.platform,
+        output_dir=output_dir,
+        check_timeout=args.timeout,
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 1 if report["status"] == "error" else 0
 
 
 # ---------------------------------------------------------------------------
@@ -678,8 +708,6 @@ def _cmd_acquire_asm(args) -> int:
 
 
 def _cmd_acquire_validate(args) -> int:
-    import jsonschema as _js
-
     run_dir = Path(args.run_dir)
     manifest_path = run_dir / "acquisition-manifest.json"
 
@@ -694,10 +722,17 @@ def _cmd_acquire_validate(args) -> int:
     schema_path = _schemas_dir() / "acquisition-manifest.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
-    try:
-        _js.validate(instance=manifest_data, schema=schema)
-    except _js.ValidationError as e:
-        print(json.dumps({"status": "error", "errors": [str(e.message)]}, ensure_ascii=False, indent=2))
+    from .validators.schema import validate_json_schema
+
+    schema_issues = validate_json_schema(manifest_data, schema, "acquisition")
+    if schema_issues:
+        print(json.dumps({
+            "status": "error",
+            "errors": [
+                f"{issue.path}: {issue.message}"
+                for issue in schema_issues
+            ],
+        }, ensure_ascii=False, indent=2))
         return 1
 
     errors = []

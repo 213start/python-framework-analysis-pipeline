@@ -7,6 +7,7 @@ via the Flink REST API.
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from pyframework_pipeline.environment.planning import PlanStep
@@ -43,6 +44,13 @@ class PyFlinkEnvironmentAdapter:
         if registry:
             image = f"{registry}/{image}"
         network = software.get("containerNetwork", DEFAULT_NETWORK)
+        cluster_network_mode = software.get("clusterNetworkMode", "bridge")
+        if cluster_network_mode not in {"bridge", "host"}:
+            cluster_network_mode = "bridge"
+        cluster_network_arg = "--network host" if cluster_network_mode == "host" else f"--network {network}"
+        expected_network_mode = "host" if cluster_network_mode == "host" else network
+        jobmanager_rpc_address = "127.0.0.1" if cluster_network_mode == "host" else "flink-jm"
+        host_alias_arg = "--add-host $(hostname):127.0.0.1" if cluster_network_mode == "host" else ""
         tm_count = DEFAULT_TM_COUNT
         use_tmpfs = software.get("taskmanagerTmpfs", False)
         topology = software.get("clusterTopology", "")
@@ -78,11 +86,28 @@ class PyFlinkEnvironmentAdapter:
         base_image = software.get("flinkImage", DEFAULT_IMAGE)
         if registry:
             base_image = f"{registry}/{base_image}"
+        pip_trusted_hosts = software.get("pipTrustedHosts", "")
+        if isinstance(pip_trusted_hosts, list):
+            pip_trusted_hosts = " ".join(str(host) for host in pip_trusted_hosts)
+        pip_env = {
+            "PIP_INDEX_URL": software.get("pipIndexUrl", ""),
+            "PIP_EXTRA_INDEX_URL": software.get("pipExtraIndexUrl", ""),
+            "PIP_TRUSTED_HOSTS": pip_trusted_hosts,
+            "PIP_TIMEOUT": software.get("pipTimeout", ""),
+            "PIP_RETRIES": software.get("pipRetries", ""),
+        }
+        pip_env_assignments = " ".join(
+            f"{name}={shlex.quote(str(value))}"
+            for name, value in pip_env.items()
+            if value not in ("", None)
+        )
         build_env = (
             f"IMAGE_NAME={image} BASE_IMAGE={base_image} "
             f"NETWORK={network} PYTHON_VERSION={python_version} "
             f"TM_COUNT={tm_count} USE_TMPFS={'true' if use_tmpfs else 'false'}"
         )
+        if pip_env_assignments:
+            build_env = f"{build_env} {pip_env_assignments}"
         steps.append(PlanStep(
             id="build-flink-image",
             kind="build",
@@ -111,26 +136,21 @@ class PyFlinkEnvironmentAdapter:
         # Step 2: Start JobManager
         # JM needs --privileged for perf_event_open (same as TMs).
         jm_run_args = (
-            f"docker run -d --name flink-jm --network {network} "
-            f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
+            f"docker run -d --name flink-jm {cluster_network_arg} {host_alias_arg} "
+            f"-e FLINK_PROPERTIES='jobmanager.rpc.address: {jobmanager_rpc_address}' "
             f"--privileged {image} jobmanager"
         )
         steps.append(PlanStep(
             id="start-jobmanager",
             kind="framework-start",
             hostRef=host,
-            command=(
-                # Recreate if existing JM lacks --privileged.
-                f"if docker inspect flink-jm >/dev/null 2>&1; then "
-                f"priv=$(docker inspect -f '{{{{.HostConfig.Privileged}}}}' flink-jm); "
-                f"if [ \"$priv\" != \"true\" ]; then "
-                f"echo 'Recreating flink-jm with --privileged'; "
-                f"docker rm -f flink-jm; fi; fi && "
-                + _docker_reconcile_container(
-                    name="flink-jm",
-                    image=image,
-                    run_args=jm_run_args,
-                )
+            command=_docker_reconcile_container(
+                name="flink-jm",
+                image=image,
+                run_args=jm_run_args,
+                expected_network_mode=expected_network_mode,
+                require_privileged=True,
+                require_hostname_host_alias=cluster_network_mode == "host",
             ),
             description=f"Start JobManager container on {host_alias}",
             mutatesHost=True,
@@ -150,11 +170,14 @@ class PyFlinkEnvironmentAdapter:
                     name=f"flink-tm{i}",
                     image=image,
                     run_args=(
-                    f"docker run -d --name flink-tm{i} --network {network} "
-                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: flink-jm' "
+                    f"docker run -d --name flink-tm{i} {cluster_network_arg} {host_alias_arg} "
+                    f"-e FLINK_PROPERTIES='jobmanager.rpc.address: {jobmanager_rpc_address}' "
                     f"-e PYTHONPERFSUPPORT=1 "
                     f"{tmpfs_flag}{privileged_flag} {image} taskmanager"
                     ),
+                    expected_network_mode=expected_network_mode,
+                    require_privileged=True,
+                    require_hostname_host_alias=cluster_network_mode == "host",
                 ),
                 description=f"Start TaskManager {i} container on {host_alias}",
                 mutatesHost=True,
@@ -260,8 +283,43 @@ class PyFlinkEnvironmentAdapter:
         return steps
 
 
-def _docker_reconcile_container(name: str, image: str, run_args: str) -> str:
+def _docker_reconcile_container(
+    name: str,
+    image: str,
+    run_args: str,
+    expected_network_mode: str | None = None,
+    require_privileged: bool = False,
+    require_hostname_host_alias: bool = False,
+) -> str:
+    checks = "recreate=0; "
+    if expected_network_mode:
+        checks += (
+            f"network=$(docker inspect -f '{{{{.HostConfig.NetworkMode}}}}' {name}); "
+            f"if [ \"$network\" != \"{expected_network_mode}\" ]; then "
+            f"echo Recreating {name} for network mode {expected_network_mode}; "
+            f"recreate=1; fi; "
+        )
+    if require_privileged:
+        checks += (
+            f"priv=$(docker inspect -f '{{{{.HostConfig.Privileged}}}}' {name}); "
+            f"if [ \"$priv\" != \"true\" ]; then "
+            f"echo Recreating {name} with --privileged; "
+            f"recreate=1; fi; "
+        )
+    if require_hostname_host_alias:
+        checks += (
+            "expected_host=$(hostname):127.0.0.1; "
+            f"if ! docker inspect -f '{{{{range .HostConfig.ExtraHosts}}}}{{{{println .}}}}{{{{end}}}}' {name} "
+            "| grep -Fx \"$expected_host\" >/dev/null 2>&1; then "
+            f"echo Recreating {name} with host hostname mapping; "
+            f"recreate=1; fi; "
+        )
+    checks += f"if [ \"$recreate\" = \"1\" ]; then docker rm -f {name}; fi; "
+
     return (
+        f"if docker inspect {name} >/dev/null 2>&1; then "
+        f"{checks}"
+        f"fi; "
         f"if docker inspect {name} >/dev/null 2>&1; then "
         f"current=$(docker inspect -f '{{{{.Config.Image}}}}' {name}); "
         f"if [ \"$current\" = \"{image}\" ]; then "

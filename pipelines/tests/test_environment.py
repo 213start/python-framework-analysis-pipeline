@@ -5,11 +5,26 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import atexit
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "pipelines"))
 PROJECT_YAML = REPO_ROOT / "projects" / "pyflink-tpch-reference" / "project.yaml"
+
+
+def _ensure_environment_yaml_fixture() -> None:
+    env = PROJECT_YAML.parent / "environment.yaml"
+    example = PROJECT_YAML.parent / "environment.yaml.example"
+    if env.exists() or not example.exists():
+        return
+    env.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    atexit.register(lambda: env.exists() and env.unlink())
+
+
+_ensure_environment_yaml_fixture()
 
 
 class CliInvoker:
@@ -135,6 +150,40 @@ class EnvironmentPlanTest(unittest.TestCase):
         self.assertIn("docker inspect -f '{{.Config.Image}}' flink-jm", start_step["command"])
         self.assertIn("docker rm -f flink-jm", start_step["command"])
         self.assertIn("flink-pyflink:2.2.0-py314-x86-final", start_step["command"])
+
+    def test_plan_supports_host_cluster_network_mode(self) -> None:
+        from pyframework_pipeline.adapters.pyflink.environment import PyFlinkEnvironmentAdapter
+
+        adapter = PyFlinkEnvironmentAdapter()
+        steps = adapter.get_plan_steps(
+            platform="arm",
+            platform_config={
+                "arch": "aarch64",
+                "hosts": [
+                    {"role": "jobmanager", "hostRef": "test-host"},
+                    {"role": "taskmanager", "hostRef": "test-host"},
+                ],
+            },
+            software={
+                "flinkPyflinkImages": {"arm": "my-flink:latest"},
+                "containerNetwork": "test-net",
+                "clusterNetworkMode": "host",
+            },
+            host_refs={"test-host": {"alias": "1.2.3.4"}},
+        )
+        start_jm = next(s for s in steps if s.id == "start-jobmanager")
+        start_tm = next(s for s in steps if s.id == "start-taskmanager-1")
+
+        self.assertIn("--network host", start_jm.command)
+        self.assertIn("--network host", start_tm.command)
+        self.assertIn("--add-host $(hostname):127.0.0.1", start_jm.command)
+        self.assertIn("--add-host $(hostname):127.0.0.1", start_tm.command)
+        self.assertIn("jobmanager.rpc.address: 127.0.0.1", start_jm.command)
+        self.assertIn("jobmanager.rpc.address: 127.0.0.1", start_tm.command)
+        self.assertIn("HostConfig.NetworkMode", start_jm.command)
+        self.assertIn("HostConfig.ExtraHosts", start_jm.command)
+        self.assertIn("Recreating flink-jm for network mode host", start_jm.command)
+        self.assertIn("Recreating flink-jm with host hostname mapping", start_jm.command)
 
     def test_plan_contains_profiling_tool_steps(self) -> None:
         result = CliInvoker.run(
@@ -342,6 +391,249 @@ class EnvironmentValidateTest(unittest.TestCase):
         self.assertIn("not found in plan", messages)
 
 
+class EnvironmentDeployRecordTest(unittest.TestCase):
+    """Test deploy outputs validate-ready record files."""
+
+    def test_deploy_writes_environment_record_and_readiness_report(self) -> None:
+        from pyframework_pipeline.environment.deploy import deploy_plan
+
+        class FakeExecutor:
+            def run(self, *_args, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+            def push_file(self, *_args, **_kwargs):
+                return True
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            plan = {
+                "schemaVersion": 1,
+                "projectId": "pyflink-tpch-reference",
+                "platform": "arm",
+                "planHash": "sha256:test",
+                "steps": [
+                    {
+                        "id": "start-jobmanager",
+                        "kind": "framework-start",
+                        "hostRef": "arm-host",
+                        "command": "true",
+                        "description": "Start JobManager",
+                        "mutatesHost": True,
+                    },
+                    {
+                        "id": "readiness-cluster-health",
+                        "kind": "framework-readiness",
+                        "hostRef": "arm-host",
+                        "command": "true",
+                        "description": "Cluster health",
+                    },
+                ],
+            }
+            plan_path = tmp_dir / "environment-plan.json"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            with patch(
+                "pyframework_pipeline.environment.deploy.build_executor",
+                return_value=FakeExecutor(),
+            ):
+                result = deploy_plan(
+                    PROJECT_YAML,
+                    "arm",
+                    plan_path,
+                    output_dir=tmp_dir,
+                    yes=True,
+                )
+
+            self.assertEqual(result["status"], "completed")
+            self.assertTrue((tmp_dir / "deploy-record.json").exists())
+            self.assertTrue((tmp_dir / "environment-record.json").exists())
+            self.assertTrue((tmp_dir / "readiness-report.json").exists())
+            record = json.loads((tmp_dir / "environment-record.json").read_text())
+            readiness = json.loads((tmp_dir / "readiness-report.json").read_text())
+
+        mutating = next(s for s in record["steps"] if s["id"] == "start-jobmanager")
+        self.assertIn("note", mutating)
+        self.assertEqual(readiness["status"], "ready")
+        self.assertEqual(readiness["checks"][0]["id"], "readiness-cluster-health")
+
+
+class EnvironmentPreflightTest(unittest.TestCase):
+    """Test read-only remote environment preflight reports."""
+
+    def test_preflight_records_commands_and_overall_status(self) -> None:
+        from collections import namedtuple
+        from pyframework_pipeline.environment.preflight import run_preflight
+
+        Result = namedtuple("Result", "returncode stdout stderr")
+
+        class FakeExecutor:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+
+            def run(self, command: str, timeout: int = 30):
+                self.commands.append(command)
+                if "docker info" in command:
+                    return Result(1, "Docker version 18.09.0", "daemon unavailable")
+                return Result(0, "ok", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            report = run_preflight(
+                PROJECT_YAML,
+                "arm",
+                output_dir=output,
+                executor_factory=lambda _host_ref, _env: FakeExecutor(),
+            )
+
+            self.assertEqual(report["status"], "error")
+            self.assertEqual(report["platform"], "arm")
+            self.assertEqual(report["hostRef"], "arm-host")
+            self.assertGreaterEqual(len(report["checks"]), 4)
+            self.assertTrue(
+                all(check["mutatesHost"] is False for check in report["checks"])
+            )
+            docker_check = next(c for c in report["checks"] if c["id"] == "docker")
+            self.assertEqual(docker_check["exitCode"], 1)
+            self.assertIn("daemon unavailable", docker_check["stderr"])
+
+            saved = json.loads((output / "preflight-report.json").read_text())
+            self.assertEqual(saved["status"], "error")
+
+    def test_preflight_warns_when_perf_or_target_image_not_ready(self) -> None:
+        from collections import namedtuple
+        from pyframework_pipeline.environment.preflight import run_preflight
+
+        Result = namedtuple("Result", "returncode stdout stderr")
+
+        class FakeExecutor:
+            def run(self, command: str, timeout: int = 30):
+                if "perf_event_paranoid" in command:
+                    return Result(0, "kernel.perf_event_paranoid = 2", "")
+                if "docker images" in command:
+                    return Result(0, "cinderx-pyperf-realenv:arm64 3.83GB", "")
+                return Result(0, "ok", "")
+
+        report = run_preflight(
+            PROJECT_YAML,
+            "arm",
+            executor_factory=lambda _host_ref, _env: FakeExecutor(),
+        )
+
+        self.assertEqual(report["status"], "warning")
+        messages = "\n".join(report["warnings"])
+        self.assertIn("kernel.perf_event_paranoid", messages)
+        self.assertIn("flink-pyflink:2.2.0-py314-arm-final", messages)
+
+    def test_preflight_warns_when_resources_are_tight(self) -> None:
+        from collections import namedtuple
+        from pyframework_pipeline.environment.preflight import run_preflight
+
+        Result = namedtuple("Result", "returncode stdout stderr")
+
+        class FakeExecutor:
+            def run(self, command: str, timeout: int = 30):
+                if "df -Pk" in command:
+                    return Result(
+                        0,
+                        "\n".join([
+                            "Filesystem 1024-blocks Used Available Capacity Mounted on",
+                            "/dev/vda1 10485760 8388608 2097152 80% /",
+                            "Mem: 2048 1024 1024 0 0 1024",
+                        ]),
+                        "",
+                    )
+                if "docker images" in command:
+                    return Result(0, "flink-pyflink:2.2.0-py314-arm-final 4GB", "")
+                if "perf_event_paranoid" in command:
+                    return Result(0, "kernel.perf_event_paranoid = 0", "")
+                return Result(0, "ok", "")
+
+        report = run_preflight(
+            PROJECT_YAML,
+            "arm",
+            executor_factory=lambda _host_ref, _env: FakeExecutor(),
+        )
+
+        self.assertEqual(report["status"], "warning")
+        messages = "\n".join(report["warnings"])
+        self.assertIn("disk", messages.lower())
+        self.assertIn("memory", messages.lower())
+
+    def test_resource_parser_ignores_free_output_for_disk(self) -> None:
+        from pyframework_pipeline.environment.preflight import (
+            _parse_min_available_disk_kb,
+        )
+
+        stdout = "\n".join([
+            "Filesystem     1024-blocks      Used  Available Capacity Mounted on",
+            "/dev/nvme3n1p4  3885910168 107847072 3778063096       3% /",
+            "               total        used        free      shared  buff/cache   available",
+            "Mem:          515697        6397      480470         146       32237      509300",
+            "Swap:          16383           0       16383",
+        ])
+
+        self.assertEqual(_parse_min_available_disk_kb(stdout), 3778063096)
+
+    def test_preflight_stops_after_host_connectivity_failure(self) -> None:
+        from collections import namedtuple
+        from pyframework_pipeline.environment.preflight import run_preflight
+
+        Result = namedtuple("Result", "returncode stdout stderr")
+
+        class FakeExecutor:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def run(self, command: str, timeout: int = 30):
+                self.calls += 1
+                return Result(255, "", "Connection closed by UNKNOWN port 65535")
+
+        executor = FakeExecutor()
+        report = run_preflight(
+            PROJECT_YAML,
+            "x86",
+            executor_factory=lambda _host_ref, _env: executor,
+        )
+
+        self.assertEqual(report["status"], "error")
+        self.assertEqual(executor.calls, 1)
+        self.assertEqual(report["checks"][0]["id"], "host")
+        skipped = [c for c in report["checks"] if c.get("skipped")]
+        self.assertGreaterEqual(len(skipped), 1)
+        self.assertTrue(all(c["exitCode"] is None for c in skipped))
+
+    def test_preflight_allows_check_timeout_override(self) -> None:
+        from collections import namedtuple
+        from pyframework_pipeline.environment.preflight import run_preflight
+
+        Result = namedtuple("Result", "returncode stdout stderr")
+
+        class FakeExecutor:
+            def __init__(self) -> None:
+                self.timeouts: list[int] = []
+
+            def run(self, command: str, timeout: int = 30):
+                self.timeouts.append(timeout)
+                if "perf_event_paranoid" in command:
+                    return Result(0, "kernel.perf_event_paranoid = 0", "")
+                if "docker images" in command:
+                    return Result(0, "flink-pyflink:2.2.0-py314-x86-final 4GB", "")
+                return Result(0, "ok", "")
+
+        executor = FakeExecutor()
+        report = run_preflight(
+            PROJECT_YAML,
+            "x86",
+            executor_factory=lambda _host_ref, _env: executor,
+            check_timeout=120,
+        )
+
+        self.assertEqual(report["status"], "ok")
+        self.assertTrue(executor.timeouts)
+        self.assertTrue(all(timeout == 120 for timeout in executor.timeouts))
+        self.assertTrue(all(c["timeout"] == 120 for c in report["checks"]))
+
+
 class YamlParserTest(unittest.TestCase):
     """Test the environment YAML parser."""
 
@@ -415,6 +707,47 @@ class SshExecutorEnvTest(unittest.TestCase):
         # The @ and : in the value should be properly quoted
         self.assertIn("proxy=", remote_cmd)
 
+    def test_uses_explicit_ssh_config_for_ssh_and_scp(self) -> None:
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        ssh_config = Path("/tmp/test-ssh-config")
+        executor = SshExecutor(host="myhost", ssh_config=ssh_config)
+
+        ssh_args = executor._build_ssh_args("echo hi")
+        scp_args = ["scp", *executor._scp_options()]
+
+        self.assertIn("-F", ssh_args)
+        self.assertIn(str(ssh_config), ssh_args)
+        self.assertIn("-F", scp_args)
+        self.assertIn(str(ssh_config), scp_args)
+
+    def test_run_timeout_returns_completed_process(self) -> None:
+        import subprocess
+        from unittest.mock import patch
+
+        from pyframework_pipeline.acquisition.ssh_executor import SshExecutor
+
+        executor = SshExecutor(host="myhost")
+
+        def raise_timeout(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired(
+                cmd=["ssh", "myhost"],
+                timeout=7,
+                output="partial stdout",
+                stderr="partial stderr",
+            )
+
+        with patch(
+            "pyframework_pipeline.acquisition.ssh_executor.subprocess.run",
+            side_effect=raise_timeout,
+        ):
+            result = executor.run("echo hi", timeout=7)
+
+        self.assertEqual(result.returncode, 124)
+        self.assertIn("partial stdout", result.stdout)
+        self.assertIn("partial stderr", result.stderr)
+        self.assertIn("TIMEOUT after 7s", result.stderr)
+
 
 class DockerRegistryTest(unittest.TestCase):
     """Test dockerRegistry prefix in environment plans."""
@@ -466,6 +799,63 @@ class DockerRegistryTest(unittest.TestCase):
 
         self.assertIn("my-flink:latest", build_step.command)
         self.assertNotIn("registry.internal", build_step.command)
+
+    def test_pip_mirror_config_in_build_command(self) -> None:
+        from pyframework_pipeline.adapters.pyflink.environment import PyFlinkEnvironmentAdapter
+
+        adapter = PyFlinkEnvironmentAdapter()
+        steps = adapter.get_plan_steps(
+            platform="arm",
+            platform_config={
+                "hosts": [
+                    {"role": "jobmanager", "hostRef": "test-host"},
+                ],
+            },
+            software={
+                "flinkPyflinkImages": {"arm": "my-flink:latest"},
+                "containerNetwork": "test-net",
+                "pipIndexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
+                "pipTrustedHosts": ["pypi.tuna.tsinghua.edu.cn"],
+                "pipTimeout": 180,
+                "pipRetries": 12,
+            },
+            host_refs={"test-host": {"alias": "1.2.3.4"}},
+        )
+        build_step = next(s for s in steps if s.id == "build-flink-image")
+
+        self.assertIn(
+            "PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple",
+            build_step.command,
+        )
+        self.assertIn("PIP_TRUSTED_HOSTS=pypi.tuna.tsinghua.edu.cn", build_step.command)
+        self.assertIn("PIP_TIMEOUT=180", build_step.command)
+        self.assertIn("PIP_RETRIES=12", build_step.command)
+
+    def test_build_script_supports_pip_mirror_env(self) -> None:
+        script = Path(
+            "pipelines/pyframework_pipeline/adapters/pyflink/scripts/build-flink-image.sh"
+        ).read_text()
+
+        self.assertIn("PIP_INDEX_URL=", script)
+        self.assertIn("--index-url $PIP_INDEX_URL", script)
+        self.assertIn("$PIP install $PIP_INSTALL_ARGS", script)
+        self.assertIn("PIP_TRUSTED_HOSTS", script)
+
+    def test_build_script_can_reuse_existing_pyenv(self) -> None:
+        script = Path(
+            "pipelines/pyframework_pipeline/adapters/pyflink/scripts/build-flink-image.sh"
+        ).read_text()
+
+        self.assertIn("pyenv already installed", script)
+        self.assertIn("Python already installed", script)
+
+    def test_build_script_prefers_pyarrow_wheel(self) -> None:
+        script = Path(
+            "pipelines/pyframework_pipeline/adapters/pyflink/scripts/build-flink-image.sh"
+        ).read_text()
+
+        self.assertIn("--only-binary=:all: pyarrow==23.0.1", script)
+        self.assertIn("pyarrow wheel unavailable; falling back to source build", script)
 
 
 if __name__ == "__main__":
