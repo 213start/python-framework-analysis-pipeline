@@ -1,15 +1,19 @@
-"""Backward-compatible adapter contract exports."""
+"""Shared OOP contracts for the framework analysis pipeline."""
 
-from ..contracts.adapter import (
+from .adapter import (
     DisassemblySpec,
     FrameworkAdapter,
     PerfAttachSpec,
     WorkloadHandle,
 )
+from .step import RunContext, Step, StepError
 
 __all__ = [
     "DisassemblySpec",
     "FrameworkAdapter",
     "PerfAttachSpec",
+    "RunContext",
+    "Step",
+    "StepError",
     "WorkloadHandle",
 ]

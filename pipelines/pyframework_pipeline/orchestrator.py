@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .contracts.step import RunContext, StepError
+
 logger = logging.getLogger(__name__)
 
 
@@ -365,8 +367,105 @@ def run_pipeline(
     return 0
 
 
-class StepError(Exception):
-    """Raised when a pipeline step fails."""
+def _run_environment_deploy(
+    project_path: Path,
+    run_dir: Path,
+    platform: str,
+    *,
+    yes: bool = False,
+    force: bool = False,
+) -> None:
+    from .environment.deploy import deploy_plan
+
+    plan_path = run_dir / platform / "environment-plan.json"
+    # On resume/force, clear old plan + records so deploy re-generates
+    # and re-executes everything (including the --privileged check).
+    if force:
+        for old_file in [
+            plan_path,
+            run_dir / platform / "deploy-record.json",
+            run_dir / platform / "environment-record.json",
+            project_path.parent / "output" / platform / "deploy-record.json",
+        ]:
+            if old_file.exists():
+                old_file.unlink()
+                logger.info("Cleared old file: %s", old_file)
+
+    result = deploy_plan(project_path, platform, plan_path, yes=yes)
+    # Save record.
+    record = result.get("record", {})
+    if record:
+        record_dir = run_dir / platform
+        record_dir.mkdir(parents=True, exist_ok=True)
+        (record_dir / "environment-record.json").write_text(
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    if result.get("status") == "failed":
+        fs = result.get("failedStep", {})
+        cmd = fs.get("command", "")
+        stderr = fs.get("stderr", "")
+        desc = fs.get("description", "")
+        exit_code = fs.get("exitCode", "")
+        parts = [f"environment deploy failed: {result.get('failed', 0)} step(s) failed"]
+        if desc:
+            parts.append(f"  Step: {fs.get('id', '')} — {desc}")
+        if cmd:
+            parts.append(f"  Command: {cmd}")
+        if exit_code:
+            parts.append(f"  Exit code: {exit_code}")
+        if stderr:
+            parts.append(f"  stderr: {stderr[:500]}")
+        raise StepError("\n".join(parts))
+
+
+def _project_adapter(project_path: Path) -> tuple[Any | None, dict[str, Any]]:
+    try:
+        from .adapters.registry import get_adapter
+        from .config import load_environment_config
+
+        env_config = load_environment_config(project_path)
+    except FileNotFoundError:
+        return None, {}
+
+    framework_id = str(env_config.get("framework", ""))
+    if not framework_id:
+        return None, env_config
+    return get_adapter(framework_id), env_config
+
+
+def _execute_registered_step(
+    step_id: str,
+    project_path: Path,
+    run_dir: Path,
+    platform: str | None,
+    *,
+    yes: bool = False,
+    force: bool = False,
+) -> bool:
+    from .registry import get_registry
+    from .steps import register_builtin_steps
+
+    register_builtin_steps()
+    registry = get_registry()
+    if step_id not in registry.names():
+        return False
+
+    adapter, env_config = _project_adapter(project_path)
+    ctx = RunContext(
+        adapter=adapter,
+        project_path=project_path,
+        run_dir=run_dir,
+        platform=platform,
+        config={
+            "yes": yes,
+            "force": force,
+            "environment": env_config,
+            "framework_id": env_config.get("framework") if env_config else None,
+        },
+    )
+    registry.get(step_id)().run(ctx)
+    return True
 
 
 def _execute_step(
@@ -379,47 +478,26 @@ def _execute_step(
     force: bool = False,
 ) -> None:
     """Execute a single pipeline step."""
+    if _execute_registered_step(
+        step_id,
+        project_path,
+        run_dir,
+        platform,
+        yes=yes,
+        force=force,
+    ):
+        return
+
     if step_id == "3":
-        from .environment.deploy import deploy_plan
-        plan_path = run_dir / platform / "environment-plan.json"
-        # On resume/force, clear old plan + records so deploy re-generates
-        # and re-executes everything (including the --privileged check).
-        if force:
-            for old_file in [
-                plan_path,
-                run_dir / platform / "deploy-record.json",
-                run_dir / platform / "environment-record.json",
-                project_path.parent / "output" / platform / "deploy-record.json",
-            ]:
-                if old_file.exists():
-                    old_file.unlink()
-                    logger.info("Cleared old file: %s", old_file)
-        result = deploy_plan(project_path, platform, plan_path, yes=yes)
-        # Save record.
-        record = result.get("record", {})
-        if record:
-            record_dir = run_dir / platform
-            record_dir.mkdir(parents=True, exist_ok=True)
-            (record_dir / "environment-record.json").write_text(
-                json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        if result.get("status") == "failed":
-            fs = result.get("failedStep", {})
-            cmd = fs.get("command", "")
-            stderr = fs.get("stderr", "")
-            desc = fs.get("description", "")
-            exit_code = fs.get("exitCode", "")
-            parts = [f"environment deploy failed: {result.get('failed', 0)} step(s) failed"]
-            if desc:
-                parts.append(f"  Step: {fs.get('id', '')} — {desc}")
-            if cmd:
-                parts.append(f"  Command: {cmd}")
-            if exit_code:
-                parts.append(f"  Exit code: {exit_code}")
-            if stderr:
-                parts.append(f"  stderr: {stderr[:500]}")
-            raise StepError("\n".join(parts))
+        if platform is None:
+            raise StepError("step requires a platform")
+        _run_environment_deploy(
+            project_path,
+            run_dir,
+            platform,
+            yes=yes,
+            force=force,
+        )
 
     elif step_id == "4":
         _run_workload_deploy(project_path, run_dir, platform, yes=yes)
