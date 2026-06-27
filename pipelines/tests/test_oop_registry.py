@@ -145,5 +145,47 @@ class OrchestratorRegistryDispatchTest(unittest.TestCase):
             self.assertEqual(marker.read_text(encoding="utf-8"), "project.yaml:arm:True")
 
 
+class PerfRecordsCheckpointTest(unittest.TestCase):
+    def test_complete_perf_records_csv_is_valid_checkpoint(self) -> None:
+        from pyframework_pipeline.orchestrator import _perf_records_csv_is_complete
+
+        header = [
+            "platform_id", "arch", "python_version", "build_id", "benchmark",
+            "event", "children", "self", "period", "pid", "command",
+            "pid_command", "shared_object", "symbol", "ip", "category_top",
+            "category_sub", "category_reason", "source_report",
+            "sample_count", "instruction_text", "instruction_offset",
+            "instruction_share",
+        ]
+        row = [
+            "x86", "x86_64", "3.11.15", "", "data-juicer-text",
+            "cycles", "0.01", "0", "0", "", "dj-process",
+            "dj-process", "libc.so.6", "PyObject_Call", "", "CPython",
+            "", "symbol_regex:PyObject", "perf_report_csv",
+            "1", "", "", "",
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "perf_records.csv"
+            path.write_text(",".join(header) + "\n" + ",".join(row) + "\n", encoding="utf-8")
+
+            self.assertTrue(_perf_records_csv_is_complete(path))
+
+    def test_truncated_perf_records_csv_is_not_valid_checkpoint(self) -> None:
+        from pyframework_pipeline.orchestrator import _perf_records_csv_is_complete
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "perf_records.csv"
+            path.write_text(
+                "platform_id,arch,python_version,benchmark,event,children,self,period,"
+                "shared_object,symbol,category_top,source_report,sample_count\n"
+                "x86,x86_64,3.11.15,data-juicer-text,cycles,0.01,0,0,"
+                "libc.so.6,0x00007f497e9035cc,glibc",
+                encoding="utf-8",
+            )
+
+            self.assertFalse(_perf_records_csv_is_complete(path))
+
+
 if __name__ == "__main__":
     unittest.main()

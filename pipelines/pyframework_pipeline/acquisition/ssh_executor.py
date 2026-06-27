@@ -7,6 +7,7 @@ remote clusters when data files are not already present locally.
 from __future__ import annotations
 
 import logging
+import os
 import shlex
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 _SCP_TIMEOUT_SECONDS = 300
+_SFTP_TIMEOUT_SECONDS = 30
 
 
 class SshExecutor:
@@ -45,7 +47,12 @@ class SshExecutor:
             args.extend(["-p", str(self.port)])
         if self.key:
             args.extend(["-i", str(self.key)])
-        args.extend(["-o", "StrictHostKeyChecking=no"])
+        args.extend([
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=15",
+            "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=2",
+        ])
         return args
 
     def _scp_options(self) -> list[str]:
@@ -56,7 +63,12 @@ class SshExecutor:
             args.extend(["-P", str(self.port)])
         if self.key:
             args.extend(["-i", str(self.key)])
-        args.extend(["-o", "StrictHostKeyChecking=no"])
+        args.extend([
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=15",
+            "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=2",
+        ])
         return args
 
     def _build_ssh_args(self, command: str) -> list[str]:
@@ -187,14 +199,17 @@ class SshExecutor:
         *,
         recursive: bool = False,
         timeout: int = _SCP_TIMEOUT_SECONDS,
+        legacy_first: bool = True,
     ) -> bool:
-        for legacy_protocol in (True, False):
+        protocol_order = (True, False) if legacy_first else (False, True)
+        for legacy_protocol in protocol_order:
             args = self._scp_args(
                 recursive=recursive,
                 legacy_protocol=legacy_protocol,
             )
             args.extend([source, destination])
-            result = self._run_scp(args, timeout=timeout)
+            protocol_timeout = timeout if legacy_protocol else min(timeout, _SFTP_TIMEOUT_SECONDS)
+            result = self._run_scp(args, timeout=protocol_timeout)
             if result.returncode == 0:
                 return True
             mode = "legacy scp" if legacy_protocol else "sftp scp"
@@ -209,11 +224,24 @@ class SshExecutor:
     def fetch_file(self, remote_path: str, local_path: Path) -> bool:
         """Download a file from the remote host via scp."""
         local_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = local_path.with_name(f".{local_path.name}.tmp-{os.getpid()}")
+        temp_path.unlink(missing_ok=True)
         target = f"{self.user}@{self.host}" if self.user else self.host
-        ok = self._scp_transfer(f"{target}:{remote_path}", str(local_path))
-        if ok:
-            return True
-        return self._fetch_file_via_ssh_cat(remote_path, local_path)
+        ok = False
+        try:
+            ok = self._scp_transfer(
+                f"{target}:{remote_path}",
+                str(temp_path),
+                legacy_first=False,
+            )
+            if not ok:
+                ok = self._fetch_file_via_ssh_cat(remote_path, temp_path)
+            if ok:
+                temp_path.replace(local_path)
+                return True
+            return False
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     def _fetch_file_via_ssh_cat(self, remote_path: str, local_path: Path) -> bool:
         args = self._build_ssh_args(f"cat {shlex.quote(remote_path)}")
@@ -245,7 +273,11 @@ class SshExecutor:
     def push_file(self, local_path: Path, remote_path: str) -> bool:
         """Upload a file to the remote host via scp."""
         target = f"{self.user}@{self.host}" if self.user else self.host
-        return self._scp_transfer(str(local_path), f"{target}:{remote_path}")
+        return self._scp_transfer(
+            str(local_path),
+            f"{target}:{remote_path}",
+            legacy_first=False,
+        )
 
     def push_dir(self, local_dir: Path, remote_dir: str) -> bool:
         """Upload a directory to the remote host via scp -r."""

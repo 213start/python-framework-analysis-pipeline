@@ -6,6 +6,7 @@ in pipeline-run.json for resume-from-failure.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import textwrap
@@ -47,6 +48,22 @@ GLOBAL_STEPS = {"5c", "6", "6b", "7"}
 _STEP_ALIASES: dict[str, list[str]] = {
     "5b": ["5b.1", "5b.2", "5b.2b", "5b.3"],
 }
+
+_PERF_RECORD_REQUIRED_FIELDS = (
+    "platform_id",
+    "arch",
+    "python_version",
+    "benchmark",
+    "event",
+    "children",
+    "self",
+    "period",
+    "shared_object",
+    "symbol",
+    "category_top",
+    "source_report",
+    "sample_count",
+)
 
 
 def _resolve_step_alias(step: str) -> str:
@@ -1824,6 +1841,26 @@ def _parse_tm_count(env_config: dict) -> int:
     return 2  # fallback
 
 
+def _perf_records_csv_is_complete(path: Path) -> bool:
+    """Return True when perf_records.csv has a complete header and rows."""
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = reader.fieldnames or []
+            if any(field not in fieldnames for field in _PERF_RECORD_REQUIRED_FIELDS):
+                return False
+            row_count = 0
+            for row in reader:
+                row_count += 1
+                if None in row:
+                    return False
+                if any(row.get(field) is None for field in fieldnames):
+                    return False
+            return row_count > 0
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return False
+
+
 def _run_collect_substep(
     project_path: Path, run_dir: Path, platform: str,
     substep: str,
@@ -1864,8 +1901,13 @@ def _run_collect_substep(
 
     if substep == "5b.2":
         if perf_csv.exists() and perf_csv.stat().st_size > 0:
-            logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
-            return
+            if _perf_records_csv_is_complete(perf_csv):
+                logger.info("[5b.2] perf_records.csv exists, skipping perf-kits on %s", platform)
+                return
+            logger.warning(
+                "[5b.2] perf_records.csv is incomplete on %s, rerunning perf-kits",
+                platform,
+            )
         perf_container = _find_perf_container(executor, env_config)
         logger.info("[5b.2] Running perf-kits analysis pipeline on %s (timeout=600s)...", platform)
         benchmark = "tpch"
