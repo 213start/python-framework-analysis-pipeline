@@ -17,6 +17,9 @@ def _load_adapter(framework: str):
     if framework == "datajuicer":
         from .adapters.datajuicer.environment import DataJuicerEnvironmentAdapter
         return DataJuicerEnvironmentAdapter()
+    if framework == "udfbenchmarking":
+        from .adapters.udfbenchmarking.environment import UdfBenchmarkingEnvironmentAdapter
+        return UdfBenchmarkingEnvironmentAdapter()
     raise ValueError(f"No environment adapter for framework: {framework}")
 
 

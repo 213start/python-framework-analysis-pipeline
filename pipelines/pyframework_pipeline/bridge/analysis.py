@@ -1000,6 +1000,8 @@ def _resolve_framework_display(framework_id: str) -> str:
         "pyflink": "PyFlink",
         "pyspark": "PySpark",
         "cpython": "CPython 3.14",
+        "datajuicer": "Data-Juicer",
+        "udfbenchmarking": "UDF_Benchmarking",
     }
     return _map.get(framework_id, framework_id or "Python Framework")
 

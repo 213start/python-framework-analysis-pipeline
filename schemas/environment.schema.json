@@ -123,6 +123,138 @@
               "default": true
             }
           }
+        },
+        "pythonImage": {
+          "type": "string",
+          "description": "Base Python Docker image for single-container benchmark frameworks."
+        },
+        "dockerRegistry": {
+          "type": "string",
+          "description": "Optional registry prefix for base images."
+        },
+        "aptMirror": {
+          "type": "string",
+          "description": "Optional Debian apt mirror URL."
+        },
+        "aptSecurityMirror": {
+          "type": "string",
+          "description": "Optional Debian security apt mirror URL."
+        },
+        "pipIndexUrl": {
+          "type": "string",
+          "description": "Optional pip index URL."
+        },
+        "pipExtraIndexUrl": {
+          "type": "string",
+          "description": "Optional pip extra index URL."
+        },
+        "pipTrustedHosts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "pip trusted-host entries."
+        },
+        "pipTimeout": {
+          "type": "integer",
+          "description": "pip timeout in seconds."
+        },
+        "pipRetries": {
+          "type": "integer",
+          "description": "pip retry count."
+        },
+        "pySpyVersion": {
+          "type": "string",
+          "description": "Optional py-spy version pin."
+        },
+        "hfEndpoint": {
+          "type": "string",
+          "description": "Optional Hugging Face endpoint/mirror."
+        },
+        "dataJuicerVersion": {
+          "type": "string",
+          "description": "Data-Juicer package version."
+        },
+        "dataJuicerImage": {
+          "type": "string",
+          "description": "Fallback Data-Juicer Docker image."
+        },
+        "dataJuicerImages": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Platform-specific Data-Juicer Docker images."
+        },
+        "dataJuicerContainer": {
+          "type": "string",
+          "description": "Data-Juicer benchmark container name."
+        },
+        "benchmarkDataUrl": {
+          "type": "string",
+          "description": "Data-Juicer benchmark data archive URL."
+        },
+        "benchmarkDataMirrorUrl": {
+          "type": "string",
+          "description": "Optional Data-Juicer benchmark data mirror URL."
+        },
+        "benchmarkTextDataUrl": {
+          "type": "string",
+          "description": "Optional Data-Juicer text-only benchmark data URL."
+        },
+        "benchmarkUseFullArchive": {
+          "type": "boolean",
+          "description": "Whether to download and use the full benchmark archive."
+        },
+        "benchmarkTextRows": {
+          "type": "integer",
+          "description": "Synthetic text row count for Data-Juicer text-only benchmark."
+        },
+        "benchmarkModalities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Benchmark modalities."
+        },
+        "dataJuicerCacheHome": {
+          "type": "string",
+          "description": "Data-Juicer cache home inside the container."
+        },
+        "dataJuicerModelsCache": {
+          "type": "string",
+          "description": "Data-Juicer model cache directory inside the container."
+        },
+        "dataJuicerAssetsCache": {
+          "type": "string",
+          "description": "Data-Juicer assets cache directory inside the container."
+        },
+        "udfBenchmarkingRepo": {
+          "type": "string",
+          "description": "UDF_Benchmarking git repository URL."
+        },
+        "udfBenchmarkingRevision": {
+          "type": "string",
+          "description": "Optional UDF_Benchmarking git revision."
+        },
+        "udfBenchmarkingImage": {
+          "type": "string",
+          "description": "Fallback UDF_Benchmarking Docker image."
+        },
+        "udfBenchmarkingImages": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Platform-specific UDF_Benchmarking Docker images."
+        },
+        "udfBenchmarkingContainer": {
+          "type": "string",
+          "description": "UDF_Benchmarking benchmark container name."
+        },
+        "benchmarkName": {
+          "type": "string",
+          "description": "Benchmark case name to run and collect."
+        },
+        "benchmarkConfigFile": {
+          "type": "string",
+          "description": "Config file path relative to the benchmark workload directory."
+        },
+        "benchmarkTimeout": {
+          "type": "integer",
+          "description": "Benchmark timeout in seconds."
         }
       }
     },

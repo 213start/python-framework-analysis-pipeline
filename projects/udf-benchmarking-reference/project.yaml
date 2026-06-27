@@ -1,0 +1,18 @@
+id: udf-benchmarking-reference
+name: UDF Benchmarking Reference
+fourLayerRoot: .
+
+workload:
+  localDir: workload
+  benchmark: MockVideoE2EUDF
+  timeout: 1800
+
+bridge:
+  repo: stone31415/UDF_Benchmarking
+  platform: gitcode
+  tokenEnvVar: PYFRAMEWORK_BRIDGE_TOKEN
+
+run:
+  platforms:
+    - arm
+    - x86

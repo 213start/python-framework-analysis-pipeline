@@ -41,7 +41,7 @@ _CHECKS: list[dict[str, Any]] = [
     },
     {
         "id": "images",
-        "command": "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'flink-pyflink|data-juicer|python' || true",
+        "command": "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'flink-pyflink|data-juicer|udf-benchmarking|python' || true",
         "timeout": 30,
     },
 ]
@@ -170,6 +170,8 @@ def _target_image(env_config: dict[str, Any], platform: str) -> str:
     framework = str(env_config.get("framework", ""))
     if framework == "datajuicer":
         return str(software.get("dataJuicerImages", {}).get(platform, ""))
+    if framework == "udfbenchmarking":
+        return str(software.get("udfBenchmarkingImages", {}).get(platform, ""))
     return str(software.get("flinkPyflinkImages", {}).get(platform, ""))
 
 

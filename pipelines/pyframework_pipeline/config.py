@@ -237,6 +237,30 @@ def validate_pipeline_config(
                     "Data-Juicer benchmark must skip GPU-heavy modalities; "
                     f"unsupported: {', '.join(unsupported)}",
                 )
+        elif framework == "udfbenchmarking":
+            udf_images = software.get("udfBenchmarkingImages", {})
+            if not udf_images:
+                add(
+                    "software.udfBenchmarkingImages",
+                    "environment.yaml missing software.udfBenchmarkingImages",
+                )
+            else:
+                for platform in platforms:
+                    if str(platform) not in udf_images:
+                        add(
+                            f"software.udfBenchmarkingImages.{platform}",
+                            f"missing UDF_Benchmarking image for platform {platform}",
+                        )
+            if not software.get("udfBenchmarkingRepo"):
+                add(
+                    "software.udfBenchmarkingRepo",
+                    "environment.yaml missing software.udfBenchmarkingRepo",
+                )
+            if str(software.get("benchmarkConfigFile", "config.yaml")).startswith("/"):
+                add(
+                    "software.benchmarkConfigFile",
+                    "UDF_Benchmarking benchmarkConfigFile must be relative to the workload directory",
+                )
         else:
             add("framework", f"unsupported environment framework: {framework}")
 

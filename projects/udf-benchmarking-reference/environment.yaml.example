@@ -1,0 +1,63 @@
+schemaVersion: 1
+framework: udfbenchmarking
+mode: plan-only
+
+platforms:
+  - id: arm
+    arch: aarch64
+    hosts:
+      - role: client
+        hostRef: arm-host
+  - id: x86
+    arch: x86_64
+    hosts:
+      - role: client
+        hostRef: x86-host
+
+software:
+  pythonImage: python:3.11-slim
+  dockerRegistry: m.daocloud.io/docker.io
+  udfBenchmarkingRepo: https://gitcode.com/stone31415/UDF_Benchmarking.git
+  udfBenchmarkingRevision: e5f892d
+  udfBenchmarkingImages:
+    arm: udf-benchmarking-bench:py311-arm
+    x86: udf-benchmarking-bench:py311-x86
+  udfBenchmarkingContainer: udf-benchmarking-bench
+  benchmarkName: MockVideoE2EUDF
+  benchmarkConfigFile: config.yaml
+  benchmarkTimeout: 1800
+  aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian
+  aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security
+  pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple
+  pipTrustedHosts:
+    - pypi.tuna.tsinghua.edu.cn
+  pipTimeout: 180
+  pipRetries: 10
+  profilingTools:
+    - perf
+    - objdump
+    - py-spy
+  pythonFlamegraph:
+    enabled: true
+    rate: 100
+    subprocesses: true
+
+hostRefs:
+  arm-host:
+    connect: ssh
+    alias: blue-98
+    capabilities:
+      ssh: true
+      docker: true
+      internet: true
+      upload: true
+      download: true
+  x86-host:
+    connect: ssh
+    alias: zen5
+    capabilities:
+      ssh: true
+      docker: true
+      internet: true
+      upload: true
+      download: true
