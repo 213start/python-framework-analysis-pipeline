@@ -5,6 +5,7 @@ ARCH_TAG="${1:-$(uname -m)}"
 IMAGE_NAME="${IMAGE_NAME:-data-juicer-bench:1.5.2-py311-${ARCH_TAG}}"
 BASE_IMAGE="${BASE_IMAGE:-python:3.11-slim}"
 DATA_JUICER_VERSION="${DATA_JUICER_VERSION:-1.5.2}"
+PY_SPY_VERSION="${PY_SPY_VERSION:-}"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -14,6 +15,7 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 ARG DATA_JUICER_VERSION
+ARG PY_SPY_VERSION
 ARG HF_ENDPOINT
 ARG APT_MIRROR
 ARG APT_SECURITY_MIRROR
@@ -73,7 +75,13 @@ RUN set -eux; \
         "py-data-juicer==${DATA_JUICER_VERSION}" \
         "transformers==4.57.1" \
         sentencepiece; \
-    python -c "import data_juicer, transformers; print('data_juicer', data_juicer.__version__); print('transformers', transformers.__version__)"
+    if [ -n "${PY_SPY_VERSION}" ]; then \
+        python -m pip install "py-spy==${PY_SPY_VERSION}"; \
+    else \
+        python -m pip install py-spy; \
+    fi; \
+    python -c "import data_juicer, transformers; print('data_juicer', data_juicer.__version__); print('transformers', transformers.__version__)"; \
+    py-spy --version
 
 WORKDIR /workspace/benchmark
 CMD ["sleep", "infinity"]
@@ -82,6 +90,7 @@ DOCKERFILE
 build_args=(
   --build-arg "BASE_IMAGE=${BASE_IMAGE}"
   --build-arg "DATA_JUICER_VERSION=${DATA_JUICER_VERSION}"
+  --build-arg "PY_SPY_VERSION=${PY_SPY_VERSION:-}"
   --build-arg "HF_ENDPOINT=${HF_ENDPOINT:-}"
   --build-arg "APT_MIRROR=${APT_MIRROR:-}"
   --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-}"

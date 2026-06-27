@@ -51,10 +51,16 @@ software:
   #   - pypi.tuna.tsinghua.edu.cn
   # pipTimeout: 180
   # pipRetries: 10
+  # pySpyVersion: <version>  # Optional pin; unset uses the latest py-spy wheel from pip
+  pythonFlamegraph:
+    enabled: false       # Set true to run a separate py-spy flamegraph pass in step 5a
+    rate: 100            # py-spy sample rate in Hz
+    subprocesses: true   # Follow Data-Juicer multiprocessing workers
   profilingTools:
     - perf
     - objdump
     - readelf
+    # - py-spy          # Optional; checked automatically when pythonFlamegraph.enabled=true
 
 hostRefs:
   arm-host:

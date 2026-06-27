@@ -99,10 +99,30 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["perf", "strace", "objdump", "gdb", "readelf"]
+            "enum": ["perf", "strace", "objdump", "gdb", "readelf", "py-spy"]
           },
           "description": "Performance profiling tools to install in the environment.",
           "default": []
+        },
+        "pythonFlamegraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "rate": {
+              "type": "integer",
+              "description": "py-spy sample rate in Hz.",
+              "default": 100
+            },
+            "subprocesses": {
+              "type": "boolean",
+              "description": "Follow child Python processes when recording.",
+              "default": true
+            }
+          }
         }
       }
     },

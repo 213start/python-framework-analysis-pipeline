@@ -201,6 +201,29 @@ def _datajuicer_benchmark_name(env_config: dict[str, Any]) -> str:
     )
 
 
+def _datajuicer_python_flamegraph_config(env_config: dict[str, Any]) -> dict[str, Any]:
+    raw = env_config.get("software", {}).get("pythonFlamegraph", {})
+    if isinstance(raw, dict):
+        enabled = _config_bool(raw.get("enabled", False))
+        rate = int(raw.get("rate", 100) or 100)
+        subprocesses = _config_bool(raw.get("subprocesses", True))
+    else:
+        enabled = _config_bool(raw)
+        rate = 100
+        subprocesses = True
+    return {
+        "enabled": enabled,
+        "rate": rate,
+        "subprocesses": subprocesses,
+    }
+
+
+def _config_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -679,6 +702,7 @@ def _run_datajuicer_benchmark(
     force: bool = False,
 ) -> None:
     import shlex
+    import shutil
 
     container = _datajuicer_container(env_config)
     modalities = _datajuicer_modalities(workload, env_config)
@@ -686,6 +710,7 @@ def _run_datajuicer_benchmark(
     platform_run_dir = run_dir / platform
     platform_run_dir.mkdir(parents=True, exist_ok=True)
     timing_path = platform_run_dir / "timing" / "timing-normalized.json"
+    python_dir = platform_run_dir / "python"
 
     if force:
         _run_workload_deploy(project_path, run_dir, platform)
@@ -697,9 +722,109 @@ def _run_datajuicer_benchmark(
             if old.exists():
                 old.unlink()
                 logger.info("[5a] Force: removed old artifact %s", old.relative_to(run_dir))
+        if python_dir.exists():
+            shutil.rmtree(python_dir)
+            logger.info("[5a] Force: removed old artifact %s", python_dir.relative_to(run_dir))
 
     if timing_path.exists() and timing_path.stat().st_size > 0:
         logger.info("[5a] Data-Juicer timing exists, skipping benchmark on %s", platform)
+    else:
+        timeout = int(
+            workload.get(
+                "timeout",
+                env_config.get("software", {}).get("benchmarkTimeout", 1800),
+            )
+        )
+        remote_output = f"/tmp/pyframework-datajuicer-run-{platform}"
+        host_output = f"/tmp/pyframework-datajuicer-output-{platform}"
+        runner_args = (
+            f"--platform {shlex.quote(platform)} "
+            f"--output-dir {shlex.quote(remote_output)} "
+            f"--modalities {shlex.quote(modalities_arg)}"
+        )
+        script = (
+            "set -euo pipefail; "
+            f"rm -rf {shlex.quote(remote_output)} /tmp/perf-udf.data; "
+            "cd /workspace/benchmark; "
+            "command -v perf >/dev/null; "
+            f"perf record -F 999 -g -e task-clock -o /tmp/perf-udf.data -- "
+            f"python3 benchmark_runner.py {runner_args}; "
+            "test -s /tmp/perf-udf.data"
+        )
+        logger.info("[5a] Running Data-Juicer modalities=%s on %s", modalities_arg, platform)
+        result = executor.run(
+            f"docker exec {container} bash -lc {shlex.quote(script)}",
+            timeout=timeout,
+            stream=True,
+        )
+        if result.returncode != 0:
+            raise StepError(
+                f"Data-Juicer benchmark failed (exit {result.returncode}):\n"
+                f"  Container: {container}\n"
+                f"  Modalities: {modalities_arg}\n"
+                f"  output: {result.stdout[-2000:]}\n"
+                f"  stderr: {result.stderr[-1000:]}"
+            )
+
+        executor.run(f"rm -rf {host_output}", timeout=15)
+        cp_result = executor.run(
+            f"docker cp {container}:{remote_output}/. {host_output}",
+            timeout=120,
+            stream=True,
+        )
+        if cp_result.returncode != 0:
+            raise StepError(
+                f"Failed to copy Data-Juicer benchmark output (exit {cp_result.returncode}):\n"
+                f"  stdout: {cp_result.stdout[:500]}\n"
+                f"  stderr: {cp_result.stderr[:500]}"
+            )
+        if not executor.fetch_dir(host_output, platform_run_dir):
+            raise StepError(
+                f"Failed to fetch Data-Juicer benchmark output from {host_output}:\n"
+                f"  docker cp stdout: {cp_result.stdout[:500]}\n"
+                f"  docker cp stderr: {cp_result.stderr[:500]}"
+            )
+        executor.run(f"rm -rf {host_output}", timeout=15)
+
+        if not timing_path.exists() or timing_path.stat().st_size == 0:
+            raise StepError(
+                f"Data-Juicer benchmark did not produce {timing_path}:\n"
+                f"  docker cp stdout: {cp_result.stdout[:500]}\n"
+                f"  docker cp stderr: {cp_result.stderr[:500]}"
+            )
+
+    _run_datajuicer_python_flamegraph(
+        executor,
+        container,
+        platform,
+        platform_run_dir,
+        modalities_arg,
+        env_config,
+        workload,
+    )
+
+
+def _run_datajuicer_python_flamegraph(
+    executor: Any,
+    container: str,
+    platform: str,
+    platform_run_dir: Path,
+    modalities_arg: str,
+    env_config: dict[str, Any],
+    workload: dict[str, Any],
+) -> None:
+    import shlex
+
+    config = _datajuicer_python_flamegraph_config(env_config)
+    if not config["enabled"]:
+        return
+
+    benchmark_name = _datajuicer_benchmark_name(env_config)
+    flamegraph_dir = platform_run_dir / "python" / "flamegraphs"
+    flamegraph_path = flamegraph_dir / f"{benchmark_name}.svg"
+    manifest_path = platform_run_dir / "python" / "manifest.json"
+    if flamegraph_path.exists() and flamegraph_path.stat().st_size > 0:
+        logger.info("[5a] Python flamegraph exists, skipping py-spy on %s", platform)
         return
 
     timeout = int(
@@ -708,23 +833,30 @@ def _run_datajuicer_benchmark(
             env_config.get("software", {}).get("benchmarkTimeout", 1800),
         )
     )
-    remote_output = f"/tmp/pyframework-datajuicer-run-{platform}"
-    host_output = f"/tmp/pyframework-datajuicer-output-{platform}"
+    remote_profile = f"/tmp/pyframework-datajuicer-python-{platform}"
+    remote_output = f"/tmp/pyframework-datajuicer-python-run-{platform}"
+    host_output = f"/tmp/pyframework-datajuicer-python-output-{platform}"
     runner_args = (
         f"--platform {shlex.quote(platform)} "
         f"--output-dir {shlex.quote(remote_output)} "
         f"--modalities {shlex.quote(modalities_arg)}"
     )
+    subprocesses_arg = "--subprocesses " if config["subprocesses"] else ""
     script = (
         "set -euo pipefail; "
-        f"rm -rf {shlex.quote(remote_output)} /tmp/perf-udf.data; "
+        f"rm -rf {shlex.quote(remote_output)} {shlex.quote(remote_profile)}; "
+        f"mkdir -p {shlex.quote(remote_profile)}/flamegraphs; "
         "cd /workspace/benchmark; "
-        "command -v perf >/dev/null; "
-        f"perf record -F 999 -g -e task-clock -o /tmp/perf-udf.data -- "
+        "command -v py-spy >/dev/null; "
+        "py-spy record "
+        f"--rate {int(config['rate'])} "
+        f"{subprocesses_arg}"
+        "--format flamegraph "
+        f"-o {shlex.quote(remote_profile)}/flamegraphs/{shlex.quote(benchmark_name)}.svg -- "
         f"python3 benchmark_runner.py {runner_args}; "
-        "test -s /tmp/perf-udf.data"
+        f"test -s {shlex.quote(remote_profile)}/flamegraphs/{shlex.quote(benchmark_name)}.svg"
     )
-    logger.info("[5a] Running Data-Juicer modalities=%s on %s", modalities_arg, platform)
+    logger.info("[5a] Running Data-Juicer Python flamegraph on %s", platform)
     result = executor.run(
         f"docker exec {container} bash -lc {shlex.quote(script)}",
         timeout=timeout,
@@ -732,7 +864,7 @@ def _run_datajuicer_benchmark(
     )
     if result.returncode != 0:
         raise StepError(
-            f"Data-Juicer benchmark failed (exit {result.returncode}):\n"
+            f"Data-Juicer Python flamegraph failed (exit {result.returncode}):\n"
             f"  Container: {container}\n"
             f"  Modalities: {modalities_arg}\n"
             f"  output: {result.stdout[-2000:]}\n"
@@ -741,30 +873,49 @@ def _run_datajuicer_benchmark(
 
     executor.run(f"rm -rf {host_output}", timeout=15)
     cp_result = executor.run(
-        f"docker cp {container}:{remote_output}/. {host_output}",
+        f"docker cp {container}:{remote_profile}/. {host_output}",
         timeout=120,
         stream=True,
     )
     if cp_result.returncode != 0:
         raise StepError(
-            f"Failed to copy Data-Juicer benchmark output (exit {cp_result.returncode}):\n"
+            f"Failed to copy Data-Juicer Python flamegraph output (exit {cp_result.returncode}):\n"
             f"  stdout: {cp_result.stdout[:500]}\n"
             f"  stderr: {cp_result.stderr[:500]}"
         )
-    if not executor.fetch_dir(host_output, platform_run_dir):
+    local_python_dir = platform_run_dir / "python"
+    if not executor.fetch_dir(host_output, local_python_dir):
         raise StepError(
-            f"Failed to fetch Data-Juicer benchmark output from {host_output}:\n"
+            f"Failed to fetch Data-Juicer Python flamegraph output from {host_output}:\n"
             f"  docker cp stdout: {cp_result.stdout[:500]}\n"
             f"  docker cp stderr: {cp_result.stderr[:500]}"
         )
+    flamegraph_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "framework": "datajuicer",
+                "platform": platform,
+                "profiler": "py-spy",
+                "cases": [
+                    {
+                        "caseId": benchmark_name,
+                        "format": "flamegraph",
+                        "rate": int(config["rate"]),
+                        "subprocesses": bool(config["subprocesses"]),
+                        "path": str(flamegraph_path.relative_to(local_python_dir)),
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     executor.run(f"rm -rf {host_output}", timeout=15)
-
-    if not timing_path.exists() or timing_path.stat().st_size == 0:
-        raise StepError(
-            f"Data-Juicer benchmark did not produce {timing_path}:\n"
-            f"  docker cp stdout: {cp_result.stdout[:500]}\n"
-            f"  docker cp stderr: {cp_result.stderr[:500]}"
-        )
 
 
 def _parse_benchmark_summary(
@@ -1275,6 +1426,7 @@ def _extract_cpython_sources(
     docker cp.  Avoids base64 encoding and stdout-through-SSH issues.
     """
     import csv as _csv
+    import shlex
     import tempfile
 
     # Read symbols from perf CSV.
@@ -1368,12 +1520,22 @@ def _extract_cpython_sources(
         )
 
     # Ensure CPython source is available (extract from pyenv cache if needed).
+    src_prep_script = (
+        "if test -d /tmp/cpython-src/Objects; then "
+        "echo ok; "
+        "else "
+        "TB=$(ls /root/.pyenv/cache/Python-*.tar.xz 2>/dev/null | head -1); "
+        "if test -n \"$TB\"; then "
+        "mkdir -p /tmp/cpython-src && "
+        "tar xf \"$TB\" -C /tmp/cpython-src --strip-components=1 && "
+        "echo extracted; "
+        "else "
+        "echo missing; "
+        "fi; "
+        "fi"
+    )
     src_prep = executor.run(
-        f"docker exec {container} bash -c '"
-        "test -d /tmp/cpython-src/Objects && echo ok || "
-        "(TB=$(ls /root/.pyenv/cache/Python-*.tar.xz 2>/dev/null | head -1) && "
-        "mkdir -p /tmp/cpython-src && tar xf $TB -C /tmp/cpython-src --strip-components=1 && "
-        "echo extracted)'",
+        f"docker exec {container} bash -c {shlex.quote(src_prep_script)}",
         timeout=60,
         stream=True,
     )

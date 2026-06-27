@@ -83,6 +83,7 @@ class DataJuicerEnvironmentAdapter:
             "IMAGE_NAME": image,
             "BASE_IMAGE": base_image,
             "DATA_JUICER_VERSION": version,
+            "PY_SPY_VERSION": software.get("pySpyVersion", ""),
             "APT_MIRROR": software.get("aptMirror", ""),
             "APT_SECURITY_MIRROR": software.get("aptSecurityMirror", ""),
             "PIP_INDEX_URL": software.get("pipIndexUrl", ""),
@@ -165,18 +166,24 @@ class DataJuicerEnvironmentAdapter:
             timeout=120,
         ))
 
+        profiling_tools = software.get("profilingTools", [])
+        verify_tools = ["command -v perf", "command -v objdump"]
+        if _python_flamegraph_enabled(software) or "py-spy" in profiling_tools:
+            verify_tools.append("command -v py-spy")
+        verify_tools.append("python --version")
+
         steps.append(PlanStep(
             id="verify-datajuicer-perf-tools",
             kind="framework-readiness",
             hostRef=host,
             command=(
                 f"docker exec {container} bash -c "
-                f"'command -v perf && command -v objdump && python --version'"
+                f"'{_join_shell_checks(verify_tools)}'"
             ),
             description=f"Verify perf and objdump in {container} on {host_alias}",
         ))
 
-        if "perf" in software.get("profilingTools", []):
+        if "perf" in profiling_tools:
             steps.append(PlanStep(
                 id="enable-perf-paranoid",
                 kind="prepare",
@@ -200,6 +207,17 @@ def _cpu_modalities(raw: Any) -> list[str]:
         values = [item.strip() for item in str(raw).replace(",", " ").split()]
     selected = [item for item in values if item in CPU_MODALITIES]
     return selected or ["text"]
+
+
+def _python_flamegraph_enabled(software: dict[str, Any]) -> bool:
+    config = software.get("pythonFlamegraph", {})
+    if isinstance(config, dict):
+        return _bool_env(config.get("enabled", False)) == "true"
+    return _bool_env(config) == "true"
+
+
+def _join_shell_checks(checks: list[str]) -> str:
+    return " && ".join(checks)
 
 
 def _proxy_env(host_env: dict[str, Any]) -> dict[str, Any]:

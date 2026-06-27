@@ -50,6 +50,9 @@ class DataJuicerEnvironmentTest(unittest.TestCase):
             s for s in plan["steps"] if s["id"] == "build-datajuicer-image"
         )
         start_step = next(s for s in plan["steps"] if s["id"] == "start-datajuicer")
+        verify_step = next(
+            s for s in plan["steps"] if s["id"] == "verify-datajuicer-perf-tools"
+        )
 
         self.assertEqual(
             build_step["scriptPath"],
@@ -69,6 +72,7 @@ class DataJuicerEnvironmentTest(unittest.TestCase):
         self.assertIn("HF_ENDPOINT=https://hf-mirror.com", start_step["command"])
         self.assertIn("--privileged", start_step["command"])
         self.assertIn("data-juicer-bench", start_step["command"])
+        self.assertNotIn("command -v py-spy", verify_step["command"])
         self.assertNotIn("--gpus", start_step["command"])
         self.assertNotIn(" image ", start_step["command"])
         self.assertNotIn(" video ", start_step["command"])
@@ -84,6 +88,48 @@ class DataJuicerEnvironmentTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "ok", report["issues"])
         self.assertEqual(report["issueCount"], 0)
+
+    def test_build_script_installs_py_spy_for_optional_flamegraphs(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "datajuicer"
+            / "scripts"
+            / "build-datajuicer-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("py-spy", script)
+
+    def test_plan_checks_py_spy_when_python_flamegraph_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_yaml = _write_datajuicer_project(Path(tmp))
+            env_yaml = project_yaml.parent / "environment.yaml"
+            env_yaml.write_text(
+                env_yaml.read_text(encoding="utf-8").replace(
+                    "  profilingTools:\n"
+                    "    - perf\n"
+                    "    - objdump\n",
+                    "  profilingTools:\n"
+                    "    - perf\n"
+                    "    - objdump\n"
+                    "  pythonFlamegraph:\n"
+                    "    enabled: true\n",
+                ),
+                encoding="utf-8",
+            )
+
+            result = CliInvoker.run(
+                "environment", "plan", str(project_yaml), "--platform", "arm"
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        verify_step = next(
+            s for s in plan["steps"] if s["id"] == "verify-datajuicer-perf-tools"
+        )
+        self.assertIn("command -v py-spy", verify_step["command"])
 
 
 class DataJuicerBenchmarkRunnerTest(unittest.TestCase):
@@ -176,10 +222,61 @@ class DataJuicerOrchestratorTest(unittest.TestCase):
         self.assertIn("--modalities text", commands)
         self.assertIn("--platform arm", commands)
         self.assertIn("perf record", commands)
+        self.assertNotIn("py-spy record", commands)
         self.assertNotIn("--modalities image", commands)
         self.assertNotIn("--modalities video", commands)
         self.assertNotIn("--modalities audio", commands)
         self.assertEqual(timing["cases"][0]["caseId"], "data-juicer-text")
+
+    def test_optional_python_flamegraph_runs_only_when_enabled(self) -> None:
+        from pyframework_pipeline.orchestrator import _run_benchmark
+
+        fake = FakeExecutor()
+        with tempfile.TemporaryDirectory() as tmp:
+            project_yaml = _write_datajuicer_project(Path(tmp))
+            env_yaml = project_yaml.parent / "environment.yaml"
+            env_yaml.write_text(
+                env_yaml.read_text(encoding="utf-8").replace(
+                    "  profilingTools:\n"
+                    "    - perf\n"
+                    "    - objdump\n",
+                    "  profilingTools:\n"
+                    "    - perf\n"
+                    "    - objdump\n"
+                    "    - py-spy\n"
+                    "  pythonFlamegraph:\n"
+                    "    enabled: true\n"
+                    "    rate: 77\n",
+                ),
+                encoding="utf-8",
+            )
+            run_dir = Path(tmp) / "runs" / "test"
+
+            with patch("pyframework_pipeline.remote.build_executor", return_value=fake):
+                _run_benchmark(project_yaml, run_dir, "arm", force=True)
+
+            flamegraph = (
+                run_dir
+                / "arm"
+                / "python"
+                / "flamegraphs"
+                / "data-juicer-text.svg"
+            )
+            manifest = run_dir / "arm" / "python" / "manifest.json"
+            flamegraph_exists = flamegraph.exists()
+            manifest_exists = manifest.exists()
+
+        commands = "\n".join(fake.commands)
+        self.assertIn("command -v py-spy", commands)
+        self.assertIn("py-spy record", commands)
+        self.assertIn("--rate 77", commands)
+        self.assertIn("--subprocesses", commands)
+        self.assertIn("--format flamegraph", commands)
+        self.assertIn("benchmark_runner.py --platform arm", commands)
+        self.assertIn("/tmp/pyframework-datajuicer-python-arm", commands)
+        self.assertIn("data-juicer-text.svg", commands)
+        self.assertTrue(flamegraph_exists)
+        self.assertTrue(manifest_exists)
 
     def test_collect_binary_uses_tmp_staging_path(self) -> None:
         from pyframework_pipeline.orchestrator import _collect_binary_from_container
@@ -198,10 +295,36 @@ class DataJuicerOrchestratorTest(unittest.TestCase):
         self.assertIn("/tmp/_collect_perf-arm.data", commands)
         self.assertNotIn("/opt/flink/_collect", commands)
 
+    def test_cpython_source_prep_checks_tarball_before_extracting(self) -> None:
+        from pyframework_pipeline.orchestrator import _extract_cpython_sources
+
+        fake = FakeExecutor()
+        with tempfile.TemporaryDirectory() as tmp:
+            perf_csv = Path(tmp) / "perf_records.csv"
+            perf_csv.write_text(
+                "symbol,shared_object\n_PyEval_EvalFrameDefault,libpython3.11.so.1.0\n",
+                encoding="utf-8",
+            )
+
+            _extract_cpython_sources(
+                fake,
+                perf_csv,
+                Path(tmp) / "symbol_source_map.json",
+                "data-juicer-bench",
+            )
+
+        src_prep = next(
+            command for command in fake.commands if "Python-*.tar.xz" in command
+        )
+        self.assertIn('test -n "$TB"', src_prep)
+        self.assertIn('tar xf "$TB"', src_prep)
+        self.assertIn("echo missing", src_prep)
+
 
 class FakeExecutor:
     def __init__(self) -> None:
         self.commands: list[str] = []
+        self.pushed_files: list[tuple[str, str]] = []
         self.pushed_dirs: list[tuple[str, str]] = []
 
     def run(self, command: str, **_kwargs):
@@ -210,6 +333,10 @@ class FakeExecutor:
 
     def push_dir(self, local_dir: Path, remote_dir: str) -> bool:
         self.pushed_dirs.append((str(local_dir), remote_dir))
+        return True
+
+    def push_file(self, local_path: Path, remote_path: str) -> bool:
+        self.pushed_files.append((str(local_path), remote_path))
         return True
 
     def fetch_dir(self, _remote_dir: str, local_dir: Path) -> bool:
@@ -235,9 +362,17 @@ class FakeExecutor:
             ),
             encoding="utf-8",
         )
+        if "python" in str(local_dir):
+            flamegraphs = local_dir / "flamegraphs"
+            flamegraphs.mkdir(parents=True, exist_ok=True)
+            (flamegraphs / "data-juicer-text.svg").write_text(
+                "<svg></svg>\n",
+                encoding="utf-8",
+            )
         return True
 
     def fetch_file(self, _remote_path: str, _local_path: Path) -> bool:
+        _local_path.write_text("{}\n", encoding="utf-8")
         return True
 
 
