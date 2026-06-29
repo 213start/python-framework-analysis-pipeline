@@ -527,7 +527,7 @@ commits: `b6ae492` / `43c0594` / `69898cc` / `614f891` / `1d72609`
 **未达成(后续工作):**
 - `PyFlinkAdapter.deploy_workload` / `run_benchmark` 仍调用 `orchestrator._run_workload_deploy` / `_run_benchmark`。这不是真正的 shim——那两个 orchestrator 函数**就是** pyflink 内联实现(pyflink 是默认路径),且被 `test_pipeline_integration` / `test_orchestrator_streaming` 直接 mock/断言(`patch` orchestrator 符号、检查 `[5a]` 日志)。把它们移出 orchestrator 需要同时迁移约 225 行 perf-wrapper 逻辑 + 重写这两个测试文件,风险高,留作后续。
 - ~~`cli/__init__.py` 仍是单体(1005 行未按子命令拆到 `cli/<group>.py`)~~ **已完成(commit `e484600`)**:cli 拆成 12 个聚焦模块,`__init__.py` 缩到 331 行薄壳(main + build_parser)。
-- `consume/backfill` 未拆成 spec §5.4 的 category_mapping/hotspot_backfill/instruction_backfill/binding 模块(现有 `backfill/perf_backfill.py` 单文件保留)。
+- ~~`consume/backfill` 未拆成 spec §5.4 的 category_mapping/hotspot_backfill/instruction_backfill/binding 模块~~ **已完成(commit `061902a`)**:`consume/backfill/` 下 5 个聚焦模块落地;category/component/L1 映射与解析器从 `perf_backfill.py` 移入并单一来源(1232→1080 行)。
 
 详见 git log 与各 commit message。
 
