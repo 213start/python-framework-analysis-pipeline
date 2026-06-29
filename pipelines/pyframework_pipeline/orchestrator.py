@@ -545,6 +545,13 @@ def _execute_step(
 def _run_workload_deploy(
     project_path: Path, run_dir: Path, platform: str, *, yes: bool = False,
 ) -> None:
+    """Deploy the workload for the configured framework.
+
+    Frameworks other than pyflink route through their adapter
+    (adapters.registry.get_adapter), which now owns the deploy logic. The
+    pyflink path stays inline here; this function is the pyflink deploy path
+    and is also the orchestrator-side fallback used by the legacy CLI.
+    """
     from .config import get_workload_config, load_environment_config
     from .remote import build_executor, get_platform_host_ref
 
@@ -558,11 +565,12 @@ def _run_workload_deploy(
     host_ref = get_platform_host_ref(env_config, platform)
     executor = build_executor(host_ref, env_config)
 
-    if _framework_id(env_config) == "datajuicer":
-        _run_datajuicer_workload_deploy(local_dir, executor, env_config)
-        return
-    if _framework_id(env_config) == "udfbenchmarking":
-        _run_udfbenchmarking_workload_deploy(local_dir, executor, env_config)
+    # Non-pyflink frameworks are owned by their adapters (single source).
+    framework = _framework_id(env_config)
+    if framework != "pyflink":
+        from .adapters.registry import get_adapter
+
+        get_adapter(framework).deploy_workload(project_path, run_dir, platform, yes=yes)
         return
 
     # Upload workload to remote host staging.
@@ -625,103 +633,6 @@ def _run_workload_deploy(
                 f"  Command: docker exec flink-jm bash -c 'cd /opt/flink/usrlib/java-udf && bash build.sh'\n"
                 f"  output: {result.stdout[-2000:]}"
             )
-
-
-def _run_datajuicer_workload_deploy(
-    local_dir: Path,
-    executor: Any,
-    env_config: dict[str, Any],
-) -> None:
-    container = _datajuicer_container(env_config)
-    remote_dir = "/tmp/pyframework-workload"
-    executor.run(f"rm -rf {remote_dir}", timeout=15)
-    logger.info("Uploading Data-Juicer workload %s to %s", local_dir, remote_dir)
-    ok = executor.push_dir(local_dir, remote_dir)
-    if not ok:
-        raise StepError(
-            f"Failed to upload Data-Juicer workload:\n"
-            f"  Local: {local_dir}\n"
-            f"  Remote: {remote_dir}"
-        )
-
-    clean_result = executor.run(
-        f"docker exec -u root {container} bash -lc "
-        "'rm -rf /workspace/benchmark && mkdir -p /workspace/benchmark'",
-        timeout=120,
-        stream=True,
-    )
-    if clean_result.returncode != 0:
-        raise StepError(
-            f"Failed to clean Data-Juicer benchmark directory "
-            f"(exit {clean_result.returncode}):\n"
-            f"  stdout: {clean_result.stdout[:500]}\n"
-            f"  stderr: {clean_result.stderr[:500]}"
-        )
-
-    cp_result = executor.run(
-        f"docker cp {remote_dir}/. {container}:/workspace/benchmark",
-        timeout=120,
-        stream=True,
-    )
-    if cp_result.returncode != 0:
-        raise StepError(
-            f"Failed to copy workload to {container} (exit {cp_result.returncode}):\n"
-            f"  stdout: {cp_result.stdout[:500]}\n"
-            f"  stderr: {cp_result.stderr[:500]}"
-        )
-    executor.run(
-        f"docker exec -u root {container} chown -R root:root /workspace/benchmark",
-        timeout=15,
-    )
-
-
-def _run_udfbenchmarking_workload_deploy(
-    local_dir: Path,
-    executor: Any,
-    env_config: dict[str, Any],
-) -> None:
-    container = _udfbenchmarking_container(env_config)
-    remote_dir = "/tmp/pyframework-workload"
-    executor.run(f"rm -rf {remote_dir}", timeout=15)
-    logger.info("Uploading UDF_Benchmarking workload %s to %s", local_dir, remote_dir)
-    ok = executor.push_dir(local_dir, remote_dir)
-    if not ok:
-        raise StepError(
-            f"Failed to upload UDF_Benchmarking workload:\n"
-            f"  Local: {local_dir}\n"
-            f"  Remote: {remote_dir}"
-        )
-
-    clean_result = executor.run(
-        f"docker exec -u root {container} bash -lc "
-        "'rm -rf /workspace/benchmark && mkdir -p /workspace/benchmark && "
-        "cp -a /opt/UDF_Benchmarking/. /workspace/benchmark/'",
-        timeout=120,
-        stream=True,
-    )
-    if clean_result.returncode != 0:
-        raise StepError(
-            f"Failed to prepare UDF_Benchmarking benchmark directory "
-            f"(exit {clean_result.returncode}):\n"
-            f"  stdout: {clean_result.stdout[:500]}\n"
-            f"  stderr: {clean_result.stderr[:500]}"
-        )
-
-    cp_result = executor.run(
-        f"docker cp {remote_dir}/. {container}:/workspace/benchmark",
-        timeout=120,
-        stream=True,
-    )
-    if cp_result.returncode != 0:
-        raise StepError(
-            f"Failed to copy workload to {container} (exit {cp_result.returncode}):\n"
-            f"  stdout: {cp_result.stdout[:500]}\n"
-            f"  stderr: {cp_result.stderr[:500]}"
-        )
-    executor.run(
-        f"docker exec -u root {container} chown -R root:root /workspace/benchmark",
-        timeout=15,
-    )
 
 
 def _run_benchmark(
