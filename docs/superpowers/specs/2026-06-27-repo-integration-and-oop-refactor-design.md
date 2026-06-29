@@ -514,17 +514,18 @@ commits: `829b7e0` / `48a9966`
 - 收敛分类映射:`acquisition/perf_profile.py` 的死代码 `CATEGORY_MAP` 删除;`backfill/perf_backfill.py` 的活跃 `_CATEGORY_TO_L1`/`_L2_SHORT_NAME` 单一来源到 `analyze/category_mapping.py`。
 
 ### Phase 3(OOP 重构核心)— 部分完成 ⚠️
-commits: `b6ae492` / `43c0594` / `69898cc` / `614f891`
+commits: `b6ae492` / `43c0594` / `69898cc` / `614f891` / `1d72609`
 
 **已达成:**
 - Step 注册表 + `requires`/`produces` 拓扑排序(11 个 step 全部注册)。
-- `FrameworkAdapter` 6 策略协议;`DataJuicerAdapter.deploy_workload` 与 `UdfBenchmarkingAdapter.deploy_workload` 已吸收真实框架逻辑(不再是 shim,从 orchestrator 提取)。
-- `WorkloadDeployStep` / `BenchmarkRunStep` 单路径(经 `_adapter(ctx)` 解析,默认 pyflink);orchestrator 的 `_run_workload_deploy` 不再有 datajuicer/udf 内联分支,改走 adapter registry。
+- `FrameworkAdapter` 6 策略协议;`DataJuicerAdapter` 与 `UdfBenchmarkingAdapter` 的 `deploy_workload` + `run_benchmark`(+ flamegraph / timing)已吸收真实框架逻辑(不再是 shim,从 orchestrator 提取约 700 行)。
+- `WorkloadDeployStep` / `BenchmarkRunStep` 单路径(经 `_adapter(ctx)` 解析,默认 pyflink);orchestrator 的 `_run_workload_deploy` / `_run_benchmark` 对非 pyflink 框架走 adapter registry。
 - `consume/` 消费层门面 + 渲染器注册表(platform / platform_full / compare / compare_integrated 四个渲染器)。
 - `cli.py` → `cli/` 包(子命令拆分的地基)。
+- orchestrator.py:2596 → 2011 行(-585)。
 
 **未达成(后续工作):**
-- orchestrator 仍 2597 行(目标"薄壳"):benchmark/flamegraph/collect 的 `_run_*` 约 700 行尚未从 orchestrator 提取到 adapter。`PyFlinkAdapter.deploy_workload` 仍是调用 `orchestrator._run_workload_deploy` 的 shim(pyflink 是默认路径,该函数本身已是 pyflink 内联逻辑)。
+- `PyFlinkAdapter.deploy_workload` / `run_benchmark` 仍调用 `orchestrator._run_workload_deploy` / `_run_benchmark`。这不是真正的 shim——那两个 orchestrator 函数**就是** pyflink 内联实现(pyflink 是默认路径),且被 `test_pipeline_integration` / `test_orchestrator_streaming` 直接 mock/断言(`patch` orchestrator 符号、检查 `[5a]` 日志)。把它们移出 orchestrator 需要同时迁移约 225 行 perf-wrapper 逻辑 + 重写这两个测试文件,风险高,留作后续。
 - `cli/__init__.py` 仍是单体(1005 行未按子命令拆到 `cli/<group>.py`)。
 - `consume/backfill` 未拆成 spec §5.4 的 category_mapping/hotspot_backfill/instruction_backfill/binding 模块(现有 `backfill/perf_backfill.py` 单文件保留)。
 
