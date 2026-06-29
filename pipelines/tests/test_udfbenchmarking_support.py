@@ -107,7 +107,7 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("https://deb.debian.org/debian-security", script)
-        self.assertIn("security.debian.org/debian-security", script)
+        self.assertIn("write_debian_sources", script)
         self.assertIn(
             "if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends linux-perf",
             script,
@@ -167,6 +167,22 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         self.assertIn("pypi.org files.pythonhosted.org", script)
         self.assertIn("--trusted-host", script)
         self.assertIn("GIT_SSL_NO_VERIFY=true", script)
+
+    def test_build_script_retries_default_apt_mirror_on_update_failure(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "udfbenchmarking"
+            / "scripts"
+            / "build-udfbenchmarking-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("write_debian_sources()", script)
+        self.assertIn("if ! apt-get update; then", script)
+        self.assertIn("Configured apt mirror failed; retrying default Debian mirror", script)
+        self.assertIn('write_debian_sources "https://deb.debian.org/debian" "https://deb.debian.org/debian-security"', script)
 
     def test_reference_config_keeps_upstream_parameterized_udf_defaults(self) -> None:
         from pyframework_pipeline.environment.parser import parse_yaml

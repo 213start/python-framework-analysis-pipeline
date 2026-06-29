@@ -40,28 +40,16 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_RETRIES=${PIP_RETRIES}
 
 RUN set -eux; \
+    write_debian_sources() { \
+        mirror="$1"; \
+        security_mirror="$2"; \
+        codename="$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-bookworm}")"; \
+        printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: %s\nSuites: %s-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' "$mirror" "$codename" "$codename" "$security_mirror" "$codename" > /etc/apt/sources.list.d/debian.sources; \
+        rm -f /etc/apt/sources.list; \
+    }; \
     if [ -n "${APT_MIRROR}" ]; then \
         security_mirror="${APT_SECURITY_MIRROR:-${APT_MIRROR%/}-security}"; \
-        if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-            sed -i \
-                -e "s|http://deb.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|https://deb.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|http://security.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|https://security.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
-                -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
-                /etc/apt/sources.list.d/debian.sources; \
-        fi; \
-        if [ -f /etc/apt/sources.list ]; then \
-            sed -i \
-                -e "s|http://deb.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|https://deb.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|http://security.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|https://security.debian.org/debian-security|${security_mirror}|g" \
-                -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
-                -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
-                /etc/apt/sources.list; \
-        fi; \
+        write_debian_sources "${APT_MIRROR}" "${security_mirror}"; \
     fi; \
     printf '%s\n' \
         'Acquire::http::Timeout "30";' \
@@ -70,7 +58,11 @@ RUN set -eux; \
         'Acquire::https::Verify-Host "false";' \
         'Acquire::Retries "5";' \
         > /etc/apt/apt.conf.d/99pyframework-timeouts; \
-    apt-get update; \
+    if ! apt-get update; then \
+        echo "Configured apt mirror failed; retrying default Debian mirror"; \
+        write_debian_sources "https://deb.debian.org/debian" "https://deb.debian.org/debian-security"; \
+        apt-get update; \
+    fi; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash \
         binutils \
