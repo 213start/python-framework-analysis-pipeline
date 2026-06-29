@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "description": "CPython-centric classification rules for perf hotspot normalization and comparison.",
+  "rules": [
+    {
+      "name": "Kernel",
+      "category_top": "Kernel",
+      "category_sub": "",
+      "match": {
+        "shared_object_exact": ["[kernel.kallsyms]"],
+        "shared_object_startswith": ["[kernel"]
+      }
+    },
+    {
+      "name": "glibc",
+      "category_top": "glibc",
+      "category_sub": "",
+      "match": {
+        "shared_object_regex": [
+          "(^|/)(libc|ld-linux|libpthread|librt|libdl|libm)(\\.|-)",
+          "(^|/)(libc|ld-linux|libpthread|librt|libdl|libm)\\.so"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Interpreter",
+      "category_top": "CPython.Interpreter",
+      "category_sub": "",
+      "match": {
+        "symbol_prefix": ["_PyEval_", "PyEval_", "_PyInterpreterFrame"],
+        "symbol_contains": ["eval_frame", "opcode", "eval_breaker", "interpreter"]
+      }
+    },
+    {
+      "name": "CPython.Memory",
+      "category_top": "CPython.Memory",
+      "category_sub": "",
+      "match": {
+        "symbol_prefix": ["_PyObject_", "PyObject_", "_PyMem_", "PyMem_"],
+        "symbol_contains": [
+          "_Py_Dealloc",
+          "PyType_genericAlloc",
+          "obmalloc",
+          "pymalloc",
+          "pymalloc_alloc",
+          "pymalloc_free",
+          "arena",
+          "freelist",
+          "free_list",
+          "rawmalloc",
+          "rawfree",
+          "rawrealloc",
+          "object_alloc",
+          "object_free"
+        ]
+      }
+    },
+    {
+      "name": "CPython.GC",
+      "category_top": "CPython.GC",
+      "category_sub": "",
+      "match": {
+        "symbol_prefix": ["_PyGC_", "PyGC_"],
+        "symbol_contains": ["gc_collect", "gc_traverse", "gc_list", "garbage"]
+      }
+    },
+    {
+      "name": "CPython.Exceptions.BaseException",
+      "category_top": "CPython.Exceptions",
+      "category_sub": "CPython.Exceptions.BaseException",
+      "match": {
+        "symbol_contains": ["BaseException", "baseexception"]
+      }
+    },
+    {
+      "name": "CPython.Objects.Dict.Vectorcall",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Dict",
+      "match": {
+        "symbol_contains": ["dict_vectorcall"]
+      }
+    },
+    {
+      "name": "CPython.Objects.List.Vectorcall",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.List",
+      "match": {
+        "symbol_contains": ["list_vectorcall"]
+      }
+    },
+    {
+      "name": "CPython.Calls.Vectorcall",
+      "category_top": "CPython.Calls",
+      "category_sub": "CPython.Calls.Vectorcall",
+      "match": {
+        "symbol_contains": ["vectorcall", "fastcall", "call_function", "cfunction_vectorcall"]
+      }
+    },
+    {
+      "name": "CPython.Lookup.Attribute",
+      "category_top": "CPython.Lookup",
+      "category_sub": "CPython.Lookup.Attribute",
+      "match": {
+        "symbol_contains": ["_PyType_Lookup", "lookup", "getattr", "setattro", "lookdict", "getset_get"]
+      }
+    },
+    {
+      "name": "CPython.Import.ModuleLoading",
+      "category_top": "CPython.Import",
+      "category_sub": "CPython.Import.ModuleLoading",
+      "match": {
+        "symbol_contains": ["import", "find_and_load", "module_from_spec", "zipimport"]
+      }
+    },
+    {
+      "name": "CPython.Compiler",
+      "category_top": "CPython.Compiler",
+      "category_sub": "",
+      "match": {
+        "symbol_contains": ["parser", "ast_", "compiler_", "symtable", "assemble"]
+      }
+    },
+    {
+      "name": "CPython.Concurrency.GIL",
+      "category_top": "CPython.Concurrency",
+      "category_sub": "CPython.Concurrency.GIL",
+      "match": {
+        "symbol_contains": ["gil", "take_gil", "drop_gil", "eval_breaker"]
+      }
+    },
+    {
+      "name": "CPython.Concurrency.Threading",
+      "category_top": "CPython.Concurrency",
+      "category_sub": "CPython.Concurrency.Threading",
+      "match": {
+        "symbol_contains": ["thread", "tstate", "pthread", "pythread"]
+      }
+    },
+    {
+      "name": "CPython.Concurrency.Async",
+      "category_top": "CPython.Concurrency",
+      "category_sub": "CPython.Concurrency.Async",
+      "match": {
+        "symbol_contains": ["async", "await", "coroutine", "gen_send", "task"]
+      }
+    },
+    {
+      "name": "CPython.Objects.Int",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Int",
+      "match": {
+        "symbol_prefix": ["PyLong_", "_PyLong_"],
+        "symbol_regex": [
+          "(^|_)(long|pylong)(_|$)",
+          "^long[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.Tuple",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Tuple",
+      "match": {
+        "symbol_prefix": ["PyTuple_", "_PyTuple_"],
+        "symbol_regex": [
+          "(^|_)(tuple)(_|$)",
+          "^tuple[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.Dict",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Dict",
+      "match": {
+        "symbol_prefix": ["PyDict_", "_PyDict_"],
+        "symbol_contains": ["lookdict", "dict_", "dictkeys_", "dictvalues_"],
+        "symbol_regex": [
+          "(^|_)(dict)(_|$)",
+          "^dict[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.List",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.List",
+      "match": {
+        "symbol_prefix": ["PyList_", "_PyList_"],
+        "symbol_regex": [
+          "(^|_)(list)(_|$)",
+          "^list[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.Set",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Set",
+      "match": {
+        "symbol_prefix": ["PySet_", "_PySet_"],
+        "symbol_contains": ["frozenset"],
+        "symbol_regex": [
+          "(^|_)(set)(_|$)",
+          "^set[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.Float",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Float",
+      "match": {
+        "symbol_prefix": ["PyFloat_", "_PyFloat_"],
+        "symbol_regex": [
+          "(^|_)(float)(_|$)",
+          "^float[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Objects.Str",
+      "category_top": "CPython.Objects",
+      "category_sub": "CPython.Objects.Str",
+      "match": {
+        "symbol_prefix": ["PyUnicode_", "_PyUnicode_"],
+        "symbol_contains": ["unicode", "stringlib", "_copy_characters", "ucs2lib_utf8_encoder"],
+        "symbol_regex": [
+          "(^|_)(unicode|string)(_|$)",
+          "^unicode[a-z_]*$"
+        ]
+      }
+    },
+    {
+      "name": "CPython.Exceptions",
+      "category_top": "CPython.Exceptions",
+      "category_sub": "",
+      "match": {
+        "symbol_contains": ["exception", "traceback", "error", "raise"]
+      }
+    },
+    {
+      "name": "CPython.Runtime",
+      "category_top": "CPython.Runtime",
+      "category_sub": "",
+      "match": {
+        "shared_object_regex": [
+          "(^|/)(python[0-9.]*|libpython[0-9.]+)(\\b|\\.)"
+        ],
+        "symbol_prefix": ["Py", "_Py"]
+      }
+    },
+    {
+      "name": "Library",
+      "category_top": "Library",
+      "category_sub": "",
+      "match": {
+        "shared_object_regex": [
+          "\\.so($|\\.)",
+          "(^|/)[^/]+$"
+        ],
+        "shared_object_not_regex": [
+          "(^|/)python[0-9.]*$",
+          "(^|/)libpython[0-9.]+",
+          "(^|/)(libc|ld-linux|libpthread|librt|libdl|libm)(\\.|-)",
+          "^\\[kernel"
+        ]
+      }
+    }
+  ]
+}
