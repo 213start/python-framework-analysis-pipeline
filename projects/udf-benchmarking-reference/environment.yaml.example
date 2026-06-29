@@ -26,8 +26,8 @@ software:
   benchmarkName: MockVideoE2EUDF
   benchmarkConfigFile: config.yaml
   benchmarkTimeout: 1800
-  aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian
-  aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security
+  aptMirror: https://mirrors.tuna.tsinghua.edu.cn/debian
+  aptSecurityMirror: https://mirrors.tuna.tsinghua.edu.cn/debian-security
   pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple
   pipTrustedHosts:
     - pypi.tuna.tsinghua.edu.cn

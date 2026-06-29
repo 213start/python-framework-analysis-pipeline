@@ -170,6 +170,48 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         self.assertEqual(config["SeriesMethodUDF"]["udf_count"], [1])
         self.assertEqual(config["PartitionScheduleUDF"]["num_partitions"], [1])
 
+    def test_reference_config_uses_https_apt_mirrors(self) -> None:
+        from pyframework_pipeline.environment.parser import parse_yaml
+
+        reference_config = parse_yaml(
+            (
+                REPO_ROOT
+                / "projects"
+                / "udf-benchmarking-reference"
+                / "environment.yaml.example"
+            ).read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(
+            reference_config["software"]["aptMirror"],
+            "https://mirrors.tuna.tsinghua.edu.cn/debian",
+        )
+        self.assertEqual(
+            reference_config["software"]["aptSecurityMirror"],
+            "https://mirrors.tuna.tsinghua.edu.cn/debian-security",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_yaml = _write_udf_project(Path(tmp))
+
+            result = CliInvoker.run(
+                "environment", "plan", str(project_yaml), "--platform", "arm"
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        build_step = next(
+            s for s in plan["steps"] if s["id"] == "build-udfbenchmarking-image"
+        )
+        self.assertIn(
+            "APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian",
+            build_step["command"],
+        )
+        self.assertIn(
+            "APT_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security",
+            build_step["command"],
+        )
+
 
 class UdfBenchmarkingOrchestratorTest(unittest.TestCase):
     def test_workload_deploy_targets_udfbenchmarking_container(self) -> None:
@@ -398,8 +440,8 @@ def _write_udf_project(
         "  udfBenchmarkingContainer: udf-benchmarking-bench",
         "  benchmarkName: MockVideoE2EUDF",
         "  benchmarkConfigFile: config.yaml",
-        "  aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian",
-        "  aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security",
+        "  aptMirror: https://mirrors.tuna.tsinghua.edu.cn/debian",
+        "  aptSecurityMirror: https://mirrors.tuna.tsinghua.edu.cn/debian-security",
         "  pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple",
         "  pipTrustedHosts:",
         "    - pypi.tuna.tsinghua.edu.cn",
