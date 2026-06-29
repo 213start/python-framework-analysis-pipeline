@@ -513,21 +513,18 @@ commits: `829b7e0` / `48a9966`
 - `analyze/` 拆出 4 个 path-in/path-out 子流程:`parse.py`(C1)、`classify.py`(C2 + CategoryClassifier)、`aggregate.py`(C3)、`annotate.py`(C4)。算法等价(由迁移的 kits 测试守门)。
 - 收敛分类映射:`acquisition/perf_profile.py` 的死代码 `CATEGORY_MAP` 删除;`backfill/perf_backfill.py` 的活跃 `_CATEGORY_TO_L1`/`_L2_SHORT_NAME` 单一来源到 `analyze/category_mapping.py`。
 
-### Phase 3(OOP 重构核心)— 部分完成 ⚠️
-commits: `b6ae492` / `43c0594` / `69898cc` / `614f891` / `1d72609`
+### Phase 3(OOP 重构核心)— 完成 ✅
+commits: `b6ae492` / `43c0594` / `69898cc` / `614f891` / `1d72609` / `e484600` / `061902a` / `dbe938b`
 
 **已达成:**
 - Step 注册表 + `requires`/`produces` 拓扑排序(11 个 step 全部注册)。
-- `FrameworkAdapter` 6 策略协议;`DataJuicerAdapter` 与 `UdfBenchmarkingAdapter` 的 `deploy_workload` + `run_benchmark`(+ flamegraph / timing)已吸收真实框架逻辑(不再是 shim,从 orchestrator 提取约 700 行)。
-- `WorkloadDeployStep` / `BenchmarkRunStep` 单路径(经 `_adapter(ctx)` 解析,默认 pyflink);orchestrator 的 `_run_workload_deploy` / `_run_benchmark` 对非 pyflink 框架走 adapter registry。
-- `consume/` 消费层门面 + 渲染器注册表(platform / platform_full / compare / compare_integrated 四个渲染器)。
-- `cli.py` → `cli/` 包(子命令拆分的地基)。
-- orchestrator.py:2596 → 2011 行(-585)。
+- `FrameworkAdapter` 6 策略协议;三个 adapter(`PyFlinkAdapter` / `DataJuicerAdapter` / `UdfBenchmarkingAdapter`)的 `deploy_workload` + `run_benchmark`(+ flamegraph / timing)全部吸收真实框架逻辑,**不再是 shim**。pyflink 的 perf-wrapper 助手提取到 `adapters/pyflink/benchmark.py`。
+- `WorkloadDeployStep` / `BenchmarkRunStep` 单路径(经 `_adapter(ctx)` 解析,默认 pyflink)。
+- `orchestrator._run_workload_deploy` / `_run_benchmark` 缩成薄壳分派(经 adapter registry)。orchestrator.py: **2596 → 1448 行(-1148)**。
+- `consume/` 消费层门面 + 渲染器注册表(platform / platform_full / compare / compare_integrated)+ `consume/backfill/` 5 个聚焦模块(category_mapping/hotspot_backfill/instruction_backfill/binding)。
+- `cli.py` → `cli/` 包,12 个聚焦子命令模块,`__init__.py` 缩到 331 行薄壳。
 
-**未达成(后续工作):**
-- `PyFlinkAdapter.deploy_workload` / `run_benchmark` 仍调用 `orchestrator._run_workload_deploy` / `_run_benchmark`。这不是真正的 shim——那两个 orchestrator 函数**就是** pyflink 内联实现(pyflink 是默认路径),且被 `test_pipeline_integration` / `test_orchestrator_streaming` 直接 mock/断言(`patch` orchestrator 符号、检查 `[5a]` 日志)。把它们移出 orchestrator 需要同时迁移约 225 行 perf-wrapper 逻辑 + 重写这两个测试文件,风险高,留作后续。
-- ~~`cli/__init__.py` 仍是单体(1005 行未按子命令拆到 `cli/<group>.py`)~~ **已完成(commit `e484600`)**:cli 拆成 12 个聚焦模块,`__init__.py` 缩到 331 行薄壳(main + build_parser)。
-- ~~`consume/backfill` 未拆成 spec §5.4 的 category_mapping/hotspot_backfill/instruction_backfill/binding 模块~~ **已完成(commit `061902a`)**:`consume/backfill/` 下 5 个聚焦模块落地;category/component/L1 映射与解析器从 `perf_backfill.py` 移入并单一来源(1232→1080 行)。
+**测试同步:** `test_pipeline_integration`(mock 目标改为 `PyFlinkAdapter.deploy_workload`/`run_benchmark`)与 `test_orchestrator_streaming`(SRC 读 orchestrator + pyflink/adapter)已更新以匹配提取后的结构。
 
-详见 git log 与各 commit message。
+详见 git log 与各 commit message。Phase 3 全部达成。
 
