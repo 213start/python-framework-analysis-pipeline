@@ -6,14 +6,33 @@ from .adapter import (
     PerfAttachSpec,
     WorkloadHandle,
 )
+from .instruction import InstructionDataset, InstructionSample
+from .records import PerfRecord, RawSample
 from .step import RunContext, Step, StepError
+from .tables import (
+    AggregatedTables,
+    CategoryRow,
+    SharedObjectRow,
+    SymbolRow,
+)
+from .timing import TimingDataset, TimingEntry
 
 __all__ = [
+    "AggregatedTables",
+    "CategoryRow",
     "DisassemblySpec",
     "FrameworkAdapter",
+    "InstructionDataset",
+    "InstructionSample",
     "PerfAttachSpec",
+    "PerfRecord",
+    "RawSample",
     "RunContext",
+    "SharedObjectRow",
     "Step",
     "StepError",
+    "SymbolRow",
+    "TimingDataset",
+    "TimingEntry",
     "WorkloadHandle",
 ]
