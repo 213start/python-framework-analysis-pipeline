@@ -111,8 +111,14 @@ RUN set -eux; \
     git clone --depth 1 "${UDF_BENCHMARKING_REPO}" /opt/UDF_Benchmarking; \
     if [ -n "${UDF_BENCHMARKING_REVISION}" ]; then \
         cd /opt/UDF_Benchmarking; \
-        git checkout "${UDF_BENCHMARKING_REVISION}" || \
-            (git fetch --depth 1 origin "${UDF_BENCHMARKING_REVISION}" && git checkout "${UDF_BENCHMARKING_REVISION}"); \
+        checkout_revision=0; \
+        git checkout "${UDF_BENCHMARKING_REVISION}" && checkout_revision=1 || true; \
+        if [ "$checkout_revision" = "0" ]; then \
+            git fetch --depth 1 origin "${UDF_BENCHMARKING_REVISION}" && git checkout "${UDF_BENCHMARKING_REVISION}" && checkout_revision=1 || true; \
+        fi; \
+        if [ "$checkout_revision" = "0" ]; then \
+            echo "Unable to checkout ${UDF_BENCHMARKING_REVISION}; continuing with default checkout $(git rev-parse HEAD)"; \
+        fi; \
     fi; \
     cd /opt/UDF_Benchmarking; \
     python -c "import pathlib; assert pathlib.Path('main.py').is_file(); print('UDF_Benchmarking source ready')"

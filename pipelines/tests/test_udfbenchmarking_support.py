@@ -168,6 +168,22 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         self.assertIn("--trusted-host", script)
         self.assertIn("GIT_SSL_NO_VERIFY=true", script)
 
+    def test_build_script_falls_back_when_revision_checkout_fails(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "udfbenchmarking"
+            / "scripts"
+            / "build-udfbenchmarking-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("checkout_revision=0", script)
+        self.assertIn("Unable to checkout ${UDF_BENCHMARKING_REVISION}", script)
+        self.assertIn("continuing with default checkout", script)
+        self.assertIn("git rev-parse HEAD", script)
+
     def test_build_script_retries_default_apt_mirror_on_update_failure(self) -> None:
         script = (
             REPO_ROOT
@@ -467,7 +483,7 @@ def _write_udf_project(
         "software:",
         "  pythonImage: python:3.11-slim",
         "  udfBenchmarkingRepo: https://gitcode.com/stone31415/UDF_Benchmarking.git",
-        "  udfBenchmarkingRevision: e5f892d",
+        "  udfBenchmarkingRevision: 29159573d08998a5aee238034d05416510a69d02",
         "  udfBenchmarkingImages:",
         "    arm: udf-benchmarking-bench:py311-arm",
         "    x86: udf-benchmarking-bench:py311-x86",

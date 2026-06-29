@@ -18,7 +18,7 @@ software:
   pythonImage: python:3.11-slim
   dockerRegistry: m.daocloud.io/docker.io
   udfBenchmarkingRepo: https://gitcode.com/stone31415/UDF_Benchmarking.git
-  udfBenchmarkingRevision: e5f892d
+  udfBenchmarkingRevision: 29159573d08998a5aee238034d05416510a69d02
   udfBenchmarkingImages:
     arm: udf-benchmarking-bench:py311-arm
     x86: udf-benchmarking-bench:py311-x86
