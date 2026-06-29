@@ -171,22 +171,13 @@ class PipelineRunState:
 # ---------------------------------------------------------------------------
 
 def _init_submodules(repo_root: Path) -> None:
-    """Initialise git submodules if vendor directories are missing."""
-    gitmodules = repo_root / ".gitmodules"
-    if not gitmodules.exists():
-        return
-    import subprocess
-    try:
-        subprocess.run(
-            ["git", "submodule", "update", "--init"],
-            cwd=str(repo_root),
-            check=True,
-            capture_output=True,
-            timeout=120,
-        )
-        logger.info("Initialised git submodules in %s", repo_root)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
-        logger.warning("Failed to init git submodules: %s", exc)
+    """No-op stub: vendor submodules were removed in Phase 1 of the refactor.
+
+    The kits code now lives in ``pyframework_pipeline/analyze/``. Kept as a
+    stub so any lingering references degrade gracefully rather than
+    NameError; safe to remove once all call sites are confirmed gone.
+    """
+    return
 
 
 def _framework_id(env_config: dict[str, Any]) -> str:
@@ -2356,23 +2347,23 @@ def _run_perf_kits_on_remote(
     benchmark: str = "tpch",
     env_config: dict | None = None,
 ) -> None:
-    """Run python-performance-kits pipeline inside the container.
+    """Run the analyze/perf pipeline inside the container.
 
     Running inside the container gives perf report access to the exact
     binaries (libpython3.14.so, etc.) so symbols resolve correctly.
+
+    The scripts ship as flat files into the container (the container cannot
+    import this repo's package); they live in pyframework_pipeline/analyze/.
     """
-    # Resolve vendor dir: project_path is projects/<id>/project.yaml,
+    # Resolve analyze scripts dir: project_path is projects/<id>/project.yaml,
     # repo root is project_path.parent.parent.parent.
     if project_path:
         repo_root = project_path.parent.parent.parent
     else:
         repo_root = Path(__file__).resolve().parents[2]
-    kits_local = repo_root / "vendor" / "python-performance-kits"
-    scripts_dir = kits_local / "scripts" / "perf_insights"
+    scripts_dir = repo_root / "pipelines" / "pyframework_pipeline" / "analyze"
     if not scripts_dir.exists():
-        _init_submodules(repo_root)
-    if not scripts_dir.exists():
-        logger.warning("python-performance-kits not found at %s, skipping remote pipeline", kits_local)
+        logger.warning("analyze scripts not found at %s, skipping remote pipeline", scripts_dir)
         return
 
     container_kits = "/tmp/pyframework-perf-kits-scripts"
