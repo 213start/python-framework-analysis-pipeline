@@ -17,179 +17,27 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # --- Category mapping: CPython domain knowledge (framework-agnostic) ---
-# Single-sourced in pyframework_pipeline.analyze.category_mapping. Handles the
-# full cpython_category_rules.json taxonomy.
+# Single-sourced in consume/backfill/category_mapping (spec §5.4 split). The
+# base L1/L2 taxonomy comes from analyze.category_mapping; this adds the
+# display names, component mapping, legacy fallback, and source-provenance
+# resolution used by the aggregation helpers below.
+from ..consume.backfill.category_mapping import (
+    CATEGORY_TO_COMPONENT as _CATEGORY_TO_COMPONENT,
+    CATEGORY_DISPLAY as _CATEGORY_DISPLAY,
+    COMPONENT_DISPLAY as _COMPONENT_DISPLAY,
+    COMPONENT_MAP as _COMPONENT_MAP,
+    KERNEL_SYMBOLS as _KERNEL_SYMBOLS,
+    LEGACY_CATEGORY_MAP as _LEGACY_CATEGORY_MAP,
+    LIB_DISPLAY as _LIB_DISPLAY,
+    resolve_component as _resolve_component,
+    resolve_l1_category as _resolve_l1_category,
+    resolve_source_info as _resolve_source_info,
+)
+from ..consume.backfill.binding import generate_func_id as _generate_func_id
+# Back-compat: the base L1/L2 taxonomy (used by resolve_l1_category, the
+# aggregation helpers, and by tests that import these directly).
 from ..analyze.category_mapping import CATEGORY_TO_L1 as _CATEGORY_TO_L1
 from ..analyze.category_mapping import L2_SHORT_NAME as _L2_SHORT_NAME
-
-# Source file provenance derived from shared_object.
-_LIB_DISPLAY: dict[str, str] = {
-    "libpython": "CPython",
-    "libscipy_openblas": "OpenBLAS (scipy)",
-    "libopenblas": "OpenBLAS",
-    "libarrow_python": "PyArrow",
-    "libarrow.so": "Apache Arrow",
-    "libjvm": "JVM (OpenJDK)",
-}
-
-_KERNEL_SYMBOLS = {"unmap_page_range", "copy_page_range", "__tlb_remove_page",
-                    "free_pages_and_swap_cache", "__alloc_pages_nodemask"}
-
-
-def _resolve_source_info(symbol: str, shared_object: str,
-                         source_map: dict[str, dict] | None = None) -> dict[str, str]:
-    """Derive sourceFile and origin from shared_object, symbol, and source map."""
-    if shared_object == "[kernel.kallsyms]":
-        return {"sourceFile": "Linux Kernel", "origin": "kernel"}
-    # Check dynamic source map first (from _extract_cpython_sources).
-    if source_map and symbol in source_map:
-        return {"sourceFile": source_map[symbol].get("sourceFile", ""), "origin": "CPython"}
-    so_lower = shared_object.lower()
-    for lib_prefix, display in _LIB_DISPLAY.items():
-        if lib_prefix.lower() in so_lower:
-            return {"sourceFile": display, "origin": display}
-    if "libc" in so_lower or "ld-linux" in so_lower:
-        return {"sourceFile": "glibc", "origin": "glibc"}
-    if shared_object and shared_object != "[unknown]":
-        return {"sourceFile": shared_object, "origin": shared_object}
-    return {"sourceFile": "", "origin": ""}
-
-# Human-readable display names for L1 categories
-_CATEGORY_DISPLAY: dict[str, str] = {
-    "interpreter": "Interpreter",
-    "memory": "Memory",
-    "gc": "GC",
-    "object_model": "Object Model",
-    "calls_dispatch": "Calls / Dispatch",
-    "lookup": "Lookup",
-    "import_loading": "Import",
-    "compiler": "Compiler",
-    "concurrency": "Concurrency",
-    "exceptions": "Exceptions",
-    "runtime": "Runtime",
-    "kernel": "Kernel",
-    "glibc": "glibc",
-    "library": "Library",
-    "unknown": "Unknown",
-}
-
-# Legacy category_top values from older CSV formats — fallback mapping.
-_LEGACY_CATEGORY_MAP: dict[str, str] = {
-    "Interpreter": "interpreter",
-    "Memory": "memory",
-    "GC": "gc",
-    "Data Structure": "object_model",
-    "Object Model": "object_model",
-    "Tuple": "object_model",
-    "Dict": "object_model",
-    "List": "object_model",
-    "Set": "object_model",
-    "Int": "object_model",
-    "Float": "object_model",
-    "String": "object_model",
-    "Calls": "calls_dispatch",
-    "Call Protocol": "calls_dispatch",
-    "Dynamic": "calls_dispatch",
-    "Import": "interpreter",
-    "Compiler": "compiler",
-    "Concurrency": "concurrency",
-    "Library": "library",
-    "Runtime": "runtime",
-    "Generator": "concurrency",
-    "Kernel": "kernel",
-    "glibc": "glibc",
-    "Unknown": "unknown",
-}
-
-# --- Component mapping: shared_object prefix -> component ---
-_COMPONENT_MAP: dict[str, str] = {
-    "libpython": "cpython",
-    "python3": "cpython",
-    "python": "cpython",
-    "libc-": "glibc",
-    "libm-": "glibc",
-    "ld-linux": "glibc",
-    "libpthread": "glibc",
-    "libstdc++": "third_party",
-    "libgcc": "third_party",
-    "[kernel": "kernel",
-    "vmlinux": "kernel",
-    "libjvm": "bridge_runtime",
-    "libflink": "bridge_runtime",
-}
-
-# python-performance-kits category_top → component (when available).
-_CATEGORY_TO_COMPONENT: dict[str, str] = {
-    "CPython.Interpreter": "cpython",
-    "CPython.Memory": "cpython",
-    "CPython.GC": "cpython",
-    "CPython.Objects": "cpython",
-    "CPython.Calls": "cpython",
-    "CPython.Lookup": "cpython",
-    "CPython.Import": "cpython",
-    "CPython.Compiler": "cpython",
-    "CPython.Concurrency": "cpython",
-    "CPython.Exceptions": "cpython",
-    "CPython.Runtime": "cpython",
-    "Kernel": "kernel",
-    "glibc": "glibc",
-}
-
-# Human-readable display names for components
-_COMPONENT_DISPLAY: dict[str, str] = {
-    "cpython": "CPython",
-    "glibc": "glibc",
-    "kernel": "Kernel",
-    "third_party": "Third Party",
-    "bridge_runtime": "Bridge Runtime",
-    "library": "Library",
-    "unknown": "Unknown",
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _generate_func_id(symbol: str) -> str:
-    """Generate a deterministic function ID from symbol name."""
-    digest = hashlib.md5(symbol.encode("utf-8")).hexdigest()[:8]
-    return f"func_{digest}"
-
-
-def _resolve_component(shared_object: str, category_top: str = "") -> str:
-    """Map a shared_object + category_top to a component identifier.
-
-    Prefers category-based resolution for CPython/Kernel/glibc, falls back
-    to shared_object prefix matching, then generic catch-all for libraries.
-    """
-    if category_top:
-        comp = _CATEGORY_TO_COMPONENT.get(category_top)
-        if comp:
-            return comp
-
-    so = shared_object.strip()
-    so_lower = so.lower()
-    for prefix, component in _COMPONENT_MAP.items():
-        if so_lower.startswith(prefix.lower()):
-            return component
-    if "python" in so_lower and ("lib" in so_lower or so_lower.startswith("python")):
-        return "cpython"
-    # Any other shared object (lib*.so, *.so) is a third-party library.
-    if so_lower.endswith(".so") or ".so." in so_lower:
-        return "third_party"
-    return "unknown"
-
-
-def _resolve_l1_category(category_top: str) -> str:
-    """Map a python-performance-kits category_top to framework L1.
-
-    Handles both the full CPython.* taxonomy and legacy format.
-    """
-    l1 = _CATEGORY_TO_L1.get(category_top)
-    if l1:
-        return l1
-    return _LEGACY_CATEGORY_MAP.get(category_top, "unknown")
 
 
 def _parse_float(value: str) -> float:
