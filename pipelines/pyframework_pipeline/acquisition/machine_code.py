@@ -18,7 +18,9 @@ from typing import Any
 
 from .manifest import AcquisitionManifest, AcquisitionSection
 
-DEFAULT_KITS_DIR = Path(__file__).resolve().parents[3] / "vendor" / "python-performance-kits"
+# The annotate entry module lives in the analyze subpackage; invoked as a
+# module so it resolves regardless of where the caller runs from.
+_ANNOTATE_MODULE = "pyframework_pipeline.analyze.annotate_perf_hotspots"
 
 # Directories to search for shared libraries on the local system.
 _LIB_SEARCH_DIRS = [
@@ -84,7 +86,7 @@ def collect_asm(
     run_dir: Path,
     platform: str,
     perf_data: Path | None = None,
-    kits_dir: Path | None = None,
+    kits_dir: Path | None = None,  # deprecated; analyze subpackage is the source now
     binaries: list[Path] | None = None,
     top_n: int = 20,
 ) -> dict[str, Any]:
@@ -99,7 +101,9 @@ def collect_asm(
     perf_data : Path | None
         Path to perf.data file.
     kits_dir : Path | None
-        Path to python-performance-kits.
+        Deprecated. Kept for backwards-compatibility; the analyze subpackage
+        (``pyframework_pipeline.analyze``) is the single source of the annotate
+        script and is invoked as a module.
     binaries : list[Path] | None
         Binary files to objdump (e.g. libpython3.14.so).
     top_n : int
@@ -109,8 +113,6 @@ def collect_asm(
     -------
     dict with asm file paths and metadata.
     """
-    if kits_dir is None:
-        kits_dir = DEFAULT_KITS_DIR
     if perf_data is None:
         perf_data = run_dir / "perf.data"
 
@@ -122,31 +124,28 @@ def collect_asm(
     hotspot_files = []
     objdump_files = []
 
-    # Use python-performance-kits annotate script for hotspots
+    # Use the analyze annotate script (invoked as a module) for hotspots
     if perf_data.exists():
-        annotate_script = (
-            kits_dir / "scripts" / "perf_insights" / "annotate_perf_hotspots.py"
-        )
-        if annotate_script.exists():
-            # Read hotspot symbols from perf output if available
-            records_csv = run_dir / "perf" / "data" / "perf_records.csv"
-            if records_csv.exists():
-                import sys as _sys
-                cmd = [
-                    _sys.executable,
-                    str(annotate_script),
-                    str(records_csv),
-                    "--perf-data", str(perf_data),
-                    "--output", str(asm_dir.parent),
-                    "--top-n", str(top_n),
-                ]
-                subprocess.run(cmd, capture_output=True, text=True, check=False)
+        # Read hotspot symbols from perf output if available
+        records_csv = run_dir / "perf" / "data" / "perf_records.csv"
+        if records_csv.exists():
+            import sys as _sys
+            cmd = [
+                _sys.executable,
+                "-m",
+                _ANNOTATE_MODULE,
+                str(records_csv),
+                "--perf-data", str(perf_data),
+                "--output", str(asm_dir.parent),
+                "--top-n", str(top_n),
+            ]
+            subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-                # Collect generated .s files
-                for f in sorted(asm_dir.glob("*.s")):
-                    hotspot_files.append(str(f.relative_to(run_dir)))
-                for f in sorted((asm_dir.parent / "tables").glob("instruction_hotspots.csv")):
-                    hotspot_files.append(str(f.relative_to(run_dir)))
+            # Collect generated .s files
+            for f in sorted(asm_dir.glob("*.s")):
+                hotspot_files.append(str(f.relative_to(run_dir)))
+            for f in sorted((asm_dir.parent / "tables").glob("instruction_hotspots.csv")):
+                hotspot_files.append(str(f.relative_to(run_dir)))
 
     # objdump for specified binaries
     if binaries:

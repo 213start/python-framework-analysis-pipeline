@@ -1,6 +1,7 @@
 """Sub-step 5b: Perf profile data collection.
 
-Invokes python-performance-kits pipeline to process perf.data files into
+Invokes the analyze pipeline (formerly python-performance-kits, now
+``pyframework_pipeline.analyze``) to process perf.data files into
 classified CSV summaries with CPython-centric category mapping.
 """
 
@@ -13,10 +14,13 @@ from typing import Any
 
 from .manifest import AcquisitionManifest, AcquisitionSection
 
-# Default path to python-performance-kits (as git submodule)
-DEFAULT_KITS_DIR = Path(__file__).resolve().parents[3] / "vendor" / "python-performance-kits"
+# The analyze subpackage ships the perf_insights scripts; the single-platform
+# entry module drives them via sibling file-path subprocess calls (resolved
+# with Path(__file__).with_name(...), which works inside the package).
+_PIPELINE_MODULE = "pyframework_pipeline.analyze.run_single_platform_pipeline"
 
-# Category mapping: python-performance-kits 14 top-level -> framework L1
+# Category mapping: analyze 14 top-level -> framework L1.
+# (CPython domain knowledge; Phase 2 will single-source this.)
 CATEGORY_MAP = {
     "Interpreter": "Interpreter",
     "Memory": "Memory",
@@ -44,12 +48,12 @@ def collect_perf(
     run_dir: Path,
     platform: str,
     perf_data: Path | None = None,
-    kits_dir: Path | None = None,
+    kits_dir: Path | None = None,  # deprecated; the analyze subpackage is now the source
     benchmark: str = "tpch",
     platform_id: str = "",
     top_n: int = 50,
 ) -> dict[str, Any]:
-    """Process perf.data through python-performance-kits pipeline.
+    """Process perf.data through the analyze pipeline.
 
     Parameters
     ----------
@@ -60,11 +64,13 @@ def collect_perf(
     perf_data : Path | None
         Path to perf.data file. If None, looks in run_dir/perf.data.
     kits_dir : Path | None
-        Path to python-performance-kits. If None, uses default submodule path.
+        Deprecated. Kept for CLI/API backwards-compatibility; the analyze
+        subpackage (``pyframework_pipeline.analyze``) is now the single
+        source of the pipeline scripts and is invoked as a module.
     benchmark : str
         Benchmark name for metadata.
     platform_id : str
-        Platform ID for kits.
+        Platform ID for the pipeline.
     top_n : int
         Number of top hotspots to annotate.
 
@@ -72,8 +78,6 @@ def collect_perf(
     -------
     dict with file paths to generated CSV outputs.
     """
-    if kits_dir is None:
-        kits_dir = DEFAULT_KITS_DIR
     if perf_data is None:
         perf_data = run_dir / "perf.data"
 
@@ -83,13 +87,10 @@ def collect_perf(
     perf_dir = run_dir / "perf"
     perf_dir.mkdir(parents=True, exist_ok=True)
 
-    pipeline_script = kits_dir / "scripts" / "perf_insights" / "run_single_platform_pipeline.py"
-    if not pipeline_script.exists():
-        return {"status": "failed", "reason": f"Kits pipeline not found: {pipeline_script}"}
-
     cmd = [
         sys.executable,
-        str(pipeline_script),
+        "-m",
+        _PIPELINE_MODULE,
         str(perf_data),
         "--output", str(perf_dir),
         "--benchmark", benchmark,
@@ -108,7 +109,7 @@ def collect_perf(
     if result.returncode != 0:
         return {
             "status": "failed",
-            "reason": f"Kits pipeline failed (exit {result.returncode})",
+            "reason": f"analyze pipeline failed (exit {result.returncode})",
             "stderr": result.stderr[:500],
         }
 
