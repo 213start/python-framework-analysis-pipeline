@@ -102,6 +102,39 @@ class DataJuicerEnvironmentTest(unittest.TestCase):
 
         self.assertIn("py-spy", script)
 
+    def test_build_plan_forwards_host_proxy_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_yaml = _write_datajuicer_project(Path(tmp), proxy_env=True)
+
+            result = CliInvoker.run(
+                "environment", "plan", str(project_yaml), "--platform", "arm"
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        build_step = next(
+            s for s in plan["steps"] if s["id"] == "build-datajuicer-image"
+        )
+
+        self.assertIn("http_proxy=http://proxy.internal:3128", build_step["command"])
+        self.assertIn("HTTPS_PROXY=http://secure-proxy.internal:3129", build_step["command"])
+        self.assertIn("NO_PROXY=localhost,127.0.0.1,.internal", build_step["command"])
+
+    def test_build_script_forwards_proxy_build_args(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "datajuicer"
+            / "scripts"
+            / "build-datajuicer-image.sh"
+        ).read_text(encoding="utf-8")
+
+        for name in ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
+            self.assertIn(f"ARG {name}", script)
+            self.assertIn(f"--build-arg \"{name}=${{{name}:-}}\"", script)
+
     def test_plan_checks_py_spy_when_python_flamegraph_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_yaml = _write_datajuicer_project(Path(tmp))
@@ -376,7 +409,7 @@ class FakeExecutor:
         return True
 
 
-def _write_datajuicer_project(project_dir: Path) -> Path:
+def _write_datajuicer_project(project_dir: Path, *, proxy_env: bool = False) -> Path:
     workload_dir = project_dir / "workload"
     workload_dir.mkdir(parents=True)
     (workload_dir / "benchmark_runner.py").write_text(
@@ -412,61 +445,72 @@ def _write_datajuicer_project(project_dir: Path) -> Path:
         encoding="utf-8",
     )
 
-    (project_dir / "environment.yaml").write_text(
-        "\n".join(
+    lines = [
+        "schemaVersion: 1",
+        "framework: datajuicer",
+        "mode: plan-only",
+        "platforms:",
+        "  - id: arm",
+        "    arch: aarch64",
+        "    hosts:",
+        "      - role: client",
+        "        hostRef: arm-host",
+        "  - id: x86",
+        "    arch: x86_64",
+        "    hosts:",
+        "      - role: client",
+        "        hostRef: x86-host",
+        "software:",
+        "  pythonImage: python:3.11-slim",
+        "  dataJuicerVersion: 1.5.2",
+        "  dataJuicerImages:",
+        "    arm: data-juicer-bench:1.5.2-py311-arm",
+        "    x86: data-juicer-bench:1.5.2-py311-x86",
+        "  dataJuicerContainer: data-juicer-bench",
+        "  benchmarkDataUrl: http://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/perf_bench_data/perf_bench_data.tar.gz",
+        "  benchmarkUseFullArchive: false",
+        "  benchmarkModalities:",
+        "    - text",
+        "  aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian",
+        "  aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security",
+        "  hfEndpoint: https://hf-mirror.com",
+        "  pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple",
+        "  pipTrustedHosts:",
+        "    - pypi.tuna.tsinghua.edu.cn",
+        "  pipTimeout: 180",
+        "  pipRetries: 10",
+        "  profilingTools:",
+        "    - perf",
+        "    - objdump",
+        "hostRefs:",
+        "  arm-host:",
+        "    connect: ssh",
+        "    alias: blue-98",
+    ]
+    if proxy_env:
+        lines.extend(
             [
-                "schemaVersion: 1",
-                "framework: datajuicer",
-                "mode: plan-only",
-                "platforms:",
-                "  - id: arm",
-                "    arch: aarch64",
-                "    hosts:",
-                "      - role: client",
-                "        hostRef: arm-host",
-                "  - id: x86",
-                "    arch: x86_64",
-                "    hosts:",
-                "      - role: client",
-                "        hostRef: x86-host",
-                "software:",
-                "  pythonImage: python:3.11-slim",
-                "  dataJuicerVersion: 1.5.2",
-                "  dataJuicerImages:",
-                "    arm: data-juicer-bench:1.5.2-py311-arm",
-                "    x86: data-juicer-bench:1.5.2-py311-x86",
-                "  dataJuicerContainer: data-juicer-bench",
-                "  benchmarkDataUrl: http://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/perf_bench_data/perf_bench_data.tar.gz",
-                "  benchmarkUseFullArchive: false",
-                "  benchmarkModalities:",
-                "    - text",
-                "  aptMirror: http://mirrors.tuna.tsinghua.edu.cn/debian",
-                "  aptSecurityMirror: http://mirrors.tuna.tsinghua.edu.cn/debian-security",
-                "  hfEndpoint: https://hf-mirror.com",
-                "  pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple",
-                "  pipTrustedHosts:",
-                "    - pypi.tuna.tsinghua.edu.cn",
-                "  pipTimeout: 180",
-                "  pipRetries: 10",
-                "  profilingTools:",
-                "    - perf",
-                "    - objdump",
-                "hostRefs:",
-                "  arm-host:",
-                "    connect: ssh",
-                "    alias: blue-98",
-                "    capabilities:",
-                "      ssh: true",
-                "      docker: true",
-                "  x86-host:",
-                "    connect: ssh",
-                "    alias: zen5",
-                "    capabilities:",
-                "      ssh: true",
-                "      docker: true",
+                "    env:",
+                "      http_proxy: http://proxy.internal:3128",
+                "      HTTPS_PROXY: http://secure-proxy.internal:3129",
+                "      NO_PROXY: localhost,127.0.0.1,.internal",
             ]
         )
-        + "\n",
+    lines.extend(
+        [
+            "    capabilities:",
+            "      ssh: true",
+            "      docker: true",
+            "  x86-host:",
+            "    connect: ssh",
+            "    alias: zen5",
+            "    capabilities:",
+            "      ssh: true",
+            "      docker: true",
+        ]
+    )
+    (project_dir / "environment.yaml").write_text(
+        "\n".join(lines) + "\n",
         encoding="utf-8",
     )
 

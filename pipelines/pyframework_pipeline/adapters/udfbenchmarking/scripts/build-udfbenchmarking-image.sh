@@ -25,6 +25,12 @@ ARG PIP_EXTRA_INDEX_URL
 ARG PIP_TRUSTED_HOST
 ARG PIP_TIMEOUT
 ARG PIP_RETRIES
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_INDEX_URL=${PIP_INDEX_URL} \
@@ -112,6 +118,12 @@ build_args=(
   --build-arg "PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}"
   --build-arg "PIP_TIMEOUT=${PIP_TIMEOUT:-}"
   --build-arg "PIP_RETRIES=${PIP_RETRIES:-}"
+  --build-arg "http_proxy=${http_proxy:-}"
+  --build-arg "https_proxy=${https_proxy:-}"
+  --build-arg "no_proxy=${no_proxy:-}"
+  --build-arg "HTTP_PROXY=${HTTP_PROXY:-}"
+  --build-arg "HTTPS_PROXY=${HTTPS_PROXY:-}"
+  --build-arg "NO_PROXY=${NO_PROXY:-}"
 )
 
 echo "Building ${IMAGE_NAME} from ${BASE_IMAGE} for ${ARCH_TAG}"

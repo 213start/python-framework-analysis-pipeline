@@ -72,6 +72,7 @@ class UdfBenchmarkingEnvironmentAdapter:
             "PIP_TRUSTED_HOST": pip_trusted_hosts,
             "PIP_TIMEOUT": software.get("pipTimeout", ""),
             "PIP_RETRIES": software.get("pipRetries", ""),
+            **_proxy_env(host_env),
         })
         steps.append(PlanStep(
             id="build-udfbenchmarking-image",

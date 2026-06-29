@@ -92,6 +92,7 @@ class DataJuicerEnvironmentAdapter:
             "PIP_TIMEOUT": software.get("pipTimeout", ""),
             "PIP_RETRIES": software.get("pipRetries", ""),
             "HF_ENDPOINT": hf_endpoint,
+            **_proxy_env(host_env),
         })
         steps.append(PlanStep(
             id="build-datajuicer-image",
