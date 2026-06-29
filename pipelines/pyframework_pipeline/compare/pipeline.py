@@ -1,4 +1,4 @@
-"""Step 6b: cross-platform performance comparison using python-performance-kits."""
+"""Step 6b: cross-platform performance comparison using the analyze pipeline."""
 
 from __future__ import annotations
 
@@ -12,12 +12,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Path to the vendor compare script (relative to repo root).
-_COMPARE_SCRIPT = (
-    Path(__file__).resolve().parents[3]
-    / "vendor" / "python-performance-kits" / "scripts" / "perf_insights"
-    / "run_compare_pipeline.py"
-)
+# The compare entry module lives in the analyze subpackage; invoked as a module
+# so it resolves regardless of where the caller runs from.
+_COMPARE_MODULE = "pyframework_pipeline.analyze.run_compare_pipeline"
 
 
 def _geomean_e2e_time(run_dir: Path) -> float:
@@ -103,7 +100,7 @@ def run_compare(
     x86_perf_root = x86_run_dir / "perf"
 
     cmd = [
-        sys.executable, str(_COMPARE_SCRIPT),
+        sys.executable, "-m", _COMPARE_MODULE,
         "-R", str(arm_perf_root),
         "-S", str(x86_perf_root),
         "-x", str(arm_e2e),
