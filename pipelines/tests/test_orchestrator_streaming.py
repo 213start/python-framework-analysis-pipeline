@@ -15,8 +15,13 @@ import unittest
 from pathlib import Path
 
 ORCHESTRATOR = Path(__file__).resolve().parents[2] / "pipelines" / "pyframework_pipeline" / "orchestrator.py"
-SRC = ORCHESTRATOR.read_text(encoding="utf-8")
-TREE = ast.parse(SRC)
+PYFLINK_ADAPTER = Path(__file__).resolve().parents[2] / "pipelines" / "pyframework_pipeline" / "adapters" / "pyflink" / "adapter.py"
+# The pyflink benchmark/deploy logic ([5a] step labels, artifact checks, executor.run
+# streaming) was extracted from the orchestrator into PyFlinkAdapter (Phase 3). The
+# compliance checks below therefore read both source files; the AST (executor.run
+# call extraction) parses the orchestrator, which still owns the [5b.N] collect path.
+SRC = ORCHESTRATOR.read_text(encoding="utf-8") + "\n" + PYFLINK_ADAPTER.read_text(encoding="utf-8")
+TREE = ast.parse(ORCHESTRATOR.read_text(encoding="utf-8"))
 
 
 def _find_executor_run_calls() -> list[dict]:

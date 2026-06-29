@@ -27,11 +27,11 @@ class PipelineIntegrationTest(unittest.TestCase):
 
             with (
                 mock.patch(
-                    "pyframework_pipeline.orchestrator._run_workload_deploy",
+                    "pyframework_pipeline.adapters.pyflink.adapter.PyFlinkAdapter.deploy_workload",
                     side_effect=_fake_workload_deploy,
                 ),
                 mock.patch(
-                    "pyframework_pipeline.orchestrator._run_benchmark",
+                    "pyframework_pipeline.adapters.pyflink.adapter.PyFlinkAdapter.run_benchmark",
                     side_effect=_fake_benchmark,
                 ),
                 mock.patch(
