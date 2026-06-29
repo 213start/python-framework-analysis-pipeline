@@ -150,6 +150,24 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
             self.assertIn(f"ARG {name}", script)
             self.assertIn(f"--build-arg \"{name}=${{{name}:-}}\"", script)
 
+    def test_build_script_disables_https_verification_for_build_tools(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "udfbenchmarking"
+            / "scripts"
+            / "build-udfbenchmarking-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('Acquire::https::Verify-Peer "false";', script)
+        self.assertIn('Acquire::https::Verify-Host "false";', script)
+        self.assertIn("pip_trusted_hosts=", script)
+        self.assertIn("pypi.org files.pythonhosted.org", script)
+        self.assertIn("--trusted-host", script)
+        self.assertIn("GIT_SSL_NO_VERIFY=true", script)
+
     def test_reference_config_keeps_upstream_parameterized_udf_defaults(self) -> None:
         from pyframework_pipeline.environment.parser import parse_yaml
 

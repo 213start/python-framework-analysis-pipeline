@@ -66,6 +66,8 @@ RUN set -eux; \
     printf '%s\n' \
         'Acquire::http::Timeout "30";' \
         'Acquire::https::Timeout "30";' \
+        'Acquire::https::Verify-Peer "false";' \
+        'Acquire::https::Verify-Host "false";' \
         'Acquire::Retries "5";' \
         > /etc/apt/apt.conf.d/99pyframework-timeouts; \
     apt-get update; \
@@ -91,8 +93,13 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
-    python -m pip install --upgrade pip setuptools wheel; \
-    python -m pip install \
+    pip_trusted_hosts="${PIP_TRUSTED_HOST:-} pypi.org files.pythonhosted.org"; \
+    pip_trusted_args=""; \
+    for host in $pip_trusted_hosts; do \
+        pip_trusted_args="$pip_trusted_args --trusted-host $host"; \
+    done; \
+    python -m pip install $pip_trusted_args --upgrade pip setuptools wheel; \
+    python -m pip install $pip_trusted_args \
         getdaft \
         numpy \
         opencv-python-headless \
@@ -100,14 +107,15 @@ RUN set -eux; \
         pyyaml \
         scikit-image; \
     if [ -n "${PY_SPY_VERSION}" ]; then \
-        python -m pip install "py-spy==${PY_SPY_VERSION}"; \
+        python -m pip install $pip_trusted_args "py-spy==${PY_SPY_VERSION}"; \
     else \
-        python -m pip install py-spy; \
+        python -m pip install $pip_trusted_args py-spy; \
     fi; \
     python -c "import daft, cv2, skimage, psutil, yaml; print('udfbenchmarking dependencies ready')"; \
     py-spy --version
 
 RUN set -eux; \
+    export GIT_SSL_NO_VERIFY=true; \
     git clone --depth 1 "${UDF_BENCHMARKING_REPO}" /opt/UDF_Benchmarking; \
     if [ -n "${UDF_BENCHMARKING_REVISION}" ]; then \
         cd /opt/UDF_Benchmarking; \

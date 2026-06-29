@@ -135,6 +135,23 @@ class DataJuicerEnvironmentTest(unittest.TestCase):
             self.assertIn(f"ARG {name}", script)
             self.assertIn(f"--build-arg \"{name}=${{{name}:-}}\"", script)
 
+    def test_build_script_disables_https_verification_for_build_tools(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "datajuicer"
+            / "scripts"
+            / "build-datajuicer-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('Acquire::https::Verify-Peer "false";', script)
+        self.assertIn('Acquire::https::Verify-Host "false";', script)
+        self.assertIn("pip_trusted_hosts=", script)
+        self.assertIn("pypi.org files.pythonhosted.org", script)
+        self.assertIn("--trusted-host", script)
+
     def test_plan_checks_py_spy_when_python_flamegraph_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_yaml = _write_datajuicer_project(Path(tmp))
