@@ -45,13 +45,21 @@ RUN set -eux; \
         if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
             sed -i \
                 -e "s|http://deb.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|https://deb.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|http://security.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|https://security.debian.org/debian-security|${security_mirror}|g" \
                 -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+                -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
                 /etc/apt/sources.list.d/debian.sources; \
         fi; \
         if [ -f /etc/apt/sources.list ]; then \
             sed -i \
                 -e "s|http://deb.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|https://deb.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|http://security.debian.org/debian-security|${security_mirror}|g" \
+                -e "s|https://security.debian.org/debian-security|${security_mirror}|g" \
                 -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+                -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
                 /etc/apt/sources.list; \
         fi; \
     fi; \
@@ -67,12 +75,19 @@ RUN set -eux; \
         ca-certificates \
         curl \
         git \
-        linux-perf \
         numactl \
         procps \
         libglib2.0-0 \
         libgl1 \
         libgomp1; \
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends linux-perf; then \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends linux-tools-common linux-tools-generic; \
+        perf_real="$(find /usr/lib/linux-tools -name perf 2>/dev/null | sort -V | tail -1 || true)"; \
+        if [ -n "$perf_real" ]; then \
+            ln -sf "$perf_real" /usr/local/bin/perf; \
+        fi; \
+    fi; \
+    command -v perf; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

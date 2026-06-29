@@ -95,6 +95,28 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         self.assertIn("py-spy", script)
         self.assertIn("python -c", script)
 
+    def test_build_script_handles_apt_source_and_perf_package_variants(self) -> None:
+        script = (
+            REPO_ROOT
+            / "pipelines"
+            / "pyframework_pipeline"
+            / "adapters"
+            / "udfbenchmarking"
+            / "scripts"
+            / "build-udfbenchmarking-image.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("https://deb.debian.org/debian-security", script)
+        self.assertIn("security.debian.org/debian-security", script)
+        self.assertIn(
+            "if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends linux-perf",
+            script,
+        )
+        self.assertIn("linux-tools-common linux-tools-generic", script)
+        self.assertIn("find /usr/lib/linux-tools", script)
+        self.assertIn('ln -sf "$perf_real" /usr/local/bin/perf', script)
+        self.assertIn("command -v perf", script)
+
     def test_build_plan_forwards_host_proxy_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_yaml = _write_udf_project(Path(tmp), proxy_env=True)
