@@ -1,90 +1,114 @@
-repeat: 1
-warmup: false
-num_rows: 2
+repeat: 3
+warmup: true
+num_rows: 1000000
 runner: native
 ray_address:
-native_num_threads: 2
+native_num_threads: 10
+
+RayNuma:
+  enabled: false
+  numa_nodes:
+    - 0
+    - 1
+    - 2
+  cpus_per_node: 24
+  head_node: 0
+  address: 127.0.0.1:6379
+  temp_dir: /tmp/ray_udf_benchmark
 
 MicroUDF:
-  num_rows: 2
+  num_rows: 1000000
   partition_counts:
     - 1
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
   series_udf_count:
     - 1
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
   include_method: true
   include_function: true
 
 SeriesMethodUDF:
   udf_count:
     - 1
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
 
 PartitionScheduleUDF:
   num_partitions:
     - 1
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
 
 MacroUDF:
-  num_rows: 2
-  cpu_parallel_workers: 1
-  cpu_worker_threads: 1
-  cpu_worker_partitions: 1
-  cpu_num_rows: 2
-  cpu_num_partitions: 1
-  cpu_latency_probe_rows: 0
-  numeric_iterations: 10
-  image_size: 8
-  image_passes: 1
-  feature_vector_length: 32
-  feature_rounds: 1
-  disk_payload_bytes: 128
+  num_rows: 1000
+  cpu_parallel_workers: 24
+  cpu_num_rows: 240
+  cpu_num_partitions: 24
+  numeric_iterations: 2000
+  image_size: 64
+  image_passes: 2
+  feature_vector_length: 4096
+  feature_rounds: 4
+  disk_payload_bytes: 4096
   network_mode: mock
-  network_num_rows: 2
-  network_fixed_sleep_ms: 1
-  network_jitter_sleep_ms: 0
+  network_num_rows: 100
+  network_fixed_sleep_ms: 20
+  network_jitter_sleep_ms: 10
   network_failure_rate: 0.0
-  network_payload_bytes: 16
+  network_payload_bytes: 128
+  network_url: https://httpbin.org/status/200
   network_timeout_seconds: 1
-
-RayNuma:
-  enabled: false
-  numa_nodes:
-    - 0
-  cpus_per_node: 2
-  head_node: 0
-  address: 127.0.0.1:6379
-  temp_dir: /tmp/ray_udf_benchmark
 
 Datasets:
   RandomVideo:
-    enabled: true
+    enabled: false
     output_dir: ./datasets/random_videos
-    video_count: 2
-    width: 64
-    height: 64
-    fps: 2
-    duration_seconds: 1
+    video_count: 16
+    width: 1920
+    height: 1080
+    fps: 24
+    duration_seconds: 20
     format: mp4
     codec: mp4v
     seed: 0
     overwrite: false
 
 E2EUDF:
-  num_partitions: 1
+  num_partitions: 160
   write_report: true
   write_pipeline_output: false
   VideoFilterMapper:
     threshold: 1.0
-    n_frames: 2
+    n_frames: 5
   FrameExtractMapper:
-    target_fps: 1.0
-    max_frames: 2
-    max_total_pixels: 262144
+    target_fps: 2.0
+    max_frames: 2000
+    max_total_pixels: 134217728
   ReprocessFilterMapper:
     threshold: 1.0
-    agent_sleep_seconds: 0.01
+    agent_sleep_seconds: 0.5
   MCQGenerateMapper:
-    num_task: 1
-    batch_size: 1
-    agent_sleep_seconds: 0.01
+    num_task: 19
+    batch_size: 3
+    agent_sleep_seconds: 0.5
 
 FilterUDF:
   - MockVideoE2EUDF

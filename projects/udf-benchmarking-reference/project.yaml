@@ -5,7 +5,7 @@ fourLayerRoot: .
 workload:
   localDir: workload
   benchmark: MockVideoE2EUDF
-  timeout: 1800
+  timeout: 7200
 
 bridge:
   repo: stone31415/UDF_Benchmarking

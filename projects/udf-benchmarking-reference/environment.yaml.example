@@ -25,7 +25,7 @@ software:
   udfBenchmarkingContainer: udf-benchmarking-bench
   benchmarkName: MockVideoE2EUDF
   benchmarkConfigFile: config.yaml
-  benchmarkTimeout: 1800
+  benchmarkTimeout: 7200
   aptMirror: https://mirrors.tuna.tsinghua.edu.cn/debian
   aptSecurityMirror: https://mirrors.tuna.tsinghua.edu.cn/debian-security
   pipIndexUrl: https://pypi.tuna.tsinghua.edu.cn/simple

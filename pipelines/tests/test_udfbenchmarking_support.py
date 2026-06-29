@@ -14,6 +14,14 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "pipelines"))
 
+UDF_REFERENCE_ROOT = REPO_ROOT / "projects" / "udf-benchmarking-reference"
+
+
+def _load_yaml(path: Path) -> dict:
+    from pyframework_pipeline.environment.parser import parse_yaml
+
+    return parse_yaml(path.read_text(encoding="utf-8"))
+
 
 class CliInvoker:
     @staticmethod
@@ -77,6 +85,54 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "ok", report["issues"])
         self.assertEqual(report["issueCount"], 0)
+
+    def test_reference_project_uses_upstream_benchmark_scale(self) -> None:
+        workload_config = _load_yaml(UDF_REFERENCE_ROOT / "workload" / "config.yaml")
+        project_config = _load_yaml(UDF_REFERENCE_ROOT / "project.yaml")
+        environment_example = _load_yaml(
+            UDF_REFERENCE_ROOT / "environment.yaml.example"
+        )
+
+        self.assertEqual(workload_config["repeat"], 3)
+        self.assertIs(workload_config["warmup"], True)
+        self.assertEqual(workload_config["num_rows"], 1_000_000)
+        self.assertEqual(workload_config["MicroUDF"]["num_rows"], 1_000_000)
+        self.assertEqual(
+            workload_config["MicroUDF"]["partition_counts"],
+            [1, 2, 4, 8, 16, 32, 64],
+        )
+        self.assertEqual(
+            workload_config["MicroUDF"]["series_udf_count"],
+            [1, 2, 4, 8, 16, 32, 64],
+        )
+        self.assertEqual(workload_config["MacroUDF"]["num_rows"], 1000)
+        self.assertEqual(workload_config["MacroUDF"]["numeric_iterations"], 2000)
+        self.assertEqual(workload_config["Datasets"]["RandomVideo"]["video_count"], 16)
+        self.assertEqual(workload_config["Datasets"]["RandomVideo"]["width"], 1920)
+        self.assertEqual(workload_config["Datasets"]["RandomVideo"]["height"], 1080)
+        self.assertEqual(
+            workload_config["Datasets"]["RandomVideo"]["duration_seconds"],
+            20,
+        )
+        self.assertEqual(workload_config["E2EUDF"]["num_partitions"], 160)
+        self.assertEqual(
+            workload_config["E2EUDF"]["FrameExtractMapper"]["max_frames"],
+            2000,
+        )
+        self.assertEqual(
+            workload_config["E2EUDF"]["ReprocessFilterMapper"]["agent_sleep_seconds"],
+            0.5,
+        )
+        self.assertEqual(
+            workload_config["E2EUDF"]["MCQGenerateMapper"]["agent_sleep_seconds"],
+            0.5,
+        )
+        self.assertEqual(workload_config["FilterUDF"], ["MockVideoE2EUDF"])
+        self.assertGreaterEqual(project_config["workload"]["timeout"], 7200)
+        self.assertGreaterEqual(
+            environment_example["software"]["benchmarkTimeout"],
+            7200,
+        )
 
     def test_build_script_installs_runtime_and_py_spy(self) -> None:
         script = (
@@ -217,8 +273,14 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
         self.assertIn("SeriesMethodUDF", config)
         self.assertIn("PartitionScheduleUDF", config)
         self.assertIn("MacroUDF", config)
-        self.assertEqual(config["SeriesMethodUDF"]["udf_count"], [1])
-        self.assertEqual(config["PartitionScheduleUDF"]["num_partitions"], [1])
+        self.assertEqual(
+            config["SeriesMethodUDF"]["udf_count"],
+            [1, 2, 4, 8, 16, 32, 64],
+        )
+        self.assertEqual(
+            config["PartitionScheduleUDF"]["num_partitions"],
+            [1, 2, 4, 8, 16, 32, 64],
+        )
 
     def test_reference_config_uses_https_apt_mirrors(self) -> None:
         from pyframework_pipeline.environment.parser import parse_yaml
