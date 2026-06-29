@@ -427,18 +427,16 @@ def _run_environment_deploy(
         raise StepError("\n".join(parts))
 
 
-def _project_adapter(project_path: Path) -> tuple[Any | None, dict[str, Any]]:
-    try:
-        from .adapters.registry import get_adapter
-        from .config import load_environment_config
+def _project_adapter(project_path: Path) -> tuple[Any, dict[str, Any]]:
+    from .adapters.registry import get_adapter
+    from .config import load_environment_config
 
+    try:
         env_config = load_environment_config(project_path)
     except FileNotFoundError:
-        return None, {}
+        env_config = {}
 
-    framework_id = str(env_config.get("framework", ""))
-    if not framework_id:
-        return None, env_config
+    framework_id = str(env_config.get("framework", "") or "pyflink")
     return get_adapter(framework_id), env_config
 
 

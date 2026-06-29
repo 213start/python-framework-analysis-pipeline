@@ -38,6 +38,22 @@ class EnvironmentDeployStep:
         )
 
 
+def _adapter(ctx: RunContext):
+    """Resolve the framework adapter, from ctx or the registry (single source).
+
+    The adapter is the single source of framework-specific acquisition
+    behaviour; steps never fall back to orchestrator._run_* branches.
+    """
+    if ctx.adapter is not None:
+        return ctx.adapter
+    framework_id = str(ctx.config.get("framework_id") or "")
+    if not framework_id:
+        raise StepError("step requires a framework adapter; none resolved")
+    from ..adapters.registry import get_adapter
+
+    return get_adapter(framework_id)
+
+
 @register_step
 class WorkloadDeployStep:
     name = "4"
@@ -45,18 +61,8 @@ class WorkloadDeployStep:
     produces = ("workload",)
 
     def run(self, ctx: RunContext) -> None:
-        platform = _platform(ctx)
-        if ctx.adapter is not None:
-            ctx.adapter.deploy_workload(ctx.project_path, ctx.run_dir, platform, yes=_yes(ctx))
-            return
-
-        from .. import orchestrator
-
-        orchestrator._run_workload_deploy(
-            ctx.project_path,
-            ctx.run_dir,
-            platform,
-            yes=_yes(ctx),
+        _adapter(ctx).deploy_workload(
+            ctx.project_path, ctx.run_dir, _platform(ctx), yes=_yes(ctx),
         )
 
 
@@ -67,23 +73,8 @@ class BenchmarkRunStep:
     produces = ("timing",)
 
     def run(self, ctx: RunContext) -> None:
-        platform = _platform(ctx)
-        if ctx.adapter is not None:
-            ctx.adapter.run_benchmark(
-                ctx.project_path,
-                ctx.run_dir,
-                platform,
-                force=_force(ctx),
-            )
-            return
-
-        from .. import orchestrator
-
-        orchestrator._run_benchmark(
-            ctx.project_path,
-            ctx.run_dir,
-            platform,
-            force=_force(ctx),
+        _adapter(ctx).run_benchmark(
+            ctx.project_path, ctx.run_dir, _platform(ctx), force=_force(ctx),
         )
 
 
