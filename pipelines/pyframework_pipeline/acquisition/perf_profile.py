@@ -19,30 +19,6 @@ from .manifest import AcquisitionManifest, AcquisitionSection
 # with Path(__file__).with_name(...), which works inside the package).
 _PIPELINE_MODULE = "pyframework_pipeline.analyze.run_single_platform_pipeline"
 
-# Category mapping: analyze 14 top-level -> framework L1.
-# (CPython domain knowledge; Phase 2 will single-source this.)
-CATEGORY_MAP = {
-    "Interpreter": "Interpreter",
-    "Memory": "Memory",
-    "GC": "GC",
-    "Tuple": "Object Model",
-    "Dict": "Object Model",
-    "List": "Object Model",
-    "Set": "Object Model",
-    "Misc Objects": "Object Model",
-    "Int": "Type Operations",
-    "Float": "Type Operations",
-    "String": "Type Operations",
-    "Calls": "Calls / Dispatch",
-    "Dynamic": "Calls / Dispatch",
-    "Import": "Interpreter",
-    "Compiler": "Interpreter",
-    "Concurrency": "Native Boundary",
-    "Library": "Native Boundary",
-    "Kernel": "Kernel",
-    "Unknown": "Unknown",
-}
-
 
 def collect_perf(
     run_dir: Path,

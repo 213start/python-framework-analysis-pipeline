@@ -16,44 +16,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# --- Category mapping: python-performance-kits category_top -> four-layer L1 ---
-# Handles the full cpython_category_rules.json taxonomy.
-_CATEGORY_TO_L1: dict[str, str] = {
-    "CPython.Interpreter": "interpreter",
-    "CPython.Memory": "memory",
-    "CPython.GC": "gc",
-    "CPython.Objects": "object_model",
-    "CPython.Calls": "calls_dispatch",
-    "CPython.Lookup": "lookup",
-    "CPython.Import": "import_loading",
-    "CPython.Compiler": "compiler",
-    "CPython.Concurrency": "concurrency",
-    "CPython.Exceptions": "exceptions",
-    "CPython.Runtime": "runtime",
-    "Kernel": "kernel",
-    "glibc": "glibc",
-    "Library": "library",
-    "Unknown": "unknown",
-}
-
-# L2 sub-categories derived from python-performance-kits category_sub.
-# Only non-empty sub-categories are mapped; the prefix "CPython.Objects." etc. is stripped.
-_L2_SHORT_NAME: dict[str, str] = {
-    "CPython.Objects.Dict": "dict",
-    "CPython.Objects.List": "list",
-    "CPython.Objects.Tuple": "tuple",
-    "CPython.Objects.Set": "set",
-    "CPython.Objects.Int": "int",
-    "CPython.Objects.Float": "float",
-    "CPython.Objects.Str": "str",
-    "CPython.Calls.Vectorcall": "vectorcall",
-    "CPython.Lookup.Attribute": "attribute",
-    "CPython.Import.ModuleLoading": "module_loading",
-    "CPython.Concurrency.GIL": "gil",
-    "CPython.Concurrency.Threading": "threading",
-    "CPython.Concurrency.Async": "async",
-    "CPython.Exceptions.BaseException": "base_exception",
-}
+# --- Category mapping: CPython domain knowledge (framework-agnostic) ---
+# Single-sourced in pyframework_pipeline.analyze.category_mapping. Handles the
+# full cpython_category_rules.json taxonomy.
+from ..analyze.category_mapping import CATEGORY_TO_L1 as _CATEGORY_TO_L1
+from ..analyze.category_mapping import L2_SHORT_NAME as _L2_SHORT_NAME
 
 # Source file provenance derived from shared_object.
 _LIB_DISPLAY: dict[str, str] = {
