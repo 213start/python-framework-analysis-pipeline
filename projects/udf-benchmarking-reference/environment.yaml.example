@@ -39,7 +39,7 @@ software:
     - py-spy
   pythonFlamegraph:
     enabled: true
-    rate: 100
+    rate: 10
     subprocesses: true
 
 hostRefs:

@@ -324,6 +324,14 @@ class UdfBenchmarkingEnvironmentTest(unittest.TestCase):
             build_step["command"],
         )
 
+    def test_reference_config_uses_low_overhead_python_flamegraph_rate(self) -> None:
+        reference_config = _load_yaml(UDF_REFERENCE_ROOT / "environment.yaml.example")
+
+        self.assertEqual(
+            reference_config["software"]["pythonFlamegraph"],
+            {"enabled": True, "rate": 10, "subprocesses": True},
+        )
+
 
 class UdfBenchmarkingOrchestratorTest(unittest.TestCase):
     def test_workload_deploy_targets_udfbenchmarking_container(self) -> None:
